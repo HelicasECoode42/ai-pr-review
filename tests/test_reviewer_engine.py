@@ -267,6 +267,89 @@ class FailingProvider:
         raise ProviderError("simulated failure")
 
 
+def test_filter_enforces_per_file_cap() -> None:
+    """Suggestions beyond max_suggestions_per_file are dropped from that file."""
+    files = [
+        ChangedFile(
+            filename="src/app.py",
+            status=FileStatus.MODIFIED,
+            patch="@@ -1,7 +1,10 @@\n ctx\n+line1\n+line2\n+line3\n+line4\n+line5\n tail",
+        )
+    ]
+    suggestions = [
+        ReviewSuggestion(
+            file_path="src/app.py",
+            line=i,
+            severity=Severity.MEDIUM,
+            confidence=0.8,
+            title=f"Issue {i}",
+            reason="valid",
+            recommendation="fix it",
+        )
+        for i in range(2, 8)  # 6 suggestions for same file
+    ]
+    result = _filter_suggestions(
+        suggestions, files, max_suggestions=20, max_suggestions_per_file=3
+    )
+    assert len(result) == 3  # capped at 3 per file
+
+
+def test_filter_drops_empty_reason() -> None:
+    files = [
+        ChangedFile(
+            filename="src/app.py",
+            status=FileStatus.MODIFIED,
+            patch="@@ -1,3 +1,4 @@\n ctx\n+new_line\n tail",
+        )
+    ]
+    suggestions = [
+        ReviewSuggestion(
+            file_path="src/app.py",
+            line=2,
+            severity=Severity.MEDIUM,
+            confidence=0.8,
+            title="Empty reason",
+            reason="   ",  # whitespace only
+            recommendation="ok",
+        ),
+        ReviewSuggestion(
+            file_path="src/app.py",
+            line=2,
+            severity=Severity.HIGH,
+            confidence=0.9,
+            title="Valid",
+            reason="real reason",
+            recommendation="real fix",
+        ),
+    ]
+    result = _filter_suggestions(suggestions, files, max_suggestions=10)
+    assert len(result) == 1
+    assert result[0].title == "Valid"
+
+
+def test_filter_drops_empty_recommendation() -> None:
+    files = [
+        ChangedFile(
+            filename="src/app.py",
+            status=FileStatus.MODIFIED,
+            patch="@@ -1,3 +1,4 @@\n ctx\n+new_line\n tail",
+        )
+    ]
+    suggestions = [
+        ReviewSuggestion(
+            file_path="src/app.py",
+            line=2,
+            severity=Severity.MEDIUM,
+            confidence=0.8,
+            title="No fix",
+            reason="real reason",
+            recommendation="",  # empty
+        ),
+    ]
+    result = _filter_suggestions(suggestions, files, max_suggestions=10)
+    assert len(result) == 0
+
+
 def test_review_falls_back_when_provider_fails(
     sample_pr: PullRequest, sample_files: list[ChangedFile]
 ) -> None:

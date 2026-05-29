@@ -63,16 +63,18 @@ def review_with_ai(
     provider: ReviewModelProvider,
     max_suggestions: int,
     min_confidence: float = 0.0,
+    max_suggestions_per_file: int = 5,
 ) -> ReviewReport:
     try:
-        context = build_review_context(pr, files, findings)
+        context, context_truncated = build_review_context(pr, files, findings)
         raw = provider.complete_json(
             SYSTEM_PROMPT, build_user_prompt(context, max_suggestions)
         )
         payload = _parse_model_payload(raw)
         total_from_model = len(payload.suggestions)
         suggestions = _filter_suggestions(
-            payload.suggestions, files, max_suggestions, min_confidence
+            payload.suggestions, files, max_suggestions, min_confidence,
+            max_suggestions_per_file,
         )
         warnings: list[str] = []
         hidden = total_from_model - len(suggestions)
@@ -80,6 +82,11 @@ def review_with_ai(
             warnings.append(
                 f"{hidden} suggestion(s) filtered out (low confidence, "
                 f"unchanged line, or duplicate)"
+            )
+        if context_truncated:
+            warnings.append(
+                "Patch context was truncated to fit token budget; "
+                "some files were not analyzed by AI."
             )
         return ReviewReport(
             pr=pr,
@@ -91,6 +98,7 @@ def review_with_ai(
             used_ai=True,
             analysis_warnings=warnings,
             hidden_suggestions_count=hidden,
+            context_truncated=context_truncated,
         )
     except (ProviderError, ValueError) as exc:
         logger.warning("AI review failed, falling back to rule-only: %s", exc)
@@ -138,25 +146,29 @@ def _filter_suggestions(
     files: list[ChangedFile],
     max_suggestions: int,
     min_confidence: float = 0.0,
+    max_suggestions_per_file: int = 5,
 ) -> list[ReviewSuggestion]:
     changed_lines = changed_line_map(files)
     filtered: list[ReviewSuggestion] = []
     seen: set[tuple[str, int | None, str]] = set()
+    per_file_count: dict[str, int] = {}
 
     for suggestion in suggestions:
-        # Drop suggestions below confidence threshold
         if suggestion.confidence < min_confidence:
             continue
-        # Drop suggestions referencing unchanged lines
+        # Drop suggestions with empty reason or recommendation
+        if not suggestion.reason.strip() or not suggestion.recommendation.strip():
+            continue
         if suggestion.line is not None:
             if suggestion.line not in changed_lines.get(suggestion.file_path, set()):
                 continue
-        # Drop duplicates (same file, line, title)
         key = (suggestion.file_path, suggestion.line, suggestion.title.lower())
         if key in seen:
             continue
+        # Enforce per-file cap
+        if per_file_count.get(suggestion.file_path, 0) >= max_suggestions_per_file:
+            continue
         seen.add(key)
-        # Validate and clamp severity/confidence to valid ranges
         try:
             Severity(suggestion.severity)
         except ValueError:
@@ -164,6 +176,9 @@ def _filter_suggestions(
         if not (0.0 <= suggestion.confidence <= 1.0):
             continue
         filtered.append(suggestion)
+        per_file_count[suggestion.file_path] = (
+            per_file_count.get(suggestion.file_path, 0) + 1
+        )
 
     severity_rank = {
         Severity.CRITICAL: 4,

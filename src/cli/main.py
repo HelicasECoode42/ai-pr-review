@@ -53,6 +53,7 @@ def analyze(
                     provider=provider,
                     max_suggestions=settings.max_suggestions,
                     min_confidence=settings.min_comment_confidence,
+                    max_suggestions_per_file=settings.max_suggestions_per_file,
                 )
             finally:
                 provider.close()

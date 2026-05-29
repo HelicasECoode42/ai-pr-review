@@ -9,7 +9,7 @@ def build_review_context(
     files: list[ChangedFile],
     findings: list[RiskFinding],
     max_patch_chars: int = 24_000,
-) -> str:
+) -> tuple[str, bool]:
     parts: list[str] = [
         "# Pull Request",
         f"Repo: {pr.repo}",
@@ -41,6 +41,7 @@ def build_review_context(
 
     parts.extend(["", "## Patches"])
     patch_budget = max_patch_chars
+    truncated = False
     ordered_files = sorted(
         files,
         key=lambda f: (
@@ -59,6 +60,7 @@ def build_review_context(
         patch_budget -= len(file_text)
         if patch_budget <= 0:
             parts.append("\nPatch budget exhausted. Remaining files omitted.")
+            truncated = True
             break
 
-    return "\n".join(parts)
+    return "\n".join(parts), truncated
