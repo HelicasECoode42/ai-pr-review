@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Optional
 
 from src.analyzer.diff_parser import parse_file_hunks
 from src.models import ChangedFile, PullRequest, RiskFinding
@@ -37,49 +38,91 @@ class ReviewContext:
 
 
 def _skip_patch_reason(filename: str) -> str | None:
-    name = filename.split("/")[-1]
-    if name in LOCKFILE_NAMES:
-        return "lockfile"
-    for prefix, reason in SKIP_PATCH_REASONS.items():
-        if filename.startswith(prefix):
-            return reason
-    return None
+    try:
+        name = filename.split("/")[-1]
+        if name in LOCKFILE_NAMES:
+            return "lockfile"
+        for prefix, reason in SKIP_PATCH_REASONS.items():
+            if filename.startswith(prefix):
+                return reason
+        return None
+    except Exception:
+        return None
 
 
 def build_review_context(
-    pr: PullRequest,
-    files: list[ChangedFile],
-    findings: list[RiskFinding],
+    pr: Optional[PullRequest],
+    files: Optional[list[ChangedFile]],
+    findings: Optional[list[RiskFinding]],
     max_patch_chars: int = 24_000,
 ) -> ReviewContext:
+    # 防御性输入校验
+    if pr is None:
+        # 创建空 PR 占位符
+        pr = PullRequest(
+            repo="unknown",
+            number=0,
+            title="",
+            body="",
+            author="",
+            base_ref="",
+            head_ref="",
+            html_url=None,
+        )
+    if files is None:
+        files = []
+    if findings is None:
+        findings = []
+
+    # 安全获取 PR 属性
+    def safe_pr_attr(attr: str, default: str = "unknown") -> str:
+        try:
+            val = getattr(pr, attr, default)
+            return val if val is not None else default
+        except Exception:
+            return default
+
     parts: list[str] = [
         "# Pull Request",
-        f"Repo: {pr.repo}",
-        f"Number: {pr.number}",
-        f"Title: {pr.title}",
-        f"Author: {pr.author or 'unknown'}",
-        f"Base: {pr.base_ref or 'unknown'}",
-        f"Head: {pr.head_ref or 'unknown'}",
+        f"Repo: {safe_pr_attr('repo')}",
+        f"Number: {safe_pr_attr('number', '0')}",
+        f"Title: {safe_pr_attr('title', '')}",
+        f"Author: {safe_pr_attr('author', 'unknown')}",
+        f"Base: {safe_pr_attr('base_ref', 'unknown')}",
+        f"Head: {safe_pr_attr('head_ref', 'unknown')}",
         "",
         "## Description",
-        pr.body or "(empty)",
+        pr.body or "(empty)" if hasattr(pr, "body") else "(empty)",
         "",
         "## Changed files",
     ]
 
+    # 文件列表（安全遍历）
     for file in files:
-        parts.append(
-            f"- {file.filename} [{file.status.value}] +{file.additions}/-{file.deletions}"
-        )
+        try:
+            status = getattr(file, "status", "unknown")
+            if hasattr(status, "value"):
+                status = status.value
+            parts.append(
+                f"- {file.filename} [{status}] +{file.additions}/-{file.deletions}"
+            )
+        except Exception as e:
+            print(f"[WARN] 添加文件信息失败: {e}")
+            continue
 
+    # 规则发现（安全遍历）
     if findings:
         parts.extend(["", "## Rule findings"])
         for finding in findings:
-            line = f":{finding.line}" if finding.line else ""
-            parts.append(
-                f"- {finding.severity.value} {finding.file_path}{line} "
-                f"{finding.rule_id}: {finding.title}. Evidence: {finding.evidence}"
-            )
+            try:
+                line = f":{finding.line}" if finding.line else ""
+                parts.append(
+                    f"- {finding.severity.value} {finding.file_path}{line} "
+                    f"{finding.rule_id}: {finding.title}. Evidence: {finding.evidence}"
+                )
+            except Exception as e:
+                print(f"[WARN] 添加规则发现失败: {e}")
+                continue
 
     parts.extend(["", "## Patches"])
     patch_budget = max_patch_chars
@@ -93,25 +136,38 @@ def build_review_context(
     )
     skipped_files: list[tuple[str, str]] = []
     lockfiles_skipped = 0
+
     for file in ordered_files:
-        reason = _skip_patch_reason(file.filename)
-        if reason is not None:
-            skipped_files.append((file.filename, reason))
-            if reason == "lockfile":
-                lockfiles_skipped += 1
+        try:
+            reason = _skip_patch_reason(file.filename)
+            if reason is not None:
+                skipped_files.append((file.filename, reason))
+                if reason == "lockfile":
+                    lockfiles_skipped += 1
+                continue
+
+            # 安全解析 hunks
+            try:
+                hunks = parse_file_hunks(file)
+            except Exception as e:
+                print(f"[WARN] 解析文件 {file.filename} 的 hunks 失败: {e}")
+                continue
+
+            if not hunks:
+                continue
+
+            file_text = "\n".join(h.raw for h in hunks)
+            if len(file_text) > patch_budget:
+                file_text = file_text[:patch_budget] + "\n...[truncated]"
+            parts.extend(["", f"### {file.filename}", "```diff", file_text, "```"])
+            patch_budget -= len(file_text)
+            if patch_budget <= 0:
+                parts.append("\nPatch budget exhausted. Remaining files omitted.")
+                truncated = True
+                break
+        except Exception as e:
+            print(f"[WARN] 处理文件 {file.filename} 的 patch 时出错: {e}")
             continue
-        hunks = parse_file_hunks(file)
-        if not hunks:
-            continue
-        file_text = "\n".join(h.raw for h in hunks)
-        if len(file_text) > patch_budget:
-            file_text = file_text[:patch_budget] + "\n...[truncated]"
-        parts.extend(["", f"### {file.filename}", "```diff", file_text, "```"])
-        patch_budget -= len(file_text)
-        if patch_budget <= 0:
-            parts.append("\nPatch budget exhausted. Remaining files omitted.")
-            truncated = True
-            break
 
     if lockfiles_skipped > 0 or skipped_files:
         parts.append("")

@@ -14,7 +14,10 @@ _SKIP_SCAN_PREFIXES = (
 
 
 def _should_skip_scan(filename: str) -> bool:
-    return filename.startswith(_SKIP_SCAN_PREFIXES)
+    try:
+        return filename.startswith(_SKIP_SCAN_PREFIXES)
+    except Exception:
+        return False
 
 
 RISK_PATH_PATTERNS = [
@@ -68,76 +71,109 @@ LINE_RULES: list[tuple[str, re.Pattern[str], Severity, str, str]] = [
 ]
 
 
-def scan_risks(files: list[ChangedFile]) -> list[RiskFinding]:
+def scan_risks(files: list[ChangedFile] | None) -> list[RiskFinding]:
+    """扫描所有文件的风险，异常时返回空列表"""
+    if not files:
+        return []
     findings: list[RiskFinding] = []
     for file in files:
-        if _should_skip_scan(file.filename):
+        try:
+            if _should_skip_scan(file.filename):
+                continue
+            findings.extend(_scan_path_risk(file))
+            findings.extend(_scan_line_rules(file))
+            findings.extend(_scan_test_deletions(file))
+        except Exception as e:
+            print(f"[WARN] 扫描文件 {file.filename} 时出错: {e}")
             continue
-        findings.extend(_scan_path_risk(file))
-        findings.extend(_scan_line_rules(file))
-        findings.extend(_scan_test_deletions(file))
     return findings
 
 
 def _scan_path_risk(file: ChangedFile) -> list[RiskFinding]:
-    for pattern in RISK_PATH_PATTERNS:
-        if pattern.search(file.filename):
-            return [
-                RiskFinding(
-                    file_path=file.filename,
-                    severity=Severity.MEDIUM,
-                    rule_id="risk-path",
-                    title="High-risk area changed",
-                    evidence=f"File path `{file.filename}` matches `{pattern.pattern}`.",
-                    recommendation="Review authorization, data integrity, and rollback behavior carefully.",
-                    confidence=0.6,
-                )
-            ]
+    """根据文件路径匹配风险模式"""
+    try:
+        for pattern in RISK_PATH_PATTERNS:
+            if pattern.search(file.filename):
+                return [
+                    RiskFinding(
+                        file_path=file.filename,
+                        severity=Severity.MEDIUM,
+                        rule_id="risk-path",
+                        title="High-risk area changed",
+                        evidence=f"File path `{file.filename}` matches `{pattern.pattern}`.",
+                        recommendation="Review authorization, data integrity, and rollback behavior carefully.",
+                        confidence=0.6,
+                    )
+                ]
+    except Exception as e:
+        print(f"[WARN] 路径风险扫描失败 for {file.filename}: {e}")
     return []
 
 
 def _is_test_file(filename: str) -> bool:
-    return "test" in filename.lower() or filename.lower().startswith("tests/")
+    try:
+        return "test" in filename.lower() or filename.lower().startswith("tests/")
+    except Exception:
+        return False
 
 
 def _scan_line_rules(file: ChangedFile) -> list[RiskFinding]:
+    """对新增的代码行应用行级规则"""
     findings: list[RiskFinding] = []
-    for hunk in parse_file_hunks(file):
+    try:
+        hunks = parse_file_hunks(file)
+    except Exception as e:
+        print(f"[WARN] 解析文件 {file.filename} 的 hunks 失败: {e}")
+        return []
+
+    for hunk in hunks:
         for changed in hunk.added_lines:
             for rule_id, pattern, severity, title, recommendation in LINE_RULES:
-                if not pattern.search(changed.content):
-                    continue
-                # Lower severity for test fixtures / mock data
-                effective_severity = severity
-                effective_confidence = 0.75
-                if _is_test_file(file.filename) and rule_id == "secret-logging":
-                    effective_severity = Severity.LOW
-                    effective_confidence = 0.4
-                findings.append(
-                    RiskFinding(
-                        file_path=file.filename,
-                        line=changed.line,
-                        severity=effective_severity,
-                        rule_id=rule_id,
-                        title=title,
-                        evidence=changed.content.strip(),
-                        recommendation=recommendation,
-                        confidence=effective_confidence,
+                try:
+                    if not pattern.search(changed.content):
+                        continue
+                    # Lower severity for test fixtures / mock data
+                    effective_severity = severity
+                    effective_confidence = 0.75
+                    if _is_test_file(file.filename) and rule_id == "secret-logging":
+                        effective_severity = Severity.LOW
+                        effective_confidence = 0.4
+                    findings.append(
+                        RiskFinding(
+                            file_path=file.filename,
+                            line=changed.line,
+                            severity=effective_severity,
+                            rule_id=rule_id,
+                            title=title,
+                            evidence=changed.content.strip(),
+                            recommendation=recommendation,
+                            confidence=effective_confidence,
+                        )
                     )
-                )
+                except Exception:
+                    # 单条规则匹配异常，跳过继续
+                    continue
     return findings
 
 
 def _scan_test_deletions(file: ChangedFile) -> list[RiskFinding]:
-    if "test" not in file.filename.lower() and "spec" not in file.filename.lower():
+    """检查测试文件中是否有断言被删除"""
+    try:
+        if "test" not in file.filename.lower() and "spec" not in file.filename.lower():
+            return []
+        hunks = parse_file_hunks(file)
+    except Exception as e:
+        print(f"[WARN] 解析测试文件 {file.filename} 失败: {e}")
         return []
+
     deleted_assertions = 0
-    for hunk in parse_file_hunks(file):
-        deleted_assertions += sum(
-            1
-            for line in hunk.removed_lines
-            if "assert" in line or "expect(" in line or "should" in line
-        )
+    for hunk in hunks:
+        for line in hunk.removed_lines:
+            try:
+                if "assert" in line or "expect(" in line or "should" in line:
+                    deleted_assertions += 1
+            except Exception:
+                continue
     if deleted_assertions == 0:
         return []
     return [

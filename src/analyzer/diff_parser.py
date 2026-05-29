@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from typing import List, Dict, Set
 
 from src.models import ChangedFile, ChangedLine, DiffHunk
 
@@ -8,21 +9,29 @@ HUNK_RE = re.compile(r"@@ -(?P<old_start>\d+)(?:,(?P<old_count>\d+))? \+(?P<new_
 
 
 def parse_file_hunks(file: ChangedFile) -> list[DiffHunk]:
-    if not file.patch:
+    """解析文件的 patch，异常时返回空列表"""
+    try:
+        if not file or not file.patch:
+            return []
+        return _parse_patch(file.filename, file.patch)
+    except Exception as e:
+        print(f"[WARN] 解析文件 {file.filename} 的 patch 失败: {e}")
         return []
 
+
+def _parse_patch(file_path: str, patch_text: str) -> list[DiffHunk]:
     hunks: list[DiffHunk] = []
     current_header: str | None = None
     current_lines: list[str] = []
     old_start = old_count = new_start = new_count = 0
 
-    for line in file.patch.splitlines():
+    for line in patch_text.splitlines():
         match = HUNK_RE.match(line)
         if match:
             if current_header is not None:
                 hunks.append(
                     _build_hunk(
-                        file.filename,
+                        file_path,
                         current_header,
                         old_start,
                         old_count,
@@ -45,7 +54,7 @@ def parse_file_hunks(file: ChangedFile) -> list[DiffHunk]:
     if current_header is not None:
         hunks.append(
             _build_hunk(
-                file.filename,
+                file_path,
                 current_header,
                 old_start,
                 old_count,
@@ -72,17 +81,22 @@ def _build_hunk(
     removed_lines: list[str] = []
 
     for raw_line in lines:
-        if raw_line.startswith("+") and not raw_line.startswith("+++"):
-            added_lines.append(
-                ChangedLine(file_path=file_path, line=new_line, content=raw_line[1:])
-            )
-            new_line += 1
-        elif raw_line.startswith("-") and not raw_line.startswith("---"):
-            removed_lines.append(raw_line[1:])
-            old_line += 1
-        else:
-            old_line += 1
-            new_line += 1
+        try:
+            if raw_line.startswith("+") and not raw_line.startswith("+++"):
+                added_lines.append(
+                    ChangedLine(file_path=file_path, line=new_line, content=raw_line[1:])
+                )
+                new_line += 1
+            elif raw_line.startswith("-") and not raw_line.startswith("---"):
+                removed_lines.append(raw_line[1:])
+                old_line += 1
+            else:
+                old_line += 1
+                new_line += 1
+        except Exception as e:
+            # 跳过异常行，继续处理下一行
+            print(f"[WARN] 解析 hunk 行失败: {e}")
+            continue
 
     return DiffHunk(
         file_path=file_path,
@@ -98,8 +112,15 @@ def _build_hunk(
 
 
 def changed_line_map(files: list[ChangedFile]) -> dict[str, set[int]]:
+    """提取所有文件的新增行号，异常时返回空字典"""
     result: dict[str, set[int]] = {}
+    if not files:
+        return result
     for file in files:
-        for hunk in parse_file_hunks(file):
-            result.setdefault(file.filename, set()).update(line.line for line in hunk.added_lines)
+        try:
+            for hunk in parse_file_hunks(file):
+                result.setdefault(file.filename, set()).update(line.line for line in hunk.added_lines)
+        except Exception as e:
+            print(f"[WARN] 处理文件 {file.filename} 的行号映射失败: {e}")
+            continue
     return result
