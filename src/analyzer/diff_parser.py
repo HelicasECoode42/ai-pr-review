@@ -1,21 +1,23 @@
 from __future__ import annotations
 
 import re
+import logging
 from typing import List, Dict, Set
 
 from src.models import ChangedFile, ChangedLine, DiffHunk
+
+logger = logging.getLogger(__name__)
 
 HUNK_RE = re.compile(r"@@ -(?P<old_start>\d+)(?:,(?P<old_count>\d+))? \+(?P<new_start>\d+)(?:,(?P<new_count>\d+))? @@")
 
 
 def parse_file_hunks(file: ChangedFile) -> list[DiffHunk]:
-    """解析文件的 patch，异常时返回空列表"""
     try:
         if not file or not file.patch:
             return []
         return _parse_patch(file.filename, file.patch)
     except Exception as e:
-        print(f"[WARN] 解析文件 {file.filename} 的 patch 失败: {e}")
+        logger.warning(f"Failed to parse patch for {file.filename}: {e}")
         return []
 
 
@@ -94,8 +96,7 @@ def _build_hunk(
                 old_line += 1
                 new_line += 1
         except Exception as e:
-            # 跳过异常行，继续处理下一行
-            print(f"[WARN] 解析 hunk 行失败: {e}")
+            logger.warning(f"Skipping malformed line in hunk: {e}")
             continue
 
     return DiffHunk(
@@ -112,7 +113,6 @@ def _build_hunk(
 
 
 def changed_line_map(files: list[ChangedFile]) -> dict[str, set[int]]:
-    """提取所有文件的新增行号，异常时返回空字典"""
     result: dict[str, set[int]] = {}
     if not files:
         return result
@@ -121,6 +121,6 @@ def changed_line_map(files: list[ChangedFile]) -> dict[str, set[int]]:
             for hunk in parse_file_hunks(file):
                 result.setdefault(file.filename, set()).update(line.line for line in hunk.added_lines)
         except Exception as e:
-            print(f"[WARN] 处理文件 {file.filename} 的行号映射失败: {e}")
+            logger.warning(f"Failed to process line map for {file.filename}: {e}")
             continue
     return result

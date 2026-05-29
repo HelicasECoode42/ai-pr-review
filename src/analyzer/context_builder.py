@@ -1,10 +1,21 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Optional
 
 from src.analyzer.diff_parser import parse_file_hunks
 from src.models import ChangedFile, PullRequest, RiskFinding
+
+logger = logging.getLogger(__name__)
+
+
+class AnalysisStatus(str, Enum):
+    SUCCESS = "success"
+    PARTIAL = "partial"
+    FAILED = "failed"
+
 
 LOCKFILE_NAMES = {
     "uv.lock",
@@ -33,8 +44,8 @@ SKIP_PATCH_REASONS: dict[str, str] = {
 class ReviewContext:
     text: str
     truncated: bool
+    status: AnalysisStatus = AnalysisStatus.SUCCESS
     skipped_files: list[tuple[str, str]] = field(default_factory=list)
-    # (file_path, reason)
 
 
 def _skip_patch_reason(filename: str) -> str | None:
@@ -51,66 +62,63 @@ def _skip_patch_reason(filename: str) -> str | None:
 
 
 def build_review_context(
-    pr: Optional[PullRequest],
-    files: Optional[list[ChangedFile]],
-    findings: Optional[list[RiskFinding]],
+    pr: PullRequest,
+    files: list[ChangedFile],
+    findings: list[RiskFinding],
     max_patch_chars: int = 24_000,
 ) -> ReviewContext:
-    # 防御性输入校验
-    if pr is None:
-        # 创建空 PR 占位符
-        pr = PullRequest(
-            repo="unknown",
-            number=0,
-            title="",
-            body="",
-            author="",
-            base_ref="",
-            head_ref="",
-            html_url=None,
-        )
+    # Input validation: require a valid PullRequest object
+    if not isinstance(pr, PullRequest):
+        raise TypeError("pr must be a PullRequest instance")
     if files is None:
         files = []
     if findings is None:
         findings = []
 
-    # 安全获取 PR 属性
-    def safe_pr_attr(attr: str, default: str = "unknown") -> str:
+    # Detect empty/invalid PR (e.g., from failed API call)
+    if (hasattr(pr, 'title') and not pr.title and pr.number == 0) or not pr.repo:
+        error_text = (
+            "# Analysis Failed\n\n"
+            "The pull request information could not be retrieved from GitHub API.\n"
+            "Possible reasons: invalid token, network issue, or the PR does not exist.\n"
+            "No analysis was performed."
+        )
+        return ReviewContext(text=error_text, truncated=False, status=AnalysisStatus.FAILED)
+
+    def safe_attr(obj, attr, default):
         try:
-            val = getattr(pr, attr, default)
+            val = getattr(obj, attr, default)
             return val if val is not None else default
         except Exception:
             return default
 
     parts: list[str] = [
         "# Pull Request",
-        f"Repo: {safe_pr_attr('repo')}",
-        f"Number: {safe_pr_attr('number', '0')}",
-        f"Title: {safe_pr_attr('title', '')}",
-        f"Author: {safe_pr_attr('author', 'unknown')}",
-        f"Base: {safe_pr_attr('base_ref', 'unknown')}",
-        f"Head: {safe_pr_attr('head_ref', 'unknown')}",
+        f"Repo: {safe_attr(pr, 'repo', 'unknown')}",
+        f"Number: {safe_attr(pr, 'number', 0)}",
+        f"Title: {safe_attr(pr, 'title', '')}",
+        f"Author: {safe_attr(pr, 'author', 'unknown')}",
+        f"Base: {safe_attr(pr, 'base_ref', 'unknown')}",
+        f"Head: {safe_attr(pr, 'head_ref', 'unknown')}",
         "",
         "## Description",
-        pr.body or "(empty)" if hasattr(pr, "body") else "(empty)",
+        safe_attr(pr, 'body', '(empty)') or '(empty)',
         "",
         "## Changed files",
     ]
 
-    # 文件列表（安全遍历）
     for file in files:
         try:
-            status = getattr(file, "status", "unknown")
-            if hasattr(status, "value"):
+            status = getattr(file, 'status', 'unknown')
+            if hasattr(status, 'value'):
                 status = status.value
             parts.append(
                 f"- {file.filename} [{status}] +{file.additions}/-{file.deletions}"
             )
         except Exception as e:
-            print(f"[WARN] 添加文件信息失败: {e}")
+            logger.warning(f"Failed to add file info for {getattr(file, 'filename', '?')}: {e}")
             continue
 
-    # 规则发现（安全遍历）
     if findings:
         parts.extend(["", "## Rule findings"])
         for finding in findings:
@@ -121,7 +129,7 @@ def build_review_context(
                     f"{finding.rule_id}: {finding.title}. Evidence: {finding.evidence}"
                 )
             except Exception as e:
-                print(f"[WARN] 添加规则发现失败: {e}")
+                logger.warning(f"Failed to add finding: {e}")
                 continue
 
     parts.extend(["", "## Patches"])
@@ -136,6 +144,7 @@ def build_review_context(
     )
     skipped_files: list[tuple[str, str]] = []
     lockfiles_skipped = 0
+    partial_flag = False
 
     for file in ordered_files:
         try:
@@ -146,11 +155,11 @@ def build_review_context(
                     lockfiles_skipped += 1
                 continue
 
-            # 安全解析 hunks
             try:
                 hunks = parse_file_hunks(file)
             except Exception as e:
-                print(f"[WARN] 解析文件 {file.filename} 的 hunks 失败: {e}")
+                logger.warning(f"Failed to parse hunks for {file.filename}: {e}")
+                partial_flag = True
                 continue
 
             if not hunks:
@@ -164,9 +173,11 @@ def build_review_context(
             if patch_budget <= 0:
                 parts.append("\nPatch budget exhausted. Remaining files omitted.")
                 truncated = True
+                partial_flag = True
                 break
         except Exception as e:
-            print(f"[WARN] 处理文件 {file.filename} 的 patch 时出错: {e}")
+            logger.warning(f"Failed to process patch for {getattr(file, 'filename', '?')}: {e}")
+            partial_flag = True
             continue
 
     if lockfiles_skipped > 0 or skipped_files:
@@ -183,8 +194,19 @@ def build_review_context(
                     f"({freason}): only change statistics are shown.)"
                 )
 
+    # Determine final status
+    if partial_flag:
+        status = AnalysisStatus.PARTIAL
+    else:
+        status = AnalysisStatus.SUCCESS
+
+    # Additional check: if there are no files, it's partial
+    if not files:
+        status = AnalysisStatus.PARTIAL
+
     return ReviewContext(
         text="\n".join(parts),
         truncated=truncated,
+        status=status,
         skipped_files=skipped_files,
     )

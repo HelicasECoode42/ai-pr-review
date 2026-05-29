@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import re
+import logging
 
 from src.analyzer.diff_parser import parse_file_hunks
 from src.models import ChangedFile, RiskFinding, Severity
 
+logger = logging.getLogger(__name__)
 
 # Files excluded from rule scanning (demo reports, generated artifacts)
 _SKIP_SCAN_PREFIXES = (
@@ -14,10 +16,7 @@ _SKIP_SCAN_PREFIXES = (
 
 
 def _should_skip_scan(filename: str) -> bool:
-    try:
-        return filename.startswith(_SKIP_SCAN_PREFIXES)
-    except Exception:
-        return False
+    return filename.startswith(_SKIP_SCAN_PREFIXES)
 
 
 RISK_PATH_PATTERNS = [
@@ -72,58 +71,49 @@ LINE_RULES: list[tuple[str, re.Pattern[str], Severity, str, str]] = [
 
 
 def scan_risks(files: list[ChangedFile] | None) -> list[RiskFinding]:
-    """扫描所有文件的风险，异常时返回空列表"""
     if not files:
         return []
     findings: list[RiskFinding] = []
     for file in files:
+        if _should_skip_scan(file.filename):
+            continue
         try:
-            if _should_skip_scan(file.filename):
-                continue
             findings.extend(_scan_path_risk(file))
             findings.extend(_scan_line_rules(file))
             findings.extend(_scan_test_deletions(file))
         except Exception as e:
-            print(f"[WARN] 扫描文件 {file.filename} 时出错: {e}")
+            logger.warning(f"Failed to scan file {file.filename}: {e}")
             continue
     return findings
 
 
 def _scan_path_risk(file: ChangedFile) -> list[RiskFinding]:
-    """根据文件路径匹配风险模式"""
-    try:
-        for pattern in RISK_PATH_PATTERNS:
-            if pattern.search(file.filename):
-                return [
-                    RiskFinding(
-                        file_path=file.filename,
-                        severity=Severity.MEDIUM,
-                        rule_id="risk-path",
-                        title="High-risk area changed",
-                        evidence=f"File path `{file.filename}` matches `{pattern.pattern}`.",
-                        recommendation="Review authorization, data integrity, and rollback behavior carefully.",
-                        confidence=0.6,
-                    )
-                ]
-    except Exception as e:
-        print(f"[WARN] 路径风险扫描失败 for {file.filename}: {e}")
+    for pattern in RISK_PATH_PATTERNS:
+        if pattern.search(file.filename):
+            return [
+                RiskFinding(
+                    file_path=file.filename,
+                    severity=Severity.MEDIUM,
+                    rule_id="risk-path",
+                    title="High-risk area changed",
+                    evidence=f"File path `{file.filename}` matches `{pattern.pattern}`.",
+                    recommendation="Review authorization, data integrity, and rollback behavior carefully.",
+                    confidence=0.6,
+                )
+            ]
     return []
 
 
 def _is_test_file(filename: str) -> bool:
-    try:
-        return "test" in filename.lower() or filename.lower().startswith("tests/")
-    except Exception:
-        return False
+    return "test" in filename.lower() or filename.lower().startswith("tests/")
 
 
 def _scan_line_rules(file: ChangedFile) -> list[RiskFinding]:
-    """对新增的代码行应用行级规则"""
     findings: list[RiskFinding] = []
     try:
         hunks = parse_file_hunks(file)
     except Exception as e:
-        print(f"[WARN] 解析文件 {file.filename} 的 hunks 失败: {e}")
+        logger.warning(f"Failed to parse hunks for {file.filename}: {e}")
         return []
 
     for hunk in hunks:
@@ -132,7 +122,6 @@ def _scan_line_rules(file: ChangedFile) -> list[RiskFinding]:
                 try:
                     if not pattern.search(changed.content):
                         continue
-                    # Lower severity for test fixtures / mock data
                     effective_severity = severity
                     effective_confidence = 0.75
                     if _is_test_file(file.filename) and rule_id == "secret-logging":
@@ -151,19 +140,18 @@ def _scan_line_rules(file: ChangedFile) -> list[RiskFinding]:
                         )
                     )
                 except Exception:
-                    # 单条规则匹配异常，跳过继续
+                    # Single rule matching failed, skip this rule
                     continue
     return findings
 
 
 def _scan_test_deletions(file: ChangedFile) -> list[RiskFinding]:
-    """检查测试文件中是否有断言被删除"""
+    if "test" not in file.filename.lower() and "spec" not in file.filename.lower():
+        return []
     try:
-        if "test" not in file.filename.lower() and "spec" not in file.filename.lower():
-            return []
         hunks = parse_file_hunks(file)
     except Exception as e:
-        print(f"[WARN] 解析测试文件 {file.filename} 失败: {e}")
+        logger.warning(f"Failed to parse test file {file.filename}: {e}")
         return []
 
     deleted_assertions = 0
