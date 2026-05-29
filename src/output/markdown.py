@@ -1,74 +1,115 @@
 from __future__ import annotations
 
-from src.models import ReviewReport
+from src.models import ReviewReport, ReviewSuggestion, Severity
 
 
 def render_markdown(report: ReviewReport) -> str:
     lines = [
         f"# AI PR Review: {report.pr.repo}#{report.pr.number}",
         "",
-        f"- Title: {report.pr.title}",
-        f"- Author: {report.pr.author or 'unknown'}",
-        f"- Base: {report.pr.base_ref or 'unknown'}",
-        f"- Head: {report.pr.head_ref or 'unknown'}",
-        f"- URL: {report.pr.html_url or 'n/a'}",
-        f"- AI used: {'yes' if report.used_ai else 'no'}",
-        f"- Overall risk: {report.risk_level.value}",
+        "## PR Overview",
+        "",
     ]
-    if report.ai_failure_reason:
-        lines.append(f"- AI failure reason: {report.ai_failure_reason}")
-
-    lines.extend([
-        "",
-        "## Summary",
-        "",
-        report.summary,
-        "",
-        "## Changed Files",
-        "",
-    ])
 
     additions = sum(f.additions for f in report.files)
     deletions = sum(f.deletions for f in report.files)
-    lines.append(f"| File | Status | +/− |")
-    lines.append(f"|---|---|---|")
+
+    lines.extend(
+        [
+            "| Field | Value |",
+            "|---|---|",
+            f"| Repository | `{report.pr.repo}` |",
+            f"| PR | [#{report.pr.number}]({report.pr.html_url or '#'}) |",
+            f"| Title | {report.pr.title} |",
+            f"| Author | {report.pr.author or 'unknown'} |",
+            f"| Base | `{report.pr.base_ref or 'unknown'}` |",
+            f"| Head | `{report.pr.head_ref or 'unknown'}` |",
+            f"| Files changed | {len(report.files)} |",
+            f"| Additions / Deletions | +{additions} / -{deletions} |",
+            f"| Overall risk | **`{report.risk_level.value.upper()}`** |",
+            f"| AI used | {'yes' if report.used_ai else 'no'} |",
+        ]
+    )
+
+    if report.ai_failure_reason:
+        lines.append(f"| AI failure | {report.ai_failure_reason} |")
+    if report.context_truncated:
+        lines.append(
+            "| Context | Patch context was truncated; some files not analyzed by AI |"
+        )
+
+    # Risk summary
+    severity_counts = _count_by_severity(report.suggestions)
+    if severity_counts:
+        lines.extend(["", "### Risk Summary", ""])
+        for sev in (Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM, Severity.LOW):
+            count = severity_counts.get(sev, 0)
+            if count > 0:
+                lines.append(f"- **{sev.value.upper()}**: {count} suggestion(s)")
+        if not any(severity_counts.values()):
+            lines.append("No risk items detected.")
+
+    # Summary
+    lines.extend(["", "## Executive Summary", "", report.summary])
+
+    # Changed files
+    lines.extend(["", "## Changed Files", ""])
+    lines.append("| File | Status | +/- |")
+    lines.append("|---|---|---|")
     for file in report.files:
         lines.append(
-            f"| `{file.filename}` | `{file.status.value}` | +{file.additions}/-{file.deletions} |"
+            f"| `{file.filename}` | `{file.status.value}` "
+            f"| +{file.additions}/-{file.deletions} |"
         )
-    lines.append(f"| **Total** ({len(report.files)} files) | | **+{additions}/-{deletions}** |")
+    lines.append(
+        f"| **Total** ({len(report.files)} files) | | **+{additions}/-{deletions}** |"
+    )
 
+    # Suggestions
     lines.extend(["", "## Review Suggestions", ""])
     if not report.suggestions:
         lines.append("No high-signal suggestions generated.")
     else:
-        for index, suggestion in enumerate(report.suggestions, start=1):
-            location = suggestion.file_path
-            if suggestion.line is not None:
-                location = f"{location}:{suggestion.line}"
+        lines.append("| # | Severity | Location | Confidence | Title |")
+        lines.append("|---|---|---|---|---|")
+        for index, s in enumerate(report.suggestions, start=1):
+            location = s.file_path
+            if s.line is not None:
+                location = f"{location}:{s.line}"
+            lines.append(
+                f"| {index} | `{s.severity.value.upper()}` "
+                f"| `{location}` | {s.confidence:.0%} | {s.title} |"
+            )
+
+        lines.extend(["", "---", ""])
+        for index, s in enumerate(report.suggestions, start=1):
+            location = s.file_path
+            if s.line is not None:
+                location = f"{location}:{s.line}"
             lines.extend(
                 [
-                    f"### {index}. [{suggestion.severity.value.upper()}] {suggestion.title}",
+                    f"### {index}. [{s.severity.value.upper()}] {s.title}",
                     "",
                     f"- **Location**: `{location}`",
-                    f"- **Confidence**: {suggestion.confidence:.0%}",
-                    f"- **Reason**: {suggestion.reason}",
-                    f"- **Recommendation**: {suggestion.recommendation}",
+                    f"- **Confidence**: {s.confidence:.0%}",
+                    f"- **Reason**: {s.reason}",
+                    f"- **Recommendation**: {s.recommendation}",
                     "",
                     "<details>",
                     "<summary>Suggested GitHub comment</summary>",
                     "",
-                    f"**{suggestion.severity.value}**: {suggestion.title}",
+                    f"**{s.severity.value}**: {s.title}",
                     "",
-                    f"> {suggestion.reason}",
+                    f"> {s.reason}",
                     "",
-                    f"Suggestion: {suggestion.recommendation}",
+                    f"Suggestion: {s.recommendation}",
                     "",
                     "</details>",
                     "",
                 ]
             )
 
+    # Rule findings
     lines.extend(["", "## Rule Findings", ""])
     if not report.rule_findings:
         lines.append("No rule findings.")
@@ -84,14 +125,31 @@ def render_markdown(report: ReviewReport) -> str:
                 f"| `{location}` | {finding.title} |"
             )
 
-    if report.analysis_warnings or report.hidden_suggestions_count > 0:
+    # Analysis notes
+    if (
+        report.analysis_warnings
+        or report.hidden_suggestions_count > 0
+        or report.context_truncated
+    ):
         lines.extend(["", "## Analysis Notes", ""])
         if report.hidden_suggestions_count > 0:
             lines.append(
                 f"- {report.hidden_suggestions_count} low-confidence or "
-                f"duplicate suggestion(s) hidden"
+                f"duplicate suggestion(s) hidden from main results"
+            )
+        if report.context_truncated:
+            lines.append(
+                "- Patch context was truncated to fit token budget; "
+                "some files were not included in AI analysis."
             )
         for warning in report.analysis_warnings:
             lines.append(f"- {warning}")
 
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _count_by_severity(suggestions: list[ReviewSuggestion]) -> dict[Severity, int]:
+    counts: dict[Severity, int] = {}
+    for s in suggestions:
+        counts[s.severity] = counts.get(s.severity, 0) + 1
+    return counts

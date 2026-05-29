@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from enum import Enum
 from pathlib import Path
 
 import typer
@@ -17,6 +18,11 @@ app = typer.Typer(help="AI assisted GitHub Pull Request review tool.")
 console = Console()
 
 
+class OutputLanguage(str, Enum):
+    EN = "en"
+    ZH = "zh"
+
+
 @app.command()
 def analyze(
     repo: str = typer.Argument(..., help="GitHub repository, for example owner/repo."),
@@ -24,7 +30,11 @@ def analyze(
     output: Path | None = typer.Option(None, "--output", "-o", help="Write report to file."),
     report_format: str = typer.Option("markdown", "--format", help="markdown or json."),
     use_ai: bool = typer.Option(True, "--ai/--no-ai", help="Call AI model for review."),
-    language: str = typer.Option("en", "--language", help="Output language: en or zh."),
+    language: OutputLanguage = typer.Option(
+        OutputLanguage.EN,
+        "--language",
+        help="Output language.",
+    ),
 ) -> None:
     settings = get_settings()
     console.print(f"[bold]Fetching PR[/bold] {repo}#{pr_number}")
@@ -55,7 +65,7 @@ def analyze(
                     max_suggestions=settings.max_suggestions,
                     min_confidence=settings.min_comment_confidence,
                     max_suggestions_per_file=settings.max_suggestions_per_file,
-                    language=language,
+                    language=language.value,
                 )
             finally:
                 provider.close()
