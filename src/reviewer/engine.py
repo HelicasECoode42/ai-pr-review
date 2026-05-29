@@ -25,13 +25,20 @@ def build_rule_only_report(
     pr: PullRequest,
     files: list[ChangedFile],
     findings: list[RiskFinding],
+    language: str = "en",
 ) -> ReviewReport:
     additions = sum(f.additions for f in files)
     deletions = sum(f.deletions for f in files)
-    summary = (
-        f"PR changes {len(files)} file(s) with {additions} additions and {deletions} deletions. "
-        f"Rule scan found {len(findings)} potential risk item(s)."
-    )
+    if language == "zh":
+        summary = (
+            f"本 PR 共变更 {len(files)} 个文件，新增 {additions} 行，删除 {deletions} 行。"
+            f"规则扫描发现 {len(findings)} 个潜在风险项。"
+        )
+    else:
+        summary = (
+            f"PR changes {len(files)} file(s) with {additions} additions and {deletions} deletions. "
+            f"Rule scan found {len(findings)} potential risk item(s)."
+        )
     risk_level = _max_severity([finding.severity for finding in findings])
     suggestions = [
         ReviewSuggestion(

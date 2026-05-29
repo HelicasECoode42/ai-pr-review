@@ -44,7 +44,7 @@ def analyze(
         files = github.get_changed_files(repo, pr_number)
 
     findings = scan_risks(files)
-    report = build_rule_only_report(pr, files, findings)
+    report = build_rule_only_report(pr, files, findings, language=language.value)
 
     if use_ai:
         if not settings.openai_api_key:
@@ -78,7 +78,11 @@ def analyze(
         for warning in report.analysis_warnings:
             console.print(f"[dim]{warning}[/dim]")
 
-    content = render_json(report) if report_format.lower() == "json" else render_markdown(report)
+    content = (
+        render_json(report)
+        if report_format.lower() == "json"
+        else render_markdown(report, language=language.value)
+    )
     if output:
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(content, encoding="utf-8")
