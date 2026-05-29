@@ -49,30 +49,47 @@ AI 能力：
 
 ## 快速开始
 
-```powershell
-cd C:\Users\HelicasE\Desktop\ai-pr-review
+### 方式一：使用 uv（推荐）
+
+```bash
+git clone <repo-url> && cd ai-pr-review
+uv sync
+uv run ai-pr-review analyze owner/repo 123 --no-ai
+```
+
+### 方式二：使用 venv + pip
+
+```bash
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+source .venv/bin/activate  # Windows: .venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
 ```
 
-配置环境变量：
+### 配置环境变量
 
-```powershell
-$env:GITHUB_TOKEN="ghp_xxx"
-$env:OPENAI_API_KEY="sk-xxx"
+```bash
+export GITHUB_TOKEN="ghp_xxx"
+export OPENAI_API_KEY="sk-xxx"
 ```
 
-分析一个 PR：
+或创建 `.env` 文件：
 
-```powershell
+```ini
+GITHUB_TOKEN=ghp_xxx
+OPENAI_API_KEY=sk-xxx
+```
+
+### 基本用法
+
+```bash
+# AI + 规则分析
 ai-pr-review analyze owner/repo 123 --format markdown --output reports/pr-123.md
-```
 
-不调用 AI，仅做 GitHub diff 获取和规则扫描：
-
-```powershell
+# 仅规则扫描（无需 API Key）
 ai-pr-review analyze owner/repo 123 --no-ai
+
+# JSON 输出
+ai-pr-review analyze owner/repo 123 --format json
 ```
 
 ## 仓库结构

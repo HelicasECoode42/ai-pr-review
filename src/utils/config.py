@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     review_model: str = "gpt-4.1-mini"
     request_timeout_seconds: float = 45.0
     max_suggestions: int = 20
+    max_suggestions_per_file: int = 5
     min_comment_confidence: float = 0.65
 
     model_config = SettingsConfigDict(
