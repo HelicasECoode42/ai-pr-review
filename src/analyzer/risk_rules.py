@@ -6,6 +6,17 @@ from src.analyzer.diff_parser import parse_file_hunks
 from src.models import ChangedFile, RiskFinding, Severity
 
 
+# Files excluded from rule scanning (demo reports, generated artifacts)
+_SKIP_SCAN_PREFIXES = (
+    "docs/demo/",
+    "reports/",
+)
+
+
+def _should_skip_scan(filename: str) -> bool:
+    return filename.startswith(_SKIP_SCAN_PREFIXES)
+
+
 RISK_PATH_PATTERNS = [
     re.compile(r"auth|permission|rbac|acl|login|session|jwt", re.IGNORECASE),
     re.compile(r"payment|billing|invoice|migration", re.IGNORECASE),
@@ -60,6 +71,8 @@ LINE_RULES: list[tuple[str, re.Pattern[str], Severity, str, str]] = [
 def scan_risks(files: list[ChangedFile]) -> list[RiskFinding]:
     findings: list[RiskFinding] = []
     for file in files:
+        if _should_skip_scan(file.filename):
+            continue
         findings.extend(_scan_path_risk(file))
         findings.extend(_scan_line_rules(file))
         findings.extend(_scan_test_deletions(file))

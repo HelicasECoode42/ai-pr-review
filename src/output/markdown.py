@@ -115,6 +115,32 @@ def render_markdown(report: ReviewReport, language: str = "en") -> str:
         f"| | **+{additions}/-{deletions}** |"
     )
 
+    # ── review scope ──
+    if report.skipped_context_files:
+        lines.extend(["", f"## {T.t('评审范围')}", ""])
+        included_count = len(report.files) - len(report.skipped_context_files)
+        if zh:
+            lines.append(
+                f"本次 PR 共变更 {len(report.files)} 个文件，"
+                f"其中 {included_count} 个进入 AI patch 上下文，"
+                f"{len(report.skipped_context_files)} 个仅展示变更统计。"
+            )
+        else:
+            lines.append(
+                f"This PR changed {len(report.files)} file(s); "
+                f"{included_count} included in AI patch context, "
+                f"{len(report.skipped_context_files)} shown as statistics only."
+            )
+        lines.extend(["", f"| {T.t('文件')} | {T.t('处理方式')} | {T.t('原因')} |"])
+        lines.append("|---|---|---|")
+        for skipped in report.skipped_context_files:
+            reason_zh = _skip_reason_zh(skipped.reason)
+            reason_display = reason_zh if zh else skipped.reason
+            lines.append(
+                f"| `{skipped.file_path}` | "
+                f"{T.t('跳过 patch')} | {reason_display} |"
+            )
+
     # ── suggestions ──
     lines.extend(["", f"## {T.t('评审建议')}", ""])
     if not report.suggestions:
@@ -165,15 +191,19 @@ def render_markdown(report: ReviewReport, language: str = "en") -> str:
             )
 
     # ── rule findings ──
+    visible_findings = [f for f in report.rule_findings if f.confidence >= 0.65]
+    hidden_findings = [f for f in report.rule_findings if f.confidence < 0.65]
     lines.extend(["", f"## {T.t('规则扫描结果')}", ""])
     if not report.rule_findings:
         lines.append(T.t("未命中规则。"))
+    elif not visible_findings:
+        lines.append(T.t("所有规则命中均为低置信度，已隐藏。"))
     else:
         lines.append(
             f"| {T.t('严重程度')} | {T.t('规则')} | {T.t('位置')} | {T.t('发现')} |"
         )
         lines.append("|---|---|---|---|")
-        for finding in report.rule_findings:
+        for finding in visible_findings:
             location = finding.file_path
             if finding.line is not None:
                 location = f"{location}:{finding.line}"
@@ -185,13 +215,19 @@ def render_markdown(report: ReviewReport, language: str = "en") -> str:
                 f"| `{location}` | {display_title} |"
             )
 
+    total_hidden = report.hidden_suggestions_count + len(hidden_findings)
     # ── analysis notes ──
-    if report.analysis_warnings or report.hidden_suggestions_count > 0:
+    if report.analysis_warnings or total_hidden > 0:
         lines.extend(["", f"## {T.t('分析备注')}", ""])
         if report.hidden_suggestions_count > 0:
             lines.append(
                 f"- {report.hidden_suggestions_count} "
                 f"{T.t('条低置信度或重复建议已从主结果中隐藏')}"
+            )
+        if hidden_findings:
+            lines.append(
+                f"- {len(hidden_findings)} "
+                f"{T.t('条低置信度规则命中已从主结果中隐藏')}"
             )
         for warning in report.analysis_warnings:
             lines.append(f"- {_translate_warning(warning, zh)}")
@@ -252,6 +288,16 @@ class _Translator:
             "条低置信度或重复建议已从主结果中隐藏": (
                 "low-confidence or duplicate suggestion(s) hidden from main results"
             ),
+            "条低置信度规则命中已从主结果中隐藏": (
+                "low-confidence rule finding(s) hidden from main results"
+            ),
+            "所有规则命中均为低置信度，已隐藏。": (
+                "All rule findings are low-confidence and have been hidden."
+            ),
+            # review scope
+            "评审范围": "Review Scope",
+            "处理方式": "Action",
+            "跳过 patch": "patch skipped",
             # misc
             "unknown": "unknown",
             "yes": "yes",
@@ -287,6 +333,15 @@ def _translate_warning(warning: str, zh: bool) -> str:
     for en, zh_text in _WARNING_ZH_MAP.items():
         result = result.replace(en, zh_text)
     return result
+
+
+def _skip_reason_zh(reason: str) -> str:
+    mapping = {
+        "lockfile": "lockfile，仅展示变更统计",
+        "demo report (generated artifact)": "示例报告，避免评审生成内容",
+        "generated report": "本地生成报告，仅展示变更统计",
+    }
+    return mapping.get(reason, reason)
 
 
 def _count_by_severity(suggestions: list[ReviewSuggestion]) -> dict[Severity, int]:

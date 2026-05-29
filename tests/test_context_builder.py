@@ -18,15 +18,15 @@ def test_build_review_context_skips_lockfile_patch() -> None:
         ),
     ]
 
-    context, _truncated = build_review_context(
+    ctx = build_review_context(
         PullRequest(repo="test/repo", number=1, title="Update deps"),
         files,
         [],
     )
 
-    assert "new-lock-content" not in context
-    assert "lockfile(s) excluded from patch context" in context
-    assert "print('ok')" in context
+    assert "new-lock-content" not in ctx.text
+    assert "lockfile(s) excluded from patch context" in ctx.text
+    assert "print('ok')" in ctx.text
 
 
 def test_build_review_context_keeps_project_config_patch() -> None:
@@ -39,10 +39,10 @@ def test_build_review_context_keeps_project_config_patch() -> None:
         )
     ]
 
-    context, _truncated = build_review_context(
+    ctx = build_review_context(
         PullRequest(repo="test/repo", number=1, title="Update config"),
         files,
         [],
     )
 
-    assert 'name = "ai-pr-review"' in context
+    assert 'name = "ai-pr-review"' in ctx.text
