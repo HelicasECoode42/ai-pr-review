@@ -380,3 +380,9 @@ def test_build_prompt_english() -> None:
 def test_build_prompt_chinese() -> None:
     result = build_user_prompt("ctx", max_suggestions=3, language="zh")
     assert "Chinese (Simplified)" in result
+
+def test_build_prompt_requests_same_root_cause_merging() -> None:
+    result = build_user_prompt("ctx", max_suggestions=3, language="en")
+    assert "same root cause" in result
+    assert "representative file:line" in result
+

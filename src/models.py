@@ -70,6 +70,11 @@ class RiskFinding(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0, default=0.7)
 
 
+class SkippedContextFile(BaseModel):
+    file_path: str
+    reason: str
+
+
 class ReviewSuggestion(BaseModel):
     file_path: str
     line: int | None = None
@@ -92,3 +97,5 @@ class ReviewReport(BaseModel):
     analysis_warnings: list[str] = Field(default_factory=list)
     context_truncated: bool = False
     hidden_suggestions_count: int = 0
+    skipped_context_files: list[SkippedContextFile] = Field(default_factory=list)
+    hidden_rule_findings_count: int = 0

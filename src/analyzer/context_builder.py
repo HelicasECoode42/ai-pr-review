@@ -1,7 +1,49 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+
 from src.analyzer.diff_parser import parse_file_hunks
 from src.models import ChangedFile, PullRequest, RiskFinding
+
+LOCKFILE_NAMES = {
+    "uv.lock",
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    "yarn.lock",
+    "poetry.lock",
+    "Pipfile.lock",
+    "Cargo.lock",
+    "Gemfile.lock",
+    "composer.lock",
+}
+
+SKIP_PATCH_PREFIXES = (
+    "docs/demo/",
+    "reports/",
+)
+
+SKIP_PATCH_REASONS: dict[str, str] = {
+    "docs/demo/": "demo report (generated artifact)",
+    "reports/": "generated report",
+}
+
+
+@dataclass
+class ReviewContext:
+    text: str
+    truncated: bool
+    skipped_files: list[tuple[str, str]] = field(default_factory=list)
+    # (file_path, reason)
+
+
+def _skip_patch_reason(filename: str) -> str | None:
+    name = filename.split("/")[-1]
+    if name in LOCKFILE_NAMES:
+        return "lockfile"
+    for prefix, reason in SKIP_PATCH_REASONS.items():
+        if filename.startswith(prefix):
+            return reason
+    return None
 
 
 def build_review_context(
@@ -9,7 +51,7 @@ def build_review_context(
     files: list[ChangedFile],
     findings: list[RiskFinding],
     max_patch_chars: int = 24_000,
-) -> tuple[str, bool]:
+) -> ReviewContext:
     parts: list[str] = [
         "# Pull Request",
         f"Repo: {pr.repo}",
@@ -49,7 +91,15 @@ def build_review_context(
             -(f.additions + f.deletions),
         ),
     )
+    skipped_files: list[tuple[str, str]] = []
+    lockfiles_skipped = 0
     for file in ordered_files:
+        reason = _skip_patch_reason(file.filename)
+        if reason is not None:
+            skipped_files.append((file.filename, reason))
+            if reason == "lockfile":
+                lockfiles_skipped += 1
+            continue
         hunks = parse_file_hunks(file)
         if not hunks:
             continue
@@ -63,4 +113,22 @@ def build_review_context(
             truncated = True
             break
 
-    return "\n".join(parts), truncated
+    if lockfiles_skipped > 0 or skipped_files:
+        parts.append("")
+        if lockfiles_skipped > 0:
+            parts.append(
+                f"({lockfiles_skipped} lockfile(s) excluded from patch context: "
+                f"only change statistics are shown.)"
+            )
+        for fpath, freason in skipped_files:
+            if freason != "lockfile":
+                parts.append(
+                    f"(`{fpath}` excluded from patch context "
+                    f"({freason}): only change statistics are shown.)"
+                )
+
+    return ReviewContext(
+        text="\n".join(parts),
+        truncated=truncated,
+        skipped_files=skipped_files,
+    )

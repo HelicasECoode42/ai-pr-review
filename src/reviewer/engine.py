@@ -8,7 +8,15 @@ from pydantic import BaseModel, ValidationError
 
 from src.analyzer.context_builder import build_review_context
 from src.analyzer.diff_parser import changed_line_map
-from src.models import ChangedFile, PullRequest, ReviewReport, ReviewSuggestion, RiskFinding, Severity
+from src.models import (
+    ChangedFile,
+    PullRequest,
+    ReviewReport,
+    ReviewSuggestion,
+    RiskFinding,
+    Severity,
+    SkippedContextFile,
+)
 from src.reviewer.prompt import SYSTEM_PROMPT, build_user_prompt
 from src.reviewer.provider import ProviderError, ReviewModelProvider
 
@@ -25,13 +33,20 @@ def build_rule_only_report(
     pr: PullRequest,
     files: list[ChangedFile],
     findings: list[RiskFinding],
+    language: str = "en",
 ) -> ReviewReport:
     additions = sum(f.additions for f in files)
     deletions = sum(f.deletions for f in files)
-    summary = (
-        f"PR changes {len(files)} file(s) with {additions} additions and {deletions} deletions. "
-        f"Rule scan found {len(findings)} potential risk item(s)."
-    )
+    if language == "zh":
+        summary = (
+            f"本 PR 共变更 {len(files)} 个文件，新增 {additions} 行，删除 {deletions} 行。"
+            f"规则扫描发现 {len(findings)} 个潜在风险项。"
+        )
+    else:
+        summary = (
+            f"PR changes {len(files)} file(s) with {additions} additions and {deletions} deletions. "
+            f"Rule scan found {len(findings)} potential risk item(s)."
+        )
     risk_level = _max_severity([finding.severity for finding in findings])
     suggestions = [
         ReviewSuggestion(
@@ -67,9 +82,9 @@ def review_with_ai(
     language: str = "en",
 ) -> ReviewReport:
     try:
-        context, context_truncated = build_review_context(pr, files, findings)
+        ctx = build_review_context(pr, files, findings)
         raw = provider.complete_json(
-            SYSTEM_PROMPT, build_user_prompt(context, max_suggestions, language)
+            SYSTEM_PROMPT, build_user_prompt(ctx.text, max_suggestions, language)
         )
         payload = _parse_model_payload(raw)
         total_from_model = len(payload.suggestions)
@@ -84,10 +99,19 @@ def review_with_ai(
                 f"{hidden} suggestion(s) filtered out (low confidence, "
                 f"unchanged line, or duplicate)"
             )
-        if context_truncated:
+        if ctx.truncated:
             warnings.append(
                 "Patch context was truncated to fit token budget; "
                 "some files were not analyzed by AI."
+            )
+        skipped_ctx = [
+            SkippedContextFile(file_path=fpath, reason=reason)
+            for fpath, reason in ctx.skipped_files
+        ]
+        if skipped_ctx:
+            skipped_names = ", ".join(s.file_path for s in skipped_ctx)
+            warnings.append(
+                f"{len(skipped_ctx)} file(s) excluded from AI patch context: {skipped_names}"
             )
         return ReviewReport(
             pr=pr,
@@ -99,7 +123,8 @@ def review_with_ai(
             used_ai=True,
             analysis_warnings=warnings,
             hidden_suggestions_count=hidden,
-            context_truncated=context_truncated,
+            context_truncated=ctx.truncated,
+            skipped_context_files=skipped_ctx,
         )
     except (ProviderError, ValueError) as exc:
         logger.warning("AI review failed, falling back to rule-only: %s", exc)
