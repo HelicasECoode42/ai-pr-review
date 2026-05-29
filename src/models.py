@@ -88,3 +88,7 @@ class ReviewReport(BaseModel):
     rule_findings: list[RiskFinding] = Field(default_factory=list)
     suggestions: list[ReviewSuggestion] = Field(default_factory=list)
     used_ai: bool = False
+    ai_failure_reason: str | None = None
+    analysis_warnings: list[str] = Field(default_factory=list)
+    context_truncated: bool = False
+    hidden_suggestions_count: int = 0

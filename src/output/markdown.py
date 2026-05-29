@@ -14,6 +14,11 @@ def render_markdown(report: ReviewReport) -> str:
         f"- URL: {report.pr.html_url or 'n/a'}",
         f"- AI used: {'yes' if report.used_ai else 'no'}",
         f"- Overall risk: {report.risk_level.value}",
+    ]
+    if report.ai_failure_reason:
+        lines.append(f"- AI failure reason: {report.ai_failure_reason}")
+
+    lines.extend([
         "",
         "## Summary",
         "",
@@ -21,12 +26,17 @@ def render_markdown(report: ReviewReport) -> str:
         "",
         "## Changed Files",
         "",
-    ]
+    ])
 
+    additions = sum(f.additions for f in report.files)
+    deletions = sum(f.deletions for f in report.files)
+    lines.append(f"| File | Status | +/− |")
+    lines.append(f"|---|---|---|")
     for file in report.files:
         lines.append(
-            f"- `{file.filename}` `{file.status.value}` +{file.additions}/-{file.deletions}"
+            f"| `{file.filename}` | `{file.status.value}` | +{file.additions}/-{file.deletions} |"
         )
+    lines.append(f"| **Total** ({len(report.files)} files) | | **+{additions}/-{deletions}** |")
 
     lines.extend(["", "## Review Suggestions", ""])
     if not report.suggestions:
@@ -38,13 +48,23 @@ def render_markdown(report: ReviewReport) -> str:
                 location = f"{location}:{suggestion.line}"
             lines.extend(
                 [
-                    f"### {index}. {suggestion.title}",
+                    f"### {index}. [{suggestion.severity.value.upper()}] {suggestion.title}",
                     "",
-                    f"- Location: `{location}`",
-                    f"- Severity: `{suggestion.severity.value}`",
-                    f"- Confidence: `{suggestion.confidence:.2f}`",
-                    f"- Reason: {suggestion.reason}",
-                    f"- Recommendation: {suggestion.recommendation}",
+                    f"- **Location**: `{location}`",
+                    f"- **Confidence**: {suggestion.confidence:.0%}",
+                    f"- **Reason**: {suggestion.reason}",
+                    f"- **Recommendation**: {suggestion.recommendation}",
+                    "",
+                    "<details>",
+                    "<summary>Suggested GitHub comment</summary>",
+                    "",
+                    f"**{suggestion.severity.value}**: {suggestion.title}",
+                    "",
+                    f"> {suggestion.reason}",
+                    "",
+                    f"Suggestion: {suggestion.recommendation}",
+                    "",
+                    "</details>",
                     "",
                 ]
             )
@@ -53,16 +73,25 @@ def render_markdown(report: ReviewReport) -> str:
     if not report.rule_findings:
         lines.append("No rule findings.")
     else:
+        lines.append("| Severity | Rule | Location | Finding |")
+        lines.append("|---|---|---|---|")
         for finding in report.rule_findings:
             location = finding.file_path
             if finding.line is not None:
                 location = f"{location}:{finding.line}"
-            lines.extend(
-                [
-                    f"- `{finding.severity.value}` `{finding.rule_id}` at `{location}`",
-                    f"  - {finding.title}",
-                    f"  - Evidence: {finding.evidence}",
-                ]
+            lines.append(
+                f"| `{finding.severity.value}` | `{finding.rule_id}` "
+                f"| `{location}` | {finding.title} |"
             )
+
+    if report.analysis_warnings or report.hidden_suggestions_count > 0:
+        lines.extend(["", "## Analysis Notes", ""])
+        if report.hidden_suggestions_count > 0:
+            lines.append(
+                f"- {report.hidden_suggestions_count} low-confidence or "
+                f"duplicate suggestion(s) hidden"
+            )
+        for warning in report.analysis_warnings:
+            lines.append(f"- {warning}")
 
     return "\n".join(lines).rstrip() + "\n"

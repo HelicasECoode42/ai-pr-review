@@ -52,9 +52,18 @@ def analyze(
                     findings=findings,
                     provider=provider,
                     max_suggestions=settings.max_suggestions,
+                    min_confidence=settings.min_comment_confidence,
                 )
             finally:
                 provider.close()
+
+    if report.ai_failure_reason:
+        console.print(
+            f"[yellow]AI review skipped: {report.ai_failure_reason}[/yellow]"
+        )
+    if report.analysis_warnings:
+        for warning in report.analysis_warnings:
+            console.print(f"[dim]{warning}[/dim]")
 
     content = render_json(report) if report_format.lower() == "json" else render_markdown(report)
     if output:
