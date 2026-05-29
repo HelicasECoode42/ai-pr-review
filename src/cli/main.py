@@ -24,6 +24,7 @@ def analyze(
     output: Path | None = typer.Option(None, "--output", "-o", help="Write report to file."),
     report_format: str = typer.Option("markdown", "--format", help="markdown or json."),
     use_ai: bool = typer.Option(True, "--ai/--no-ai", help="Call AI model for review."),
+    language: str = typer.Option("en", "--language", help="Output language: en or zh."),
 ) -> None:
     settings = get_settings()
     console.print(f"[bold]Fetching PR[/bold] {repo}#{pr_number}")
@@ -54,6 +55,7 @@ def analyze(
                     max_suggestions=settings.max_suggestions,
                     min_confidence=settings.min_comment_confidence,
                     max_suggestions_per_file=settings.max_suggestions_per_file,
+                    language=language,
                 )
             finally:
                 provider.close()

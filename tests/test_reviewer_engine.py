@@ -16,6 +16,7 @@ from src.reviewer.engine import (
     build_rule_only_report,
     review_with_ai,
 )
+from src.reviewer.prompt import build_user_prompt
 from src.reviewer.provider import ProviderError
 
 
@@ -360,3 +361,22 @@ def test_review_falls_back_when_provider_fails(
     assert report.ai_failure_reason is not None
     assert "simulated failure" in report.ai_failure_reason
     assert any("AI review unavailable" in w for w in report.analysis_warnings)
+
+
+# ── prompt ─────────────────────────────────────────────────
+
+def test_build_prompt_includes_context() -> None:
+    result = build_user_prompt("diff goes here", max_suggestions=5)
+    assert "diff goes here" in result
+    assert "max_suggestions" not in result  # it's substituted
+    assert "5" in result
+
+
+def test_build_prompt_english() -> None:
+    result = build_user_prompt("ctx", max_suggestions=3, language="en")
+    assert "Chinese" not in result
+
+
+def test_build_prompt_chinese() -> None:
+    result = build_user_prompt("ctx", max_suggestions=3, language="zh")
+    assert "Chinese (Simplified)" in result

@@ -64,11 +64,12 @@ def review_with_ai(
     max_suggestions: int,
     min_confidence: float = 0.0,
     max_suggestions_per_file: int = 5,
+    language: str = "en",
 ) -> ReviewReport:
     try:
         context, context_truncated = build_review_context(pr, files, findings)
         raw = provider.complete_json(
-            SYSTEM_PROMPT, build_user_prompt(context, max_suggestions)
+            SYSTEM_PROMPT, build_user_prompt(context, max_suggestions, language)
         )
         payload = _parse_model_payload(raw)
         total_from_model = len(payload.suggestions)
