@@ -83,24 +83,35 @@ def _scan_path_risk(file: ChangedFile) -> list[RiskFinding]:
     return []
 
 
+def _is_test_file(filename: str) -> bool:
+    return "test" in filename.lower() or filename.lower().startswith("tests/")
+
+
 def _scan_line_rules(file: ChangedFile) -> list[RiskFinding]:
     findings: list[RiskFinding] = []
     for hunk in parse_file_hunks(file):
         for changed in hunk.added_lines:
             for rule_id, pattern, severity, title, recommendation in LINE_RULES:
-                if pattern.search(changed.content):
-                    findings.append(
-                        RiskFinding(
-                            file_path=file.filename,
-                            line=changed.line,
-                            severity=severity,
-                            rule_id=rule_id,
-                            title=title,
-                            evidence=changed.content.strip(),
-                            recommendation=recommendation,
-                            confidence=0.75,
-                        )
+                if not pattern.search(changed.content):
+                    continue
+                # Lower severity for test fixtures / mock data
+                effective_severity = severity
+                effective_confidence = 0.75
+                if _is_test_file(file.filename) and rule_id == "secret-logging":
+                    effective_severity = Severity.LOW
+                    effective_confidence = 0.4
+                findings.append(
+                    RiskFinding(
+                        file_path=file.filename,
+                        line=changed.line,
+                        severity=effective_severity,
+                        rule_id=rule_id,
+                        title=title,
+                        evidence=changed.content.strip(),
+                        recommendation=recommendation,
+                        confidence=effective_confidence,
                     )
+                )
     return findings
 
 

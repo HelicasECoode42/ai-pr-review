@@ -3,6 +3,22 @@ from __future__ import annotations
 from src.analyzer.diff_parser import parse_file_hunks
 from src.models import ChangedFile, PullRequest, RiskFinding
 
+LOCKFILE_PATTERNS = {
+    "uv.lock",
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    "yarn.lock",
+    "poetry.lock",
+    "Pipfile.lock",
+    "Cargo.lock",
+    "Gemfile.lock",
+    "composer.lock",
+}
+
+
+def _is_lockfile(filename: str) -> bool:
+    return filename.split("/")[-1] in LOCKFILE_PATTERNS
+
 
 def build_review_context(
     pr: PullRequest,
@@ -49,7 +65,11 @@ def build_review_context(
             -(f.additions + f.deletions),
         ),
     )
+    lockfiles_skipped = 0
     for file in ordered_files:
+        if _is_lockfile(file.filename):
+            lockfiles_skipped += 1
+            continue
         hunks = parse_file_hunks(file)
         if not hunks:
             continue
@@ -62,5 +82,11 @@ def build_review_context(
             parts.append("\nPatch budget exhausted. Remaining files omitted.")
             truncated = True
             break
+
+    if lockfiles_skipped > 0:
+        parts.append(
+            f"\n({lockfiles_skipped} lockfile(s) excluded from patch context; "
+            f"only change statistics are shown above.)"
+        )
 
     return "\n".join(parts), truncated

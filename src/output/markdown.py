@@ -126,21 +126,12 @@ def render_markdown(report: ReviewReport) -> str:
             )
 
     # Analysis notes
-    if (
-        report.analysis_warnings
-        or report.hidden_suggestions_count > 0
-        or report.context_truncated
-    ):
+    if report.analysis_warnings or report.hidden_suggestions_count > 0:
         lines.extend(["", "## Analysis Notes", ""])
         if report.hidden_suggestions_count > 0:
             lines.append(
                 f"- {report.hidden_suggestions_count} low-confidence or "
                 f"duplicate suggestion(s) hidden from main results"
-            )
-        if report.context_truncated:
-            lines.append(
-                "- Patch context was truncated to fit token budget; "
-                "some files were not included in AI analysis."
             )
         for warning in report.analysis_warnings:
             lines.append(f"- {warning}")

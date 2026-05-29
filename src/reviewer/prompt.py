@@ -41,6 +41,7 @@ Constraints:
 - Every suggestion must include diff evidence in the reason field.
 - For uncertain findings, set confidence below 0.65 rather than omitting.
 - recommendation must be actionable: include a specific fix, not just "fix this".
+- If multiple suggestions share the same root cause (e.g. several files swallow exceptions the same way), merge them into one suggestion and list representative file:line pairs in the reason.
 
 Context:
 {context}
