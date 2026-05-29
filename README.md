@@ -108,6 +108,29 @@ uv run python -m src.cli.main HelicasECoode42/ai-pr-review 1 \
 | `--ai` / `--no-ai` | 是否调用 AI 模型 |
 | `--language` | `en`（默认）或 `zh` |
 
+## GitHub Action（一键运行）
+
+创建 PR 时自动触发 AI Review，生成报告 artifact 并发到 PR 评论区。
+
+### 配置 Secrets
+
+在仓库 Settings → Secrets and variables → Actions 中添加：
+
+| Secret | 说明 |
+|---|---|
+| `OPENAI_API_KEY` | 模型 API Key |
+| `OPENAI_BASE_URL` | 模型 API 地址（如 `https://api.deepseek.com/v1`） |
+| `REVIEW_MODEL` | 模型名称（如 `deepseek-chat`） |
+
+`GITHUB_TOKEN` 由 GitHub Actions 自动提供，无需手动配置。
+
+### 触发方式
+
+- **自动**：PR 创建、推送新 commit、reopen 时自动运行
+- **手动**：Actions → AI PR Review → Run workflow，可指定 PR 编号和语言
+
+> 来自 fork 的 PR 可能无法访问仓库 Secrets（`OPENAI_API_KEY` 等），此时会自动降级为 rule-only 报告。这是 GitHub 安全机制，非 bug。
+
 ## 测试
 
 ```bash
@@ -182,8 +205,7 @@ uv run pytest
 
 ## 未来扩展
 
-- **GitHub Action**：PR workflow 中自动运行，上传报告为 artifact
-- **GitHub App**：PR 事件触发，自动发布 review comments
+- **GitHub App**：PR 事件触发并通过 Webhook 自动发布 review comments
 - **Demo fixture**：无网络无 API Key 可演示的离线模式
 - **项目级上下文索引**：RAG 检索同仓库函数/类定义、历史 Review、团队规范
 - **团队规则库**：可配置高风险路径、禁止 API、Review 偏好

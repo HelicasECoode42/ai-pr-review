@@ -7,7 +7,7 @@ import typer
 from rich.console import Console
 
 from src.analyzer.risk_rules import scan_risks
-from src.github.client import GitHubClient
+from src.github.client import GitHubApiError, GitHubClient
 from src.output.json_report import render_json
 from src.output.markdown import render_markdown
 from src.reviewer.engine import build_rule_only_report, review_with_ai
@@ -39,9 +39,13 @@ def analyze(
     settings = get_settings()
     console.print(f"[bold]Fetching PR[/bold] {repo}#{pr_number}")
 
-    with GitHubClient(settings.github_token, timeout=settings.request_timeout_seconds) as github:
-        pr = github.get_pull_request(repo, pr_number)
-        files = github.get_changed_files(repo, pr_number)
+    try:
+        with GitHubClient(settings.github_token, timeout=settings.request_timeout_seconds) as github:
+            pr = github.get_pull_request(repo, pr_number)
+            files = github.get_changed_files(repo, pr_number)
+    except GitHubApiError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1)
 
     findings = scan_risks(files)
     report = build_rule_only_report(pr, files, findings, language=language.value)

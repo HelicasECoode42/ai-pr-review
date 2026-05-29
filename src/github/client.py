@@ -5,6 +5,10 @@ import httpx
 from src.models import ChangedFile, FileStatus, PullRequest
 
 
+class GitHubApiError(Exception):
+    """Raised when the GitHub API returns an error or is unreachable."""
+
+
 class GitHubClient:
     def __init__(self, token: str | None, timeout: float = 45.0) -> None:
         headers = {
@@ -23,9 +27,37 @@ class GitHubClient:
     def close(self) -> None:
         self._client.close()
 
+    def _request(self, path: str, **kwargs: object) -> httpx.Response:
+        try:
+            response = self._client.get(path, **kwargs)
+            response.raise_for_status()
+            return response
+        except httpx.TimeoutException:
+            raise GitHubApiError("GitHub API 请求超时，请检查网络或稍后重试。") from None
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            if status == 401:
+                raise GitHubApiError(
+                    "GitHub API 认证失败：token 无效或已过期。"
+                ) from exc
+            if status == 403:
+                raise GitHubApiError(
+                    "GitHub API 访问被拒绝：可能是 rate limit 超限或权限不足。"
+                ) from exc
+            if status == 404:
+                raise GitHubApiError(
+                    "仓库或 PR 不存在，请检查 owner/repo 和 PR 编号是否正确。"
+                ) from exc
+            raise GitHubApiError(
+                f"GitHub API 返回错误 (HTTP {status})。"
+            ) from exc
+        except httpx.RequestError as exc:
+            raise GitHubApiError(
+                f"无法连接 GitHub API：{exc}"
+            ) from exc
+
     def get_pull_request(self, repo: str, number: int) -> PullRequest:
-        response = self._client.get(f"/repos/{repo}/pulls/{number}")
-        response.raise_for_status()
+        response = self._request(f"/repos/{repo}/pulls/{number}")
         data = response.json()
         return PullRequest(
             repo=repo,
@@ -42,11 +74,10 @@ class GitHubClient:
         files: list[ChangedFile] = []
         page = 1
         while True:
-            response = self._client.get(
+            response = self._request(
                 f"/repos/{repo}/pulls/{number}/files",
                 params={"per_page": 100, "page": page},
             )
-            response.raise_for_status()
             batch = response.json()
             if not batch:
                 break
