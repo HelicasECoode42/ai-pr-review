@@ -15,6 +15,7 @@ on:
 permissions:
   contents: read
   pull-requests: read
+  issues: write
 
 jobs:
   review:
@@ -44,8 +45,15 @@ jobs:
           REPO="${{ github.repository }}"
           LANGUAGE="${{ inputs.language || 'zh' }}"
 
-          uv run python -m src.cli.main analyze "${REPO}" "${PR_NUMBER}" \
+          AI_FLAG="--ai"
+          if [ -z "${OPENAI_API_KEY}" ]; then
+            AI_FLAG="--no-ai"
+            echo "OPENAI_API_KEY not set (fork PR or missing secret); falling back to rule-only."
+          fi
+
+          uv run python -m src.cli.main "${REPO}" "${PR_NUMBER}" \
             --language "${LANGUAGE}" \
+            ${AI_FLAG} \
             --output reports/pr-review.md
 
       - name: Upload report
@@ -59,17 +67,13 @@ jobs:
       - name: Post summary comment
         if: success()
         uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
         with:
           script: |
             const fs = require("fs");
             const report = fs.readFileSync("reports/pr-review.md", "utf8");
-
-            // Extract the first few sections for the comment
             const lines = report.split("\n");
-            const summaryStart = lines.findIndex(l => l.startsWith("##") && l.includes("变更总结"));
-            const suggestionsStart = lines.findIndex(
-              (l, i) => i > summaryStart && l.startsWith("##") && l.includes("评审建议")
-            );
 
             let commentBody = "";
             const maxLines = 80;
@@ -85,10 +89,33 @@ jobs:
 
             const prNumber =
               context.payload.pull_request?.number ||
-              parseInt(process.env.INPUT_PR_NUMBER) ||
-              0;
+              parseInt(process.env.PR_NUMBER || "0", 10);
 
-            if (prNumber) {
+            if (!prNumber) return;
+
+            // Look for an existing bot comment to update
+            const botMarker = "<!-- ai-pr-review-bot -->";
+            commentBody = botMarker + "\n" + commentBody;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+
+            const botLogin = "github-actions[bot]";
+            const existing = comments.find(
+              c => c.user?.login === botLogin && c.body?.includes(botMarker)
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: commentBody,
+              });
+            } else {
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,

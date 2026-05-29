@@ -129,6 +129,8 @@ uv run python -m src.cli.main HelicasECoode42/ai-pr-review 1 \
 - **自动**：PR 创建、推送新 commit、reopen 时自动运行
 - **手动**：Actions → AI PR Review → Run workflow，可指定 PR 编号和语言
 
+> 来自 fork 的 PR 可能无法访问仓库 Secrets（`OPENAI_API_KEY` 等），此时会自动降级为 rule-only 报告。这是 GitHub 安全机制，非 bug。
+
 ## 测试
 
 ```bash
