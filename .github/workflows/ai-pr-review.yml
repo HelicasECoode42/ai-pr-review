@@ -1,0 +1,98 @@
+name: AI PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to review"
+        required: true
+      language:
+        description: "Output language (en or zh)"
+        default: "zh"
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run AI PR Review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+          REVIEW_MODEL: ${{ secrets.REVIEW_MODEL }}
+        run: |
+          PR_NUMBER="${{ github.event.pull_request.number || inputs.pr_number }}"
+          REPO="${{ github.repository }}"
+          LANGUAGE="${{ inputs.language || 'zh' }}"
+
+          uv run python -m src.cli.main analyze "${REPO}" "${PR_NUMBER}" \
+            --language "${LANGUAGE}" \
+            --output reports/pr-review.md
+
+      - name: Upload report
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-pr-review-report
+          path: reports/pr-review.md
+          retention-days: 30
+
+      - name: Post summary comment
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("fs");
+            const report = fs.readFileSync("reports/pr-review.md", "utf8");
+
+            // Extract the first few sections for the comment
+            const lines = report.split("\n");
+            const summaryStart = lines.findIndex(l => l.startsWith("##") && l.includes("变更总结"));
+            const suggestionsStart = lines.findIndex(
+              (l, i) => i > summaryStart && l.startsWith("##") && l.includes("评审建议")
+            );
+
+            let commentBody = "";
+            const maxLines = 80;
+            for (let i = 0; i < Math.min(lines.length, maxLines); i++) {
+              commentBody += lines[i] + "\n";
+            }
+            if (lines.length > maxLines) {
+              commentBody += "\n\n...\n\n> 完整报告请查看 [GitHub Actions Artifact](";
+              commentBody += `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}`;
+              commentBody += `/actions/runs/${process.env.GITHUB_RUN_ID}) 或下载 `;
+              commentBody += "`ai-pr-review-report` artifact。\n";
+            }
+
+            const prNumber =
+              context.payload.pull_request?.number ||
+              parseInt(process.env.INPUT_PR_NUMBER) ||
+              0;
+
+            if (prNumber) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: commentBody,
+              });
+            }
