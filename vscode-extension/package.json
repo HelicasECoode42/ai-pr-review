@@ -1,0 +1,39 @@
+{
+  "name": "ai-pr-review",
+  "displayName": "AI PR Review",
+  "description": "Load AI PR Review reports into VS Code Problems panel",
+  "version": "0.1.0",
+  "publisher": "ai-pr-review-team",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Linters",
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "ai-pr-review.loadReport",
+        "title": "AI PR Review: Load Report"
+      },
+      {
+        "command": "ai-pr-review.clearDiagnostics",
+        "title": "AI PR Review: Clear Diagnostics"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "tsc -p ./",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.0"
+  }
+}
