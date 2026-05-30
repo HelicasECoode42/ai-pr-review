@@ -3,6 +3,7 @@ from __future__ import annotations
 import httpx
 import logging
 from typing import Optional
+import base64
 
 from src.models import ChangedFile, FileStatus, PullRequest
 
@@ -102,6 +103,36 @@ class GitHubClient:
                     logger.warning(f"Failed to parse file entry: {e}, skipping")
             page += 1
         return files
+
+    def get_file_contents(self, repo: str, path: str, ref: str | None = None) -> str | None:
+        """Fetch file contents from a repository at a given ref (branch or commit).
+
+        Returns the decoded file content as text or None if not found.
+        Raises GitHubApiError on network/auth errors.
+        """
+        params = {}
+        if ref:
+            params["ref"] = ref
+        try:
+            response = self._request(f"/repos/{repo}/contents/{path}", params=params)
+            data = response.json()
+            content = data.get("content")
+            encoding = data.get("encoding")
+            if not content:
+                return None
+            if encoding == "base64":
+                try:
+                    decoded = base64.b64decode(content).decode("utf-8", errors="replace")
+                    return decoded
+                except Exception:
+                    # Return the raw content as a fallback
+                    return content
+            return content
+        except GitHubApiError:
+            # Re-raise for caller to handle
+            raise
+        except Exception as e:
+            raise GitHubApiError(f"Failed to fetch file contents for {repo}/{path}@{ref}: {e}")
 
     def __enter__(self) -> GitHubClient:
         return self

@@ -75,6 +75,17 @@ def analyze(
             console.print(f"[green]Failure report written to[/green] {output}")
         else:
             console.print(content)
+        # Write short failure summary to GitHub Actions UI if available
+        try:
+            from src.utils.actions import write_step_summary
+            summary = (
+                f"**Reason:** GitHub API error\n\n```\n{exc}\n```\n"
+                f"**PR:** {repo}#{pr_number}\n"
+            )
+            write_step_summary(summary)
+        except Exception:
+            # Do not raise during reporting
+            pass
         # Return success exit so CI can still archive artifact produced
         raise typer.Exit(code=0)
 
@@ -115,6 +126,16 @@ def analyze(
             console.print(f"[green]Diagnostic report written to[/green] {output}")
         else:
             console.print(content)
+        # Write import failure summary to Actions step summary
+        try:
+            from src.utils.actions import write_step_summary
+            summary = (
+                f"**Reason:** Runtime import error in analyzer/reviewer modules\n\n```\n{exc}\n```\n"
+                f"**PR:** {repo}#{pr_number if pr is None else pr.number}\n"
+            )
+            write_step_summary(summary)
+        except Exception:
+            pass
         raise typer.Exit(code=0)
 
     # Safe execution path
@@ -134,6 +155,13 @@ def analyze(
         if use_ai:
             if not settings.openai_api_key:
                 console.print("[yellow]OPENAI_API_KEY is not set; falling back to rule-only report.[/yellow]")
+                try:
+                    from src.utils.actions import write_step_summary
+                    write_step_summary(
+                        "## AI Review - Skipped\n\n**Reason:** OPENAI_API_KEY not set; falling back to rule-only report.\n"
+                    )
+                except Exception:
+                    pass
             else:
                 provider = OpenAICompatibleProvider(
                     api_key=settings.openai_api_key,
@@ -158,6 +186,30 @@ def analyze(
                     )
                 finally:
                     provider.close()
+
+        # After report generation, write an Actions step summary with any notable failures/warnings
+        try:
+            from src.utils.actions import write_step_summary
+            summary_lines: list[str] = []
+            if getattr(report, 'ai_failure_reason', None):
+                summary_lines.append('## AI Review - Failure (fallback to rule-only)')
+                summary_lines.append('**Reason:** ' + str(report.ai_failure_reason))
+            if getattr(report, 'analysis_warnings', None):
+                summary_lines.append('\n## Analysis Warnings')
+                for w in (report.analysis_warnings or [])[:10]:
+                    summary_lines.append('- ' + str(w))
+            if getattr(report, 'context_truncated', False):
+                summary_lines.append('\n**Context truncated:** yes')
+            if getattr(report, 'skipped_context_files', None):
+                skipped = getattr(report, 'skipped_context_files') or []
+                if skipped:
+                    names = ', '.join(s.file_path for s in skipped[:10])
+                    summary_lines.append('\n**Skipped files:** ' + names)
+            summary_lines.append('\n**AI used:** ' + ('yes' if getattr(report, 'used_ai', False) else 'no'))
+            if summary_lines:
+                write_step_summary('\n'.join(summary_lines) + '\n')
+        except Exception:
+            pass
 
         if report.ai_failure_reason:
             console.print(
@@ -196,6 +248,16 @@ def analyze(
             console.print(f"[green]Diagnostic report written to[/green] {output}")
         else:
             console.print(content)
+        # Write runtime analysis failure to Actions step summary
+        try:
+            from src.utils.actions import write_step_summary
+            summary = (
+                f"**Reason:** Unexpected runtime error during analysis\n\n```\n{exc}\n```\n"
+                f"**PR:** {repo}#{pr_number}\n"
+            )
+            write_step_summary(summary)
+        except Exception:
+            pass
         # Do not fail CI.
         raise typer.Exit(code=0)
 

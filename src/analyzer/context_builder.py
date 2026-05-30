@@ -6,7 +6,9 @@ from enum import Enum
 from typing import Optional
 
 from src.analyzer.diff_parser import parse_file_hunks
-from src.models import ChangedFile, PullRequest, RiskFinding
+from src.models import ChangedFile, PullRequest, RiskFinding, FileStatus
+from src.github.client import GitHubClient, GitHubApiError
+from src.utils.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +60,31 @@ def _skip_patch_reason(filename: str) -> str | None:
                 return reason
         return None
     except Exception:
+        return None
+
+
+def _fetch_repo_file_text(repo: str, path: str, ref: str | None) -> str | None:
+    """Try to fetch file text from the given ref; if ref fetch fails, fall back to 'main'.
+
+    Returns None if the file cannot be fetched.
+    """
+    settings = get_settings()
+    try:
+        with GitHubClient(settings.github_token, timeout=settings.request_timeout_seconds) as gh:
+            try:
+                text = gh.get_file_contents(repo, path, ref=ref) if ref else gh.get_file_contents(repo, path)
+                if text is not None:
+                    return text
+            except GitHubApiError as e:
+                logger.debug(f"Failed to fetch {repo}/{path}@{ref}: {e}")
+            # fallback to main branch
+            try:
+                main_text = gh.get_file_contents(repo, path, ref="main")
+                return main_text
+            except GitHubApiError:
+                return None
+    except Exception as e:
+        logger.warning(f"Error while fetching file contents for {repo}/{path}: {e}")
         return None
 
 
@@ -155,17 +182,65 @@ def build_review_context(
                     lockfiles_skipped += 1
                 continue
 
+            parse_failed = False
             try:
                 hunks = parse_file_hunks(file)
             except Exception as e:
                 logger.warning(f"Failed to parse hunks for {file.filename}: {e}")
+                hunks = []
+                parse_failed = True
                 partial_flag = True
-                continue
+
+            # If hunks empty and either parsing failed, patch missing, or file added/removed, try fallback to full file content
+            if not hunks and (parse_failed or file.patch is None or file.patch == "" or file.status in (FileStatus.ADDED, FileStatus.REMOVED)):
+                # For added files, include full content from head_ref if available
+                # For removed files, try base_ref
+                ref_try = None
+                if file.status == FileStatus.ADDED:
+                    ref_try = pr.head_ref
+                elif file.status == FileStatus.REMOVED:
+                    ref_try = pr.base_ref
+                else:
+                    # try both head then base
+                    ref_try = pr.head_ref or pr.base_ref
+
+                file_contents = None
+                try:
+                    file_contents = _fetch_repo_file_text(pr.repo, file.filename, ref_try)
+                except Exception as e:
+                    logger.debug(f"Fetching file contents fallback failed for {file.filename}: {e}")
+
+                if file_contents:
+                    file_text = file_contents
+                    if len(file_text) > patch_budget:
+                        file_text = file_text[:patch_budget] + "\n...[truncated]"
+                    parts.extend(["", f"### {file.filename}", "```", file_text, "```"])
+                    patch_budget -= len(file_text)
+                    if patch_budget <= 0:
+                        parts.append("\nPatch budget exhausted. Remaining files omitted.")
+                        truncated = True
+                        partial_flag = True
+                        break
+                    continue
+                else:
+                    # Couldn't fetch full file; mark partial and continue
+                    logger.warning(f"Could not retrieve full contents for {file.filename} during fallback")
+                    partial_flag = True
+                    continue
 
             if not hunks:
                 continue
 
             file_text = "\n".join(h.raw for h in hunks)
+            # If hunks seem incomplete (e.g., new_count differs from added lines), attempt to fetch full file
+            total_added = sum(len(h.added_lines) for h in hunks)
+            total_hunk_lines = sum(h.new_count for h in hunks)
+            if total_hunk_lines > 0 and total_added < total_hunk_lines // 2:
+                # Hunk likely truncated; fetch full file from base/main
+                file_contents = _fetch_repo_file_text(pr.repo, file.filename, pr.base_ref)
+                if file_contents:
+                    file_text = file_contents
+
             if len(file_text) > patch_budget:
                 file_text = file_text[:patch_budget] + "\n...[truncated]"
             parts.extend(["", f"### {file.filename}", "```diff", file_text, "```"])
