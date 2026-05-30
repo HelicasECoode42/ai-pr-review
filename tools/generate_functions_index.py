@@ -22,10 +22,10 @@ def extract_functions(filepath: str) -> list[dict[str, object]]:
     Returns a list of dicts with keys:
         file_path, kind, name, args, returns, line, docstring
     """
-    with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+    with open(filepath, "r", encoding="utf-8", errors="surrogateescape") as f:
         try:
             tree = ast.parse(f.read(), filename=filepath)
-        except SyntaxError:
+        except (SyntaxError, ValueError, TypeError):
             return []
 
     entries: list[dict[str, object]] = []

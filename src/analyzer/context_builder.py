@@ -9,6 +9,7 @@ from src.analyzer.diff_parser import parse_file_hunks
 from src.models import ChangedFile, PullRequest, RiskFinding, FileStatus
 from src.github.client import GitHubClient, GitHubApiError
 from src.utils.config import get_settings
+from pathlib import Path
 
 import os
 logger = logging.getLogger(__name__)
@@ -122,7 +123,7 @@ _CONTEXT_PACK_BUDGET = 4000  # max chars for context pack injection
 
 def _load_context_pack_text() -> str:
     """Load the project Review Guide as context pack text."""
-    guide_path = os.path.join(os.path.dirname(__file__), "..", "..", "docs", "review-guide.md")
+    guide_path = Path(__file__).resolve().parent.parent / "docs" / "review-guide.md"
     try:
         with open(guide_path, "r", encoding="utf-8") as f:
             return f.read()
@@ -133,7 +134,7 @@ def _load_context_pack_text() -> str:
 
 def _get_relevant_function_index(changed_files: list[str]) -> str:
     """Load functions-index.md and extract entries for changed files."""
-    index_path = os.path.join(os.path.dirname(__file__), "..", "..", "docs", "functions-index.md")
+    index_path = Path(__file__).resolve().parent.parent / "docs" / "functions-index.md"
     try:
         with open(index_path, "r", encoding="utf-8") as f:
             content = f.read()
