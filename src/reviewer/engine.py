@@ -188,6 +188,10 @@ def review_with_ai(
     min_confidence: float = 0.0,
     max_suggestions_per_file: int = 5,
     language: str = "en",
+    reviewer_version: str = "pr-branch",
+    execution_status: str = "success",
+    degradation_reason: str | None = None,
+    report_confidence: str = "normal",
 ) -> ReviewReport:
     try:
         ctx = build_review_context(pr, files, findings)
@@ -238,7 +242,10 @@ def review_with_ai(
             hidden_suggestions_count=hidden,
             context_truncated=ctx.truncated,
             skipped_context_files=skipped_ctx,
-            report_confidence="normal",
+            reviewer_version=reviewer_version,
+            execution_status=execution_status,
+            degradation_reason=degradation_reason,
+            report_confidence=report_confidence,
             completeness=completeness,
         )
     except (ProviderError, ValueError) as exc:
