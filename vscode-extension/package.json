@@ -1,8 +1,8 @@
 {
   "name": "ai-pr-review",
   "displayName": "AI PR Review",
-  "description": "Load AI PR Review reports into VS Code Problems panel",
-  "version": "0.1.0",
+  "description": "Auto-load AI PR Review results from GitHub into VS Code Problems panel — zero config, uses gh CLI",
+  "version": "0.2.0",
   "publisher": "ai-pr-review-team",
   "license": "MIT",
   "engines": {
@@ -12,13 +12,19 @@
     "Linters",
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "*"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
+        "command": "ai-pr-review.refresh",
+        "title": "AI PR Review: Refresh"
+      },
+      {
         "command": "ai-pr-review.loadReport",
-        "title": "AI PR Review: Load Report"
+        "title": "AI PR Review: Load Report File"
       },
       {
         "command": "ai-pr-review.clearDiagnostics",
