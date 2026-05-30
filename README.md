@@ -1,28 +1,42 @@
 # AI PR Review Assistant
 
-基于大模型的 GitHub Pull Request 代码评审工具。指定 `owner/repo` 和 PR 编号后，自动获取 diff、执行规则扫描、调用 LLM 生成结构化 Review 报告，并通过本地过滤降低误报。
+一个面向 GitHub Pull Request 的 AI 代码审查工具。它会获取 PR 元数据和 diff，先执行本地规则扫描，再把受控上下文交给 LLM 生成结构化 Review 报告，最后输出 Markdown / JSON，并可在 GitHub Actions 中自动发布 PR 评论。
 
 ## 核心思路
 
-**规则预筛 → 上下文构建 → LLM 结构化分析 → 本地过滤 → Markdown / JSON 报告**
+```text
+GitHub PR diff
+  -> 规则预筛
+  -> 上下文构建
+  -> LLM 结构化分析
+  -> 本地过滤
+  -> Markdown / JSON 报告
+```
 
-不是让模型直接读完整 PR 后自由发挥，而是先用规则扫描缩小问题空间，再构造受控上下文交给模型，最后对模型输出做 schema 校验、changed-line 过滤、置信度过滤和去重。
+工具不会把完整仓库直接丢给模型自由发挥，而是先用确定性规则缩小问题空间，再把 PR 标题、描述、变更文件、patch hunk 和规则证据组织成可控上下文。模型输出必须通过 Pydantic schema 校验，并经过 changed-line、置信度、重复项和每文件数量限制等本地过滤。
 
-## 为什么做这个工具
+## 解决的问题
 
-- 大 PR 文件多，快速建立全局理解成本高
-- 容易漏看鉴权、异常处理、并发、SQL 注入等风险点
-- 自动化 lint/test 能发现格式和确定性错误，发现不了设计意图偏差
-- 直接让 AI 评论容易误报，需要控制评论密度、证据链和置信度
+- 大 PR 文件多，人工快速建立全局理解成本高。
+- 鉴权、异常处理、SQL 注入、命令执行、敏感日志等风险点容易漏看。
+- lint/test 能发现确定性错误，但发现不了很多意图偏差和设计风险。
+- 直接让 AI 评论容易噪声太大，需要结构化输出、证据链和本地过滤。
+- PR 代码本身可能已经坏掉，审查工具不能因此完全跑不出报告。
 
-## 环境准备
+## 当前能力
 
-### 依赖
+- 通过 GitHub REST API 获取 PR 元数据、变更文件和 patch。
+- 本地规则扫描高风险路径和高风险代码模式。
+- OpenAI-compatible provider 调用，支持 OpenAI、DeepSeek、Azure OpenAI 等兼容服务。
+- AI 失败时自动降级为 rule-only 报告。
+- 输出 Markdown 和 JSON 报告。
+- GitHub Actions 自动运行、上传 artifact、发布 summary comment 和高置信 inline comment。
+- CI 中使用 base 分支稳定 reviewer 分析 PR diff，避免 PR 把 reviewer 自己改坏后无法出报告。
+- 对 PR head 额外执行 Python 语法诊断；诊断失败时仍生成报告，但最后让 workflow 失败，阻止误合并。
 
-- Python 3.10+
-- uv（推荐）或 pip
+## 安装
 
-### 安装
+推荐使用 `uv`：
 
 ```bash
 git clone https://github.com/HelicasECoode42/ai-pr-review.git
@@ -30,7 +44,7 @@ cd ai-pr-review
 uv sync --extra dev
 ```
 
-或使用 venv + pip：
+也可以使用 venv + pip：
 
 ```bash
 python -m venv .venv
@@ -38,23 +52,25 @@ source .venv/bin/activate   # Windows: .venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
 ```
 
-### 配置
+## 配置
 
-创建 `.env` 文件（不要提交）：
+创建 `.env` 文件，注意不要提交：
 
 ```ini
-# GitHub API token（提高限额，访问私有仓库）
 GITHUB_TOKEN=ghp_xxx
 
-# OpenAI 兼容 API
 OPENAI_API_KEY=sk-xxx
 OPENAI_BASE_URL=https://api.openai.com/v1
 REVIEW_MODEL=gpt-4.1-mini
 ```
 
-公开仓库可以不配置 `GITHUB_TOKEN`，但匿名访问容易触发 GitHub API rate limit。建议配置 token；fine-grained token 至少需要 `Metadata: Read`、`Pull requests: Read`、`Contents: Read`。
+公开仓库可以不配置 `GITHUB_TOKEN`，但匿名请求容易触发 GitHub API rate limit。建议配置 fine-grained token，至少需要：
 
-**DeepSeek 配置示例**：
+- Metadata: Read
+- Pull requests: Read
+- Contents: Read
+
+DeepSeek 示例：
 
 ```ini
 OPENAI_API_KEY=你的 DeepSeek API Key
@@ -62,11 +78,9 @@ OPENAI_BASE_URL=https://api.deepseek.com/v1
 REVIEW_MODEL=deepseek-chat
 ```
 
-本项目通过 OpenAI-compatible API 调用模型，可接入 DeepSeek、Azure OpenAI 等兼容服务。使用 DeepSeek 等兼容服务时，需要同时设置 `OPENAI_BASE_URL` 和 `REVIEW_MODEL`，否则会默认请求 OpenAI 官方地址和默认模型。
+## CLI 用法
 
-## 用法
-
-### AI + 规则分析
+AI + 规则分析：
 
 ```bash
 uv run python -m src.cli.main owner/repo 123 \
@@ -74,7 +88,7 @@ uv run python -m src.cli.main owner/repo 123 \
   --output reports/pr-123.md
 ```
 
-### 仅规则扫描（无需 API Key）
+仅规则扫描，无需模型 API Key：
 
 ```bash
 uv run python -m src.cli.main owner/repo 123 \
@@ -83,7 +97,7 @@ uv run python -m src.cli.main owner/repo 123 \
   --output reports/pr-123.md
 ```
 
-### JSON 输出
+JSON 输出：
 
 ```bash
 uv run python -m src.cli.main owner/repo 123 \
@@ -91,135 +105,126 @@ uv run python -m src.cli.main owner/repo 123 \
   --output reports/pr-123.json
 ```
 
-### 真实 PR 示例
-
-```bash
-uv run python -m src.cli.main HelicasECoode42/ai-pr-review 1 \
-  --language zh \
-  --output reports/pr-1-ai.md
-```
-
-### 可用参数
+常用参数：
 
 | 参数 | 说明 |
 |---|---|
 | `--output` / `-o` | 报告输出路径 |
-| `--format` | `markdown`（默认）或 `json` |
+| `--format` | `markdown`，默认，或 `json` |
 | `--ai` / `--no-ai` | 是否调用 AI 模型 |
-| `--language` | `en`（默认）或 `zh` |
+| `--language` | `en`，默认，或 `zh` |
+| `--reviewer-version` | 报告中的 reviewer 来源标记，例如 `pr-branch` / `main-fallback` |
+| `--execution-status` | 报告中的执行状态标记，例如 `success` / `degraded` |
+| `--degradation-reason` | 降级原因说明 |
+| `--report-confidence` | 报告可信度标记，例如 `normal` / `fallback` / `partial` |
 
-## GitHub Action（一键运行）
+最后四个参数主要给 CI / fallback 场景使用，普通本地运行一般不需要传。
 
-创建 PR 时自动触发 AI Review，生成报告 artifact 并发到 PR 评论区。
+## GitHub Actions
 
-### 配置 Secrets
+仓库内置 `.github/workflows/ai-pr-review.yml`。PR 创建、同步或重新打开时会自动运行；也可以手动触发 workflow。
 
-在仓库 Settings → Secrets and variables → Actions 中添加：
+### 运行语义
+
+这个 workflow 故意区分两件事：
+
+```text
+报告能否生成 != PR 是否可以合并
+```
+
+具体流程：
+
+1. Checkout PR 的 base 分支，使用稳定 reviewer 运行审查工具。
+2. 安装依赖并检查 base 分支 reviewer 自身语法。
+3. 额外 checkout PR head 到 `_pr_head/`。
+4. 对 `_pr_head/src` 和 `_pr_head/tests` 执行 Python 语法诊断。
+5. 即使 PR head 语法失败，也继续运行 AI PR Review 并生成报告。
+6. 将语法诊断追加到 `reports/pr-review.md`，并上传 artifact。
+7. 尝试发布 summary comment 和高置信 inline comment。
+8. 如果 PR head 语法失败，最后一步显式 `exit 1`，让 workflow 标红，阻止合并。
+
+也就是说，坏 PR 的预期结果是：
+
+```text
+review 报告生成：是
+workflow 最终成功：否
+PR 可合并：否
+```
+
+这能避免“代码坏了导致完全没有报告”，也能避免“有报告所以误以为可以合并”。
+
+### Secrets
+
+在仓库 Settings -> Secrets and variables -> Actions 中配置：
 
 | Secret | 说明 |
 |---|---|
 | `OPENAI_API_KEY` | 模型 API Key |
-| `OPENAI_BASE_URL` | 模型 API 地址（如 `https://api.deepseek.com/v1`） |
-| `REVIEW_MODEL` | 模型名称（如 `deepseek-chat`） |
+| `OPENAI_BASE_URL` | OpenAI-compatible API 地址，例如 `https://api.deepseek.com/v1` |
+| `REVIEW_MODEL` | 模型名称，例如 `deepseek-chat` |
 
 `GITHUB_TOKEN` 由 GitHub Actions 自动提供，无需手动配置。
 
-### 触发方式
+来自 fork 的 PR 可能无法访问仓库 Secrets，此时会自动降级为 rule-only 报告。这是 GitHub 的安全机制，不是工具 bug。
 
-- **自动**：PR 创建、推送新 commit、reopen 时自动运行
-- **手动**：Actions → AI PR Review → Run workflow，可指定 PR 编号和语言
+## 报告内容
 
-> 来自 fork 的 PR 可能无法访问仓库 Secrets（`OPENAI_API_KEY` 等），此时会自动降级为 rule-only 报告。这是 GitHub 安全机制，非 bug。
+Markdown 报告包含：
+
+- 运行状态：reviewer 来源、执行状态、降级原因、报告可信度。
+- 分析完整性：PR 元数据、变更文件、AI 上下文、AI 分析、规则扫描、patch 上下文是否完整。
+- PR 概览：仓库、PR、作者、base/head、变更统计、整体风险。
+- 变更总结：AI 或规则生成的摘要。
+- 文件变更：文件列表和增删行统计。
+- Review 建议：位置、严重程度、置信度、原因和修复建议。
+- 规则扫描结果：本地规则命中的风险证据。
+- 分析备注：AI 失败、上下文截断、过滤项等说明。
+- PR head 语法诊断：如果 PR 提交的 Python 代码无法编译，会追加错误摘要。
+
+JSON 报告用于后续自动评论、IDE 集成和 Web UI。
 
 ## 测试
 
 ```bash
-uv run pytest
+uv run --extra dev pytest
 ```
 
-当前状态：25 passed。
+也可以先做语法检查：
 
-## 报告结构
-
-在 `--language zh` 模式下，AI 生成的摘要、建议标题、原因和修复方案会以中文输出。Markdown 报告结构包含：
-
-- **PR 概览** — 仓库、作者、变更统计、风险等级
-- **风险统计** — 按严重程度汇总
-- **变更总结** — AI 生成的 PR 意图和影响面分析
-- **文件变更** — 变更文件清单和增删统计
-- **评审建议** — 行级 Review 建议，含位置、原因、修复方案、可复制 GitHub 评论
-- **规则扫描结果** — 本地规则命中情况
-- **分析备注** — 过滤说明、上下文截断提示、AI 失败回退信息
-
-## 设计说明
-
-### 模型选择
-
-使用支持 JSON 输出的 OpenAI-compatible Chat Completions 模型（如 GPT-4.1、DeepSeek）。采用低 temperature（0.1）和 `response_format: json_object` 约束，降低随机性，保证输出结构稳定。通过 `ReviewModelProvider` 协议抽象，可接入 OpenAI、DeepSeek、Azure OpenAI 等兼容服务。
-
-### 上下文获取
-
-从 GitHub API 获取三层上下文：
-
-1. **PR 级**：标题、描述、作者、base/head、文件列表
-2. **Diff 级**：unified diff hunk、新增行行号映射
-3. **规则证据**：本地规则扫描命中的高风险片段
-
-上下文构造采用优先级裁剪：高风险文件和规则命中 hunk 优先保留，lockfile（`uv.lock`、`package-lock.json` 等）不进入 AI patch 上下文以节省 token。超预算时裁剪普通大文件并标记 `context_truncated`。
-
-### 误报控制
-
-多层次的本地过滤：
-
-- 只评论 changed added lines，不对未变更行发表建议
-- Pydantic schema 校验模型输出
-- 置信度阈值过滤（`min_comment_confidence`，默认 0.65）
-- 每文件建议数量上限（`max_suggestions_per_file`，默认 5）
-- 去重（同文件同标题同行的建议只保留一条）
-- 空 reason 或 recommendation 的建议丢弃
-- 测试文件中的 secret-logging 规则命中降权到 LOW
-- AI 调用失败自动回退到 rule-only 报告，不崩溃
-
-### 响应速度
-
-- 规则扫描本地执行，无网络开销
-- patch budget 限制（默认 24,000 字符）
-- max_suggestions 限制（默认 20）
-- lockfile patch 不消耗 AI 上下文
-- 大 PR 上下文裁剪后标记 `context_truncated`
+```bash
+python -m compileall src tests
+```
 
 ## 仓库结构
 
 ```text
-├─ src/
-│  ├─ cli/           CLI 入口（Typer）
-│  ├─ github/        GitHub REST API 客户端
-│  ├─ analyzer/      diff 解析、上下文构建、风险规则扫描
-│  ├─ reviewer/      LLM provider、prompt、结构化 Review 引擎
-│  ├─ output/        Markdown / JSON 渲染
-│  └─ utils/         配置管理
-├─ tests/            单元测试
-├─ docs/             架构与设计文档
-└─ reports/          本地报告输出（.gitignore）
+src/
+  cli/           Typer CLI 入口
+  github/        GitHub REST API 客户端
+  analyzer/      diff 解析、上下文构建、风险规则扫描
+  reviewer/      LLM provider、prompt、结构化 Review 引擎
+  output/        Markdown / JSON 渲染
+  utils/         配置管理
+tests/           单元测试
+docs/            架构、质量控制、路线图等文档
+reports/         本地报告输出目录，已 gitignore
 ```
 
-## 未来扩展
+## 未来方向
 
-- **GitHub App**：PR 事件触发并通过 Webhook 自动发布 review comments
-- **Demo fixture**：无网络无 API Key 可演示的离线模式
-- **项目级上下文索引**：RAG 检索同仓库函数/类定义、历史 Review、团队规范
-- **团队规则库**：可配置高风险路径、禁止 API、Review 偏好
-- **Web UI**：输入 PR、查看风险列表、一键复制评论
+短期重点：
 
-## 示例报告
+- 完善本地 / 离线 demo provider。
+- 将规则库配置化。
+- 提升 CI 诊断和失败报告的可读性。
+- 搭建 VS Code 扩展 MVP，把 JSON suggestions 映射成 Problems 面板和本地行级跳转。
 
-- [Rule-only 基线报告（无 AI）](docs/demo/pr-1-rule.md)
-- [AI Review 中文报告](docs/demo/pr-1-ai-stage5.md)
+中长期方向：
 
-## 文档
+- GitHub App / 独立服务化。
+- Web UI / Dashboard。
+- 自动发布 Review Comments 的策略治理。
+- 项目级上下文索引和 RAG。
+- IDE 内的 PR review、merge 预览和交互式修复体验。
 
-- [架构设计](docs/architecture.md)
-- [72 小时双人开发计划](docs/72h-plan.md)
-- [模型选择与上下文策略](docs/model-context-design.md)
-- [误报与漏报控制](docs/quality-control.md)
-- [未来扩展方向](docs/future-extensions.md)
+更多细节见 [架构设计](docs/architecture.md) 和 [未来扩展](docs/future-extensions.md)。
