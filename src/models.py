@@ -122,3 +122,4 @@ class ReviewReport(BaseModel):
     report_confidence: str = "normal"  # "normal" | "fallback" | "partial" | "failed"
     # Stage 15: 分析完整性
     completeness: list[CompletenessItem] = Field(default_factory=list)
+    pr_syntax_check_ok: bool = True

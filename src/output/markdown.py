@@ -25,6 +25,14 @@ _RULE_ZH: dict[str, tuple[str, str]] = {
         "异常处理可能隐藏故障",
         "请记录足够上下文，必要时重新抛出或返回明确错误。",
     ),
+    "swallowed-exception-python": (
+        "异常处理可能隐藏故障 (Python)",
+        "请记录足够上下文，必要时重新抛出或返回明确错误。",
+    ),
+    "swallowed-exception-js": (
+        "异常处理可能隐藏故障 (JS/TS)",
+        "请记录足够上下文，必要时重新抛出或返回明确错误。",
+    ),
     "test-skip": (
         "引入了测试跳过",
         "请确认跳过原因已明确说明并有后续跟进计划。",
@@ -32,6 +40,22 @@ _RULE_ZH: dict[str, tuple[str, str]] = {
     "risk-path": (
         "高风险路径有变更",
         "请仔细审查权限、数据完整性和回滚行为。",
+    ),
+    "risk-path-auth": (
+        "鉴权/权限代码有变更",
+        "请仔细审查授权逻辑、数据完整性和回滚行为。",
+    ),
+    "risk-path-payment": (
+        "支付/迁移代码有变更",
+        "请仔细审查财务逻辑、回滚行为和数据完整性。",
+    ),
+    "risk-path-infra-workflow": (
+        "CI/CD 工作流有变更",
+        "工作流变更会影响审查流水线稳定性，请验证降级和门禁逻辑。",
+    ),
+    "risk-path-infra-reviewer": (
+        "审查工具基础设施有变更",
+        "审查工具代码变更可能影响稳定性、降级行为和门禁逻辑，建议双人复核。",
     ),
     "test-assertion-removed": (
         "测试断言被移除",
@@ -61,6 +85,7 @@ _COMPLETENESS_ITEM_ZH: dict[str, str] = {
     "AI 分析": "AI analysis",
     "规则扫描": "Rule scan",
     "Patch 上下文": "Patch context",
+    "PR head 语法诊断": "PR head syntax check",
 }
 
 _COMPLETENESS_STATUS_ZH: dict[StepStatus, str] = {
@@ -84,6 +109,8 @@ _COMPLETENESS_DETAIL_ZH: dict[str, str] = {
     "裁剪 — 超出 token 预算": "Truncated — exceeded token budget",
     "个文件": "file(s)",
     "个文件跳过（lockfile / 生成内容）": "file(s) skipped (lockfile / generated content)",
+    "未检测到语法错误": "No syntax errors detected",
+    "PR 分支代码存在语法或编码错误，已生成降级报告": "PR head has syntax or encoding errors; degraded report generated",
 }
 
 
@@ -110,6 +137,8 @@ def _render_completeness_detail(detail: str, zh: bool) -> str:
     match = re.match(r"(\d+) 个文件$", detail)
     if match:
         return f"{match.group(1)} file(s)"
+    if detail == "PR 分支代码存在语法或编码错误，已生成降级报告":
+        return "PR head has syntax or encoding errors; degraded report generated"
     return _COMPLETENESS_DETAIL_ZH.get(detail, detail)
 
 
