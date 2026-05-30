@@ -60,6 +60,7 @@ class GitHubClient:
     def get_pull_request(self, repo: str, number: int) -> PullRequest:
         response = self._request(f"/repos/{repo}/pulls/{number}")
         data = response.json()
+        head_info = data.get("head") or {}
         return PullRequest(
             repo=repo,
             number=number,
@@ -67,7 +68,8 @@ class GitHubClient:
             body=data.get("body"),
             author=(data.get("user") or {}).get("login"),
             base_ref=(data.get("base") or {}).get("ref"),
-            head_ref=(data.get("head") or {}).get("ref"),
+            head_ref=head_info.get("ref"),
+            head_sha=head_info.get("sha"),
             html_url=data.get("html_url"),
         )
 

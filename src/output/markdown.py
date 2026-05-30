@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.models import ReviewReport, ReviewSuggestion, Severity
+from src.models import CompletenessItem, ReviewReport, ReviewSuggestion, Severity, StepStatus
 
 # ── Chinese rule text mappings ────────────────────────────
 
@@ -46,6 +46,151 @@ _SEVERITY_ZH: dict[Severity, str] = {
     Severity.LOW: "低",
 }
 
+_STEP_STATUS_ICON: dict[StepStatus, str] = {
+    StepStatus.SUCCESS: "✅",
+    StepStatus.PARTIAL: "⚠️",
+    StepStatus.FAILED: "❌",
+    StepStatus.SKIPPED: "➖",
+}
+
+# Step/item name zh→en mapping for completeness table
+_COMPLETENESS_ITEM_ZH: dict[str, str] = {
+    "PR 元信息获取": "PR metadata fetch",
+    "变更文件获取": "Changed files fetch",
+    "AI 上下文文件": "AI context files",
+    "AI 分析": "AI analysis",
+    "规则扫描": "Rule scan",
+    "Patch 上下文": "Patch context",
+}
+
+_COMPLETENESS_STATUS_ZH: dict[StepStatus, str] = {
+    StepStatus.SUCCESS: "成功",
+    StepStatus.PARTIAL: "部分",
+    StepStatus.FAILED: "失败",
+    StepStatus.SKIPPED: "跳过",
+}
+
+_COMPLETENESS_DETAIL_ZH: dict[str, str] = {
+    "成功": "Success",
+    "完整": "Complete",
+    "全部文件进入上下文": "All files included in context",
+    "文件跳过（lockfile / 生成内容）": "files skipped (lockfile / generated content)",
+    "文件被跳过": "files skipped",
+    "全部文件被跳过": "All files skipped",
+    "未获取到变更文件": "No changed files retrieved",
+    "降级至规则扫描": "Degraded to rule-only",
+    "未启用 AI": "AI not enabled",
+    "GitHub API 获取 PR 信息失败": "GitHub API failed to fetch PR info",
+    "裁剪 — 超出 token 预算": "Truncated — exceeded token budget",
+    "个文件": "file(s)",
+    "个文件跳过（lockfile / 生成内容）": "file(s) skipped (lockfile / generated content)",
+}
+
+
+def _format_location(report: ReviewReport, file_path: str, line: int | None) -> str:
+    """Format file location as clickable GitHub blob URL when head_sha is available."""
+    text = file_path if line is None else f"{file_path}:{line}"
+    if report.pr.head_sha and report.pr.repo:
+        url = f"https://github.com/{report.pr.repo}/blob/{report.pr.head_sha}/{file_path}"
+        if line is not None:
+            url += f"#L{line}"
+        return f"[`{text}`]({url})"
+    return f"`{text}`"
+
+
+def _render_completeness_detail(detail: str, zh: bool) -> str:
+    """Translate completeness detail text for non-Chinese output."""
+    if zh:
+        return detail
+    import re
+    # Handle numeric patterns with Chinese suffixes
+    match = re.match(r"(\d+) 个文件跳过（lockfile / 生成内容）", detail)
+    if match:
+        return f"{match.group(1)} file(s) skipped (lockfile / generated content)"
+    match = re.match(r"(\d+) 个文件$", detail)
+    if match:
+        return f"{match.group(1)} file(s)"
+    return _COMPLETENESS_DETAIL_ZH.get(detail, detail)
+
+
+def _render_run_status(report: ReviewReport, T: _Translator, zh: bool) -> list[str]:
+    """Render the run-status section lines."""
+    lines: list[str] = []
+    lines.append(f"## {T.t('运行状态')}")
+    lines.append("")
+
+    # Reviewer version display
+    if report.reviewer_version == "main-fallback":
+        version_display = f"main fallback ⚠️" if zh else f"main fallback ⚠️"
+    else:
+        version_display = "PR 分支" if zh else "PR branch"
+
+    status_display = T.t("成功") if report.execution_status == "success" else T.t("降级")
+    if report.execution_status != "success":
+        status_display = f"⚠️ {status_display}"
+
+    lines.append(f"| {T.t('字段')} | {T.t('值')} |")
+    lines.append("|---|---|")
+    lines.append(f"| {T.t('评审执行版本')} | {version_display} |")
+    lines.append(f"| {T.t('执行状态')} | {status_display} |")
+
+    if report.degradation_reason:
+        reason_display = report.degradation_reason
+        if not zh:
+            # Translate common Chinese degradation reasons
+            if "AI 调用失败" in reason_display:
+                reason_display = reason_display.replace("AI 调用失败", "AI call failed")
+        lines.append(f"| {T.t('降级原因')} | {reason_display} |")
+
+    # Confidence hint — driven by report_confidence field
+    confidence_map_zh = {
+        "normal": "正常评审，报告完整可信",
+        "fallback": "使用 main 分支稳定版 reviewer，结果可信但不含 PR 分支的新增能力",
+        "partial": "规则扫描结果可信，但 AI 分析未完成，建议人工复核",
+        "failed": "评审过程存在异常，报告可能不完整，请查看降级原因",
+    }
+    confidence_map_en = {
+        "normal": "Normal review; report is complete and trustworthy",
+        "fallback": "Using main-branch stable reviewer; trustworthy but lacks PR-branch capabilities",
+        "partial": "Rule scan results are trustworthy, but AI analysis did not complete; manual review recommended",
+        "failed": "Review encountered errors; report may be incomplete — see degradation reason",
+    }
+    confidence = confidence_map_zh.get(report.report_confidence, "") if zh else confidence_map_en.get(report.report_confidence, "")
+    if report.report_confidence != "normal":
+        confidence = f"⚠️ {confidence}"
+    lines.append(f"| {T.t('报告可信度')} | {confidence} |")
+    lines.append("")
+    return lines
+
+
+def _render_completeness(report: ReviewReport, T: _Translator, zh: bool) -> list[str]:
+    """Render the analysis completeness section lines."""
+    lines: list[str] = []
+    lines.append(f"## {T.t('分析完整性')}")
+    lines.append("")
+
+    lines.append(f"| {T.t('项目')} | {T.t('状态')} | {T.t('备注')} |")
+    lines.append("|---|---|---|")
+
+    for item in report.completeness:
+        icon = _STEP_STATUS_ICON.get(item.status, "")
+        if zh:
+            status_label = _COMPLETENESS_STATUS_ZH.get(item.status, item.status.value)
+        else:
+            status_label = item.status.value.capitalize()
+        status_display = f"{icon} {status_label}"
+
+        detail_display = _render_completeness_detail(item.detail, zh)
+
+        item_name = item.item
+        if not zh:
+            item_name = _COMPLETENESS_ITEM_ZH.get(item.item, item.item)
+
+        lines.append(f"| {item_name} | {status_display} | {detail_display} |")
+
+    lines.append("")
+    return lines
+
 
 def render_markdown(report: ReviewReport, language: str = "en") -> str:
     zh = language == "zh"
@@ -55,7 +200,13 @@ def render_markdown(report: ReviewReport, language: str = "en") -> str:
     if not zh:
         title_line = f"# AI PR Review: {report.pr.repo}#{report.pr.number}"
 
-    lines = [title_line, "", f"## {T.t('PR 概览')}", ""]
+    lines = [title_line, ""]
+
+    # ── Stage 15: run status & analysis completeness ──
+    lines.extend(_render_run_status(report, T, zh))
+    lines.extend(_render_completeness(report, T, zh))
+
+    lines.extend([f"## {T.t('PR 概览')}", ""])
 
     additions = sum(f.additions for f in report.files)
     deletions = sum(f.deletions for f in report.files)
@@ -152,26 +303,22 @@ def render_markdown(report: ReviewReport, language: str = "en") -> str:
         )
         lines.append("|---|---|---|---|---|")
         for index, s in enumerate(report.suggestions, start=1):
-            location = s.file_path
-            if s.line is not None:
-                location = f"{location}:{s.line}"
+            location_link = _format_location(report, s.file_path, s.line)
             sev_display = _SEVERITY_ZH.get(s.severity, s.severity.value) if zh else s.severity.value.upper()
             lines.append(
                 f"| {index} | `{sev_display}` "
-                f"| `{location}` | {s.confidence:.0%} | {s.title} |"
+                f"| {location_link} | {s.confidence:.0%} | {s.title} |"
             )
 
         lines.extend(["", "---", ""])
         for index, s in enumerate(report.suggestions, start=1):
-            location = s.file_path
-            if s.line is not None:
-                location = f"{location}:{s.line}"
+            location_link = _format_location(report, s.file_path, s.line)
             sev_display = _SEVERITY_ZH.get(s.severity, s.severity.value) if zh else s.severity.value.upper()
             lines.extend(
                 [
                     f"### {index}. [{sev_display}] {s.title}",
                     "",
-                    f"- **{T.t('位置')}**: `{location}`",
+                    f"- **{T.t('位置')}**: {location_link}",
                     f"- **{T.t('置信度')}**: {s.confidence:.0%}",
                     f"- **{T.t('原因')}**: {s.reason}",
                     f"- **{T.t('建议')}**: {s.recommendation}",
@@ -184,6 +331,8 @@ def render_markdown(report: ReviewReport, language: str = "en") -> str:
                     f"> {s.reason}",
                     "",
                     f"{T.t('建议')}: {s.recommendation}",
+                    "",
+                    f"💡 {T.t('可直接复制到 PR Files Changed 页面发布')}",
                     "",
                     "</details>",
                     "",
@@ -204,15 +353,13 @@ def render_markdown(report: ReviewReport, language: str = "en") -> str:
         )
         lines.append("|---|---|---|---|")
         for finding in visible_findings:
-            location = finding.file_path
-            if finding.line is not None:
-                location = f"{location}:{finding.line}"
+            location_link = _format_location(report, finding.file_path, finding.line)
             sev_display = _SEVERITY_ZH.get(finding.severity, finding.severity.value) if zh else finding.severity.value
             zh_title = _RULE_ZH.get(finding.rule_id, (finding.title,))[0]
             display_title = zh_title if zh else finding.title
             lines.append(
                 f"| `{sev_display}` | `{finding.rule_id}` "
-                f"| `{location}` | {display_title} |"
+                f"| {location_link} | {display_title} |"
             )
 
     total_hidden = report.hidden_suggestions_count + len(hidden_findings)
@@ -240,6 +387,8 @@ class _Translator:
         self._zh = zh
         self._map: dict[str, str] = {
             # section headers
+            "运行状态": "Run Status",
+            "分析完整性": "Analysis Completeness",
             "PR 概览": "PR Overview",
             "风险统计": "Risk Summary",
             "变更总结": "Executive Summary",
@@ -250,6 +399,15 @@ class _Translator:
             # table fields
             "字段": "Field",
             "值": "Value",
+            "评审执行版本": "Reviewer Version",
+            "执行状态": "Execution Status",
+            "降级原因": "Degradation Reason",
+            "报告可信度": "Report Confidence",
+            "项目": "Item",
+            "状态": "Status",
+            "备注": "Note",
+            "成功": "Success",
+            "降级": "Degraded",
             "仓库": "Repository",
             "标题": "Title",
             "作者": "Author",
@@ -280,6 +438,7 @@ class _Translator:
             "原因": "Reason",
             "建议": "Recommendation",
             "可复制 GitHub 评论": "Suggested GitHub comment",
+            "可直接复制到 PR Files Changed 页面发布": "Copy and paste into PR Files Changed to publish",
             # rule findings
             "规则": "Rule",
             "发现": "Finding",

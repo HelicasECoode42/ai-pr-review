@@ -25,6 +25,26 @@ def analyze(
     output: Path | None = typer.Option(None, "--output", "-o", help="Write report to file."),
     report_format: str = typer.Option("markdown", "--format", help="markdown or json."),
     use_ai: bool = typer.Option(True, "--ai/--no-ai", help="Call AI model for review."),
+    reviewer_version: str = typer.Option(
+        "pr-branch",
+        "--reviewer-version",
+        help="Reviewer runtime label, for example pr-branch or main-fallback.",
+    ),
+    execution_status: str = typer.Option(
+        "success",
+        "--execution-status",
+        help="Execution status label: success or degraded.",
+    ),
+    degradation_reason: str | None = typer.Option(
+        None,
+        "--degradation-reason",
+        help="Reason shown when the reviewer runs in degraded/fallback mode.",
+    ),
+    report_confidence: str = typer.Option(
+        "normal",
+        "--report-confidence",
+        help="Report confidence label: normal, fallback, partial, or failed.",
+    ),
     language: OutputLanguage = typer.Option(
         OutputLanguage.EN,
         "--language",
@@ -121,7 +141,16 @@ def analyze(
     # Safe execution path
     try:
         findings = scan_risks(files)
-        report = build_rule_only_report(pr, files, findings, language=language.value)
+        report = build_rule_only_report(
+            pr,
+            files,
+            findings,
+            language=language.value,
+            reviewer_version=reviewer_version,
+            execution_status=execution_status,
+            degradation_reason=degradation_reason,
+            report_confidence=report_confidence,
+        )
 
         if use_ai:
             if not settings.openai_api_key:
@@ -150,6 +179,10 @@ def analyze(
                         min_confidence=settings.min_comment_confidence,
                         max_suggestions_per_file=settings.max_suggestions_per_file,
                         language=language.value,
+                        reviewer_version=reviewer_version,
+                        execution_status=execution_status,
+                        degradation_reason=degradation_reason,
+                        report_confidence=report_confidence,
                     )
                 finally:
                     provider.close()
@@ -195,10 +228,14 @@ def analyze(
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_text(content, encoding="utf-8")
             console.print(f"[green]Report written to[/green] {output}")
+            # Stage 16: also write JSON sidecar for CI review-comment automation.
+            json_path = output.with_suffix(".json")
+            json_path.write_text(render_json(report), encoding="utf-8")
+            console.print(f"[green]JSON sidecar written to[/green] {json_path}")
         else:
             console.print(content)
     except Exception as exc:
-        # Catch unexpected runtime errors during analysis and produce a diagnostic report
+        # Catch unexpected runtime errors during analysis and produce a diagnostic report.
         console.print(f"[red]Analysis runtime error: {exc}[/red]")
         parts = ["# Analysis Failed", "", "An unexpected error occurred during analysis.", ""]
         parts.append(f"Error: {exc}")
@@ -221,7 +258,7 @@ def analyze(
             write_step_summary(summary)
         except Exception:
             pass
-        # Do not fail CI
+        # Do not fail CI.
         raise typer.Exit(code=0)
 
 
