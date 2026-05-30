@@ -59,10 +59,7 @@ def analyze(
         try:
             from src.utils.actions import write_step_summary
             summary = (
-                f"## AI Review - Failure\n\n"
-                f"**Reason:** GitHub API error\n\n```
-+{exc}
-+```\n"
+                f"**Reason:** GitHub API error\n\n```\n{exc}\n```\n"
                 f"**PR:** {repo}#{pr_number}\n"
             )
             write_step_summary(summary)
@@ -113,10 +110,7 @@ def analyze(
         try:
             from src.utils.actions import write_step_summary
             summary = (
-                "## AI Review - Diagnostic Failure\n\n"
-                f"**Reason:** Runtime import error in analyzer/reviewer modules\n\n```
-+{exc}
-+```\n"
+                f"**Reason:** Runtime import error in analyzer/reviewer modules\n\n```\n{exc}\n```\n"
                 f"**PR:** {repo}#{pr_number if pr is None else pr.number}\n"
             )
             write_step_summary(summary)
@@ -221,10 +215,7 @@ def analyze(
         try:
             from src.utils.actions import write_step_summary
             summary = (
-                "## AI Review - Analysis Failure\n\n"
-                f"**Reason:** Unexpected runtime error during analysis\n\n```
-+{exc}
-+```\n"
+                f"**Reason:** Unexpected runtime error during analysis\n\n```\n{exc}\n```\n"
                 f"**PR:** {repo}#{pr_number}\n"
             )
             write_step_summary(summary)
