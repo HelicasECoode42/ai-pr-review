@@ -44,18 +44,18 @@ class GitHubClient:
             response.raise_for_status()
             return response
         except httpx.TimeoutException:
-            raise GitHubApiError(f"GitHub API timeout: {path}")
+            raise GitHubApiError(f"GitHub API timeout: {path}") from None
         except httpx.HTTPStatusError as exc:
             status = exc.response.status_code
             if status == 401:
-                raise GitHubApiError("Authentication failed: token invalid or expired")
+                raise GitHubApiError("Authentication failed: token invalid or expired") from exc
             if status == 403:
-                raise GitHubApiError("Access denied: rate limit exceeded or insufficient permissions")
+                raise GitHubApiError("Access denied: rate limit exceeded or insufficient permissions") from exc
             if status == 404:
-                raise GitHubApiError(f"Resource not found: {path}")
-            raise GitHubApiError(f"HTTP {status}: {path}")
+                raise GitHubApiError(f"Resource not found: {path}") from exc
+            raise GitHubApiError(f"HTTP {status}: {path}") from exc
         except httpx.RequestError as exc:
-            raise GitHubApiError(f"Failed to connect to GitHub API: {exc}")
+            raise GitHubApiError(f"Failed to connect to GitHub API: {exc}") from exc
 
     def get_pull_request(self, repo: str, number: int) -> PullRequest:
         response = self._request(f"/repos/{repo}/pulls/{number}")
@@ -132,7 +132,7 @@ class GitHubClient:
             # Re-raise for caller to handle
             raise
         except Exception as e:
-            raise GitHubApiError(f"Failed to fetch file contents for {repo}/{path}@{ref}: {e}")
+            raise GitHubApiError(f"Failed to fetch file contents for {repo}/{path}@{ref}: {e}") from e
 
     def __enter__(self) -> GitHubClient:
         return self
