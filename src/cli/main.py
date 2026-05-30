@@ -116,6 +116,7 @@ def analyze(
         from src.analyzer.risk_rules import scan_risks
         from src.output.json_report import render_json
         from src.output.markdown import render_markdown
+        from src.models import ReviewMeta
         from src.reviewer.engine import build_rule_only_report, review_with_ai
         from datetime import datetime, timezone
         from src.reviewer.provider import OpenAICompatibleProvider
