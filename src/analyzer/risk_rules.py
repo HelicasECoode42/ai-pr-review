@@ -44,9 +44,41 @@ _LANG_REQUIRED_RULES: dict[str, str] = {
 }
 
 
-RISK_PATH_PATTERNS = [
-    re.compile(r"auth|permission|rbac|acl|login|session|jwt", re.IGNORECASE),
-    re.compile(r"payment|billing|invoice|migration", re.IGNORECASE),
+# Path risk patterns: each entry is (rule_id, severity, regex, title, recommendation, confidence)
+_RISK_PATH_RULES: list[tuple[str, Severity, re.Pattern[str], str, str, float]] = [
+    (
+        "risk-path-auth",
+        Severity.MEDIUM,
+        re.compile(r"auth|permission|rbac|acl|login|session|jwt", re.IGNORECASE),
+        "Auth/permission code changed",
+        "Review authorization, data integrity, and rollback behavior carefully.",
+        0.6,
+    ),
+    (
+        "risk-path-payment",
+        Severity.MEDIUM,
+        re.compile(r"payment|billing|invoice|migration", re.IGNORECASE),
+        "Payment/migration code changed",
+        "Review financial logic, rollback behavior, and data integrity carefully.",
+        0.6,
+    ),
+    (
+        "risk-path-infra-workflow",
+        Severity.HIGH,
+        re.compile(r"^\.github/workflows/", re.IGNORECASE),
+        "CI/CD workflow changed",
+        "Workflow changes affect review pipeline stability. Verify fallback and gate logic.",
+        0.7,
+    ),
+    (
+        "risk-path-infra-reviewer",
+        Severity.HIGH,
+        re.compile(r"^src/cli/|^src/reviewer/|^src/github/", re.IGNORECASE),
+        "Review tool infrastructure changed",
+        "Changes to reviewer code may affect review stability, fallback behavior, "
+        "or workflow gating. Request a second reviewer.",
+        0.7,
+    ),
 ]
 
 LINE_RULES: list[tuple[str, re.Pattern[str], Severity, str, str]] = [
@@ -120,20 +152,21 @@ def scan_risks(files: list[ChangedFile] | None) -> list[RiskFinding]:
 
 
 def _scan_path_risk(file: ChangedFile) -> list[RiskFinding]:
-    for pattern in RISK_PATH_PATTERNS:
+    findings: list[RiskFinding] = []
+    for rule_id, severity, pattern, title, recommendation, confidence in _RISK_PATH_RULES:
         if pattern.search(file.filename):
-            return [
+            findings.append(
                 RiskFinding(
                     file_path=file.filename,
-                    severity=Severity.MEDIUM,
-                    rule_id="risk-path",
-                    title="High-risk area changed",
+                    severity=severity,
+                    rule_id=rule_id,
+                    title=title,
                     evidence=f"File path `{file.filename}` matches `{pattern.pattern}`.",
-                    recommendation="Review authorization, data integrity, and rollback behavior carefully.",
-                    confidence=0.6,
+                    recommendation=recommendation,
+                    confidence=confidence,
                 )
-            ]
-    return []
+            )
+    return findings
 
 
 def _is_test_file(filename: str) -> bool:
