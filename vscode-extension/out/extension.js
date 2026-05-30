@@ -42,6 +42,9 @@ const panel_1 = require("./panel");
 let diagnosticCollection;
 let statusBar;
 let reviewPanel;
+function getWorkspaceRoot() {
+    return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+}
 // ── Status bar ──────────────────────────────────────────
 function createStatusBar() {
     const item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
@@ -106,7 +109,7 @@ async function loadReview() {
         return;
     updateStatusBar(null, undefined, true);
     try {
-        const result = await (0, review_fetcher_1.fetchReview)();
+        const result = await (0, review_fetcher_1.fetchReview)(getWorkspaceRoot());
         lastReviewResult = result;
         if (!diagnosticCollection)
             return;
@@ -195,7 +198,7 @@ function activate(context) {
     statusBar.show();
     context.subscriptions.push(statusBar);
     // Review panel provider
-    reviewPanel = new panel_1.ReviewPanelProvider(context.extensionUri, review_fetcher_1.fetchReview);
+    reviewPanel = new panel_1.ReviewPanelProvider(context.extensionUri, () => (0, review_fetcher_1.fetchReview)(getWorkspaceRoot()));
     context.subscriptions.push(reviewPanel);
     // Commands
     context.subscriptions.push(vscode.commands.registerCommand("ai-pr-review.refresh", loadReview), vscode.commands.registerCommand("ai-pr-review.loadReport", loadReportFile), vscode.commands.registerCommand("ai-pr-review.clearDiagnostics", clearDiagnostics), vscode.commands.registerCommand("ai-pr-review.openPanel", () => openPanel()));

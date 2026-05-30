@@ -236,3 +236,4 @@ reports/         本地报告输出目录，已 gitignore
 - [未来扩展](docs/future-extensions.md)：VS Code 扩展、服务化、Context Pack、Web UI 等路线图。
 - [协作与提交规范](docs/contribution-guide.md)：分支、commit、PR 和合并前检查规范。
 - [阶段性总结](docs/2026-05-29-summary.md)：早期开发进度和历史背景。
+
