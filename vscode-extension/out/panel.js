@@ -40,7 +40,7 @@ function getWebviewHtml(result, webview) {
     const nonce = getNonce();
     const meta = result.reviewMeta;
     const risk = result.riskLevel ?? "N/A";
-    const riskColor = risk === "HIGH" ? "#e74c3c" : risk === "MEDIUM" ? "#f39c12" : "#27ae60";
+    const riskClass = risk === "HIGH" ? "risk-high" : risk === "MEDIUM" ? "risk-medium" : "risk-low";
     function esc(s) {
         if (!s)
             return "-";
@@ -73,17 +73,6 @@ function getWebviewHtml(result, webview) {
         const mode = meta.review_mode === "incremental" ? "Incremental" : "Full PR";
         metaRows += formatMetaRow("Review Mode", mode);
     }
-    // Build suggestions list
-    function severityBadge(s) {
-        const colors = {
-            critical: "#e74c3c",
-            high: "#e67e22",
-            medium: "#f1c40f",
-            low: "#95a5a6",
-        };
-        const c = colors[s] ?? "#95a5a6";
-        return `<span class="badge" style="background:${c}">${s.toUpperCase()}</span>`;
-    }
     let suggestionsHtml = "";
     if (result.suggestions.length === 0) {
         suggestionsHtml = `<p class="empty">No suggestions — clean review ✅</p>`;
@@ -92,11 +81,12 @@ function getWebviewHtml(result, webview) {
         for (let i = 0; i < result.suggestions.length; i++) {
             const s = result.suggestions[i];
             const confidence = Math.round(s.confidence * 100);
+            const sevClass = `sev-${s.severity}`;
             suggestionsHtml += `
         <div class="suggestion">
           <div class="suggestion-header">
             <span class="index">#${i + 1}</span>
-            ${severityBadge(s.severity)}
+            <span class="badge ${sevClass}">${s.severity.toUpperCase()}</span>
             <span class="confidence">${confidence}%</span>
             <span class="title">${esc(s.title)}</span>
           </div>
@@ -112,8 +102,8 @@ function getWebviewHtml(result, webview) {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; img-src ${webview.cspSource} https:;">
-  <style>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'nonce-${nonce}'; script-src 'nonce-${nonce}'; img-src ${webview.cspSource} https:;">
+  <style nonce="${nonce}">
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: var(--vscode-font-family, -apple-system, sans-serif);
@@ -128,11 +118,13 @@ function getWebviewHtml(result, webview) {
       padding-bottom: 12px; border-bottom: 1px solid var(--vscode-panel-border);
     }
     .header h2 { font-size: 16px; font-weight: 600; }
-    .header .pr-link { font-size: 12px; color: var(--vscode-textLink-foreground); text-decoration: none; }
     .risk-badge {
       display: inline-block; padding: 2px 10px; border-radius: 10px;
       font-size: 11px; font-weight: 700; color: #fff;
     }
+    .risk-high { background: #e74c3c; }
+    .risk-medium { background: #f39c12; }
+    .risk-low { background: #27ae60; }
     section { margin-bottom: 16px; }
     section h3 {
       font-size: 13px; font-weight: 600; margin-bottom: 8px;
@@ -166,11 +158,16 @@ function getWebviewHtml(result, webview) {
     .suggestion-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
     .index { font-weight: 600; color: var(--vscode-descriptionForeground); min-width: 24px; }
     .badge { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: 10px; font-weight: 700; color: #fff; }
+    .sev-critical { background: #e74c3c; }
+    .sev-high { background: #e67e22; }
+    .sev-medium { background: #f1c40f; }
+    .sev-low { background: #95a5a6; }
     .confidence { font-size: 11px; color: var(--vscode-descriptionForeground); }
     .title { font-weight: 600; }
     .suggestion-location { font-size: 11px; color: var(--vscode-descriptionForeground); margin-bottom: 4px; }
     .suggestion-reason { font-size: 12px; margin-bottom: 4px; }
     .suggestion-rec { font-size: 12px; color: var(--vscode-textLink-foreground); }
+    .summary-text { font-size: 12px; white-space: pre-wrap; }
     .empty { color: var(--vscode-descriptionForeground); font-style: italic; padding: 20px 0; }
   </style>
 </head>
@@ -183,11 +180,11 @@ function getWebviewHtml(result, webview) {
   <div class="header">
     <h2>PR #${result.pr.number}: ${esc(result.pr.title)}</h2>
   </div>
-  <span class="risk-badge" style="background:${riskColor}">${risk}</span>
+  <span class="risk-badge ${riskClass}">${risk}</span>
 
   ${metaRows ? `<section><h3>📋 Review Metadata</h3><table>${metaRows}</table></section>` : ""}
 
-  ${result.summary ? `<section><h3>📝 Summary</h3><p style="font-size:12px;white-space:pre-wrap;">${esc(result.summary.slice(0, 500))}${result.summary.length > 500 ? "..." : ""}</p></section>` : ""}
+  ${result.summary ? `<section><h3>📝 Summary</h3><p class="summary-text">${esc(result.summary.slice(0, 500))}${result.summary.length > 500 ? "..." : ""}</p></section>` : ""}
 
   <section><h3>🔍 Suggestions (${result.suggestions.length})</h3>${suggestionsHtml}</section>
 
