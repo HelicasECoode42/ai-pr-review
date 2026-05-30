@@ -21,7 +21,10 @@ jobs:
   review:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout reviewer from base branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.ref || github.ref_name }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -36,6 +39,38 @@ jobs:
 
       - name: Syntax and encoding check
         run: python -m compileall src tests
+
+      - name: Checkout PR head for diagnostics
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: _pr_head
+
+      - name: Probe PR head Python syntax
+        if: github.event_name == 'pull_request'
+        id: pr_syntax
+        continue-on-error: true
+        run: |
+          mkdir -p reports
+          set +e
+          python -m compileall _pr_head/src _pr_head/tests > reports/pr-syntax-check.txt 2>&1
+          status=$?
+          set -e
+          echo "exit_code=${status}" >> "$GITHUB_OUTPUT"
+          if [ "${status}" -ne 0 ]; then
+            {
+              echo "## PR Head Syntax Check"
+              echo
+              echo "The submitted PR head does not compile. The reviewer will still run from the base branch and analyze the PR diff."
+              echo
+              echo '```text'
+              tail -n 80 reports/pr-syntax-check.txt
+              echo '```'
+              echo
+            } > reports/pr-syntax-check.md
+            exit "${status}"
+          fi
 
       - name: Run AI PR Review
         env:
@@ -54,10 +89,33 @@ jobs:
             echo "OPENAI_API_KEY not set (fork PR or missing secret); falling back to rule-only."
           fi
 
+          REVIEWER_ARGS=()
+          if uv run python -m src.cli.main --help | grep -q -- "--reviewer-version"; then
+            REVIEWER_ARGS=(
+              --reviewer-version "main-fallback"
+              --execution-status "degraded"
+              --degradation-reason "reviewer ran from PR base branch to isolate broken PR code"
+              --report-confidence "fallback"
+            )
+          else
+            echo "Checked-out reviewer does not support runtime metadata flags; continuing without them."
+          fi
+
           uv run python -m src.cli.main "${REPO}" "${PR_NUMBER}" \
             --language "${LANGUAGE}" \
+            "${REVIEWER_ARGS[@]}" \
             ${AI_FLAG} \
             --output reports/pr-review.md
+
+      - name: Append PR syntax diagnostics
+        if: always() && github.event_name == 'pull_request' && steps.pr_syntax.outputs.exit_code != '0'
+        run: |
+          if [ -f reports/pr-review.md ] && [ -f reports/pr-syntax-check.md ]; then
+            {
+              echo
+              cat reports/pr-syntax-check.md
+            } >> reports/pr-review.md
+          fi
 
       - name: Upload report
         if: success()
@@ -67,6 +125,8 @@ jobs:
           path: |
             reports/pr-review.md
             reports/pr-review.json
+            reports/pr-syntax-check.md
+            reports/pr-syntax-check.txt
           retention-days: 30
 
       - name: Post inline review comments (high-confidence only)
@@ -186,3 +246,9 @@ jobs:
             } catch (error) {
               core.warning(`Failed to post PR comment: ${error.message}`);
             }
+
+      - name: Fail if PR head has syntax errors
+        if: always() && github.event_name == 'pull_request' && steps.pr_syntax.outputs.exit_code != '0'
+        run: |
+          echo "PR head syntax check failed. Review report was generated, but this PR should not be merged until the syntax errors are fixed."
+          exit 1

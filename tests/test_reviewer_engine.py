@@ -268,6 +268,32 @@ class FailingProvider:
         raise ProviderError("simulated failure")
 
 
+class SuccessfulProvider:
+    def complete_json(self, _system: str, _user: str) -> str:
+        return '{"summary": "ok", "risk_level": "low", "suggestions": []}'
+
+
+def test_review_preserves_fallback_runtime_metadata(
+    sample_pr: PullRequest, sample_files: list[ChangedFile]
+) -> None:
+    report = review_with_ai(
+        sample_pr,
+        sample_files,
+        [],
+        SuccessfulProvider(),
+        max_suggestions=10,
+        reviewer_version="main-fallback",
+        execution_status="degraded",
+        degradation_reason="reviewer ran from PR base branch",
+        report_confidence="fallback",
+    )
+    assert report.used_ai is True
+    assert report.reviewer_version == "main-fallback"
+    assert report.execution_status == "degraded"
+    assert report.degradation_reason == "reviewer ran from PR base branch"
+    assert report.report_confidence == "fallback"
+
+
 def test_filter_enforces_per_file_cap() -> None:
     """Suggestions beyond max_suggestions_per_file are dropped from that file."""
     files = [
