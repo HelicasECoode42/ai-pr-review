@@ -154,8 +154,9 @@ def _render_review_meta(report: ReviewReport, T: _Translator, zh: bool) -> list[
 
     if meta.reviewed_commit:
         commit_short = meta.reviewed_commit[:7]
-        if meta.reviewed_commit and report.pr.repo:
-            commit_url = f"https://github.com/{report.pr.repo}/commit/{meta.reviewed_commit}"
+        repo = getattr(report.pr, 'repo', None)
+        if meta.reviewed_commit and repo:
+            commit_url = f"https://github.com/{repo}/commit/{meta.reviewed_commit}"
             lines.append(f"| {T.t('审查目标 Commit')} | [`{commit_short}`]({commit_url}) |")
         else:
             lines.append(f"| {T.t('审查目标 Commit')} | `{commit_short}` |")

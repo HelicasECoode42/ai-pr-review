@@ -117,7 +117,8 @@ def analyze(
         from src.output.json_report import render_json
         from src.output.markdown import render_markdown
         from src.reviewer.engine import build_rule_only_report, review_with_ai
-        from src.reviewer.provider import OpenAICompatibleProvider
+        from datetime import datetime, timezone
+from src.reviewer.provider import OpenAICompatibleProvider
     except Exception as exc:
         console.print(f"[red]Runtime import error in analyzer/reviewer modules: {exc}[/red]")
         # Build a minimal diagnostic report including PR metadata to help debugging
@@ -175,6 +176,7 @@ def analyze(
                 reviewed_commit=reviewed_commit,
                 trigger_event=trigger_event,
                 workflow_run_url=workflow_run_url,
+                updated_at=datetime.now(timezone.utc).isoformat(),
             ),
         )
 
