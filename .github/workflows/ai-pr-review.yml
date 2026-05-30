@@ -34,6 +34,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra dev
 
+      - name: Syntax and encoding check
+        run: python -m compileall src tests
+
       - name: Run AI PR Review
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
