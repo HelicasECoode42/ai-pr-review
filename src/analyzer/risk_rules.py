@@ -19,6 +19,31 @@ def _should_skip_scan(filename: str) -> bool:
     return filename.startswith(_SKIP_SCAN_PREFIXES)
 
 
+def _detect_language(filename: str) -> str:
+    """Detect programming language from file extension."""
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    _LANG_MAP = {
+        "py": "python",
+        "pyw": "python",
+        "js": "javascript",
+        "jsx": "javascript",
+        "mjs": "javascript",
+        "cjs": "javascript",
+        "ts": "typescript",
+        "tsx": "typescript",
+        "mts": "typescript",
+        "cts": "typescript",
+    }
+    return _LANG_MAP.get(ext, "other")
+
+
+# Rule IDs whose application requires a matching detected language
+_LANG_REQUIRED_RULES: dict[str, str] = {
+    "swallowed-exception-python": "python",
+    "swallowed-exception-js": "javascript",
+}
+
+
 RISK_PATH_PATTERNS = [
     re.compile(r"auth|permission|rbac|acl|login|session|jwt", re.IGNORECASE),
     re.compile(r"payment|billing|invoice|migration", re.IGNORECASE),
@@ -54,10 +79,17 @@ LINE_RULES: list[tuple[str, re.Pattern[str], Severity, str, str]] = [
         "Do not write credentials or secrets to logs. Mask sensitive values before logging.",
     ),
     (
-        "swallowed-exception",
-        re.compile(r"(except\s+.*:\s*$|catch\s*\(.*\)\s*\{?\s*$|pass\s*$)", re.IGNORECASE),
+        "swallowed-exception-python",
+        re.compile(r"except\s+\w*\s*:\s*pass\s*$", re.IGNORECASE),
         Severity.MEDIUM,
-        "Exception handling may hide failures",
+        "Exception handling may hide failures (Python)",
+        "Log enough context, rethrow when appropriate, or return an explicit error.",
+    ),
+    (
+        "swallowed-exception-js",
+        re.compile(r"catch\s*\(.*?\)\s*\{\s*\}"),
+        Severity.MEDIUM,
+        "Exception handling may hide failures (JS/TS)",
         "Log enough context, rethrow when appropriate, or return an explicit error.",
     ),
     (
@@ -116,9 +148,13 @@ def _scan_line_rules(file: ChangedFile) -> list[RiskFinding]:
         logger.warning(f"Failed to parse hunks for {file.filename}: {e}")
         return []
 
+    lang = _detect_language(file.filename)
     for hunk in hunks:
         for changed in hunk.added_lines:
             for rule_id, pattern, severity, title, recommendation in LINE_RULES:
+                # Skip language-specific rules that don't match the detected language
+                if rule_id in _LANG_REQUIRED_RULES and _LANG_REQUIRED_RULES[rule_id] != lang:
+                    continue
                 try:
                     if not pattern.search(changed.content):
                         continue

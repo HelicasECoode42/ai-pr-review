@@ -10,6 +10,7 @@ from src.models import ChangedFile, PullRequest, RiskFinding, FileStatus
 from src.github.client import GitHubClient, GitHubApiError
 from src.utils.config import get_settings
 
+import os
 logger = logging.getLogger(__name__)
 
 
@@ -48,6 +49,59 @@ class ReviewContext:
     truncated: bool
     status: AnalysisStatus = AnalysisStatus.SUCCESS
     skipped_files: list[tuple[str, str]] = field(default_factory=list)
+
+
+
+
+# File extensions that are typically binary and should not be parsed for patches
+_BINARY_EXTENSIONS: set[str] = {
+    # Images
+    ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".svg",
+    ".webp", ".tiff", ".psd",
+    # Archives
+    ".zip", ".tar", ".gz", ".bz2", ".7z", ".rar",
+    # Compilation artifacts
+    ".pyc", ".pyo", ".class", ".o", ".obj", ".lib", ".dll", ".so", ".dylib",
+    ".exe", ".wasm",
+    # Documents
+    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+    # Media
+    ".mp3", ".mp4", ".avi", ".mov", ".wav", ".flac", ".ogg",
+    # Data / assets
+    ".ttf", ".otf", ".woff", ".woff2", ".eot",
+    ".ico", ".cur",
+    ".db", ".sqlite",
+    # Lockfiles (already handled elsewhere)
+    ".lock",
+}
+
+
+def _has_binary_extension(filename: str) -> bool:
+    """Check if file has a binary extension that should be skipped."""
+    _, ext = os.path.splitext(filename.lower())
+    return ext in _BINARY_EXTENSIONS
+
+
+def _patch_has_encoding_issues(filename: str, patch_text: str | None) -> bool:
+    """Check if patch content has problematic non-UTF-8 artifacts.
+
+    Returns True if the file should be skipped due to encoding issues.
+    """
+    if not patch_text:
+        return False
+    # Check for high density of replacement characters (\\ufffd)
+    replacement_count = patch_text.count("\ufffd")
+    if replacement_count > 0 and len(patch_text) > 0:
+        ratio = replacement_count / len(patch_text)
+        # If more than 0.5% of characters are replacements, likely an encoding mismatch
+        if ratio > 0.005:
+            logger.debug(f"Encoding issue detected in {filename}: {replacement_count} replacement chars ({ratio:.1%})")
+            return True
+    # Check for NUL bytes (common in binary files misidentified as text)
+    if "\x00" in patch_text:
+        return True
+    return False
+
 
 
 def _skip_patch_reason(filename: str) -> str | None:
@@ -180,6 +234,12 @@ def build_review_context(
                 skipped_files.append((file.filename, reason))
                 if reason == "lockfile":
                     lockfiles_skipped += 1
+                continue
+
+            # Check for binary or encoding issues before processing
+            if _has_binary_extension(file.filename) or _patch_has_encoding_issues(file.filename, file.patch):
+                skipped_files.append((file.filename, "encoding_skipped"))
+                partial_flag = True
                 continue
 
             parse_failed = False
