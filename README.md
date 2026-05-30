@@ -228,3 +228,11 @@ reports/         本地报告输出目录，已 gitignore
 - IDE 内的 PR review、merge 预览和交互式修复体验。
 
 更多细节见 [架构设计](docs/architecture.md) 和 [未来扩展](docs/future-extensions.md)。
+
+## 文档导航
+
+- [架构设计](docs/architecture.md)：当前核心流程、模块边界、CI 运行模型和降级策略。
+- [当前开发计划与分工](docs/current-development-plan.md)：报告置信度、Web Console、VS Code 插件的开发分工和对应文件。
+- [未来扩展](docs/future-extensions.md)：VS Code 扩展、服务化、Context Pack、Web UI 等路线图。
+- [协作与提交规范](docs/contribution-guide.md)：分支、commit、PR 和合并前检查规范。
+- [阶段性总结](docs/2026-05-29-summary.md)：早期开发进度和历史背景。

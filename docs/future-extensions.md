@@ -2,6 +2,8 @@
 
 本文记录 AI PR Review Assistant 的产品和工程路线图。当前项目已经具备 CLI、GitHub Action、规则扫描、AI review、Markdown / JSON 报告和基础失败门禁；下一步重点是提升交互体验、稳定性和组织级可维护性。
 
+当前阶段的具体分工、文件改动范围和验收方式见 [当前开发计划与分工](current-development-plan.md)。
+
 ## 1. VS Code 扩展：把 Review 带回编辑器
 
 优先级：高
