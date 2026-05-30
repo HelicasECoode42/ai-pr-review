@@ -45,6 +45,11 @@ def analyze(
         "--report-confidence",
         help="Report confidence label: normal, fallback, partial, or failed.",
     ),
+    pr_syntax_ok: bool = typer.Option(
+        True,
+        "--pr-syntax-ok/--pr-syntax-fail",
+        help="Whether the PR head branch passed syntax check.",
+    ),
     language: OutputLanguage = typer.Option(
         OutputLanguage.EN,
         "--language",
@@ -150,6 +155,7 @@ def analyze(
             execution_status=execution_status,
             degradation_reason=degradation_reason,
             report_confidence=report_confidence,
+            pr_syntax_ok=pr_syntax_ok,
         )
 
         if use_ai:
@@ -183,6 +189,7 @@ def analyze(
                         execution_status=execution_status,
                         degradation_reason=degradation_reason,
                         report_confidence=report_confidence,
+                        pr_syntax_ok=pr_syntax_ok,
                     )
                 finally:
                     provider.close()

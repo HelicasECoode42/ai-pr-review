@@ -61,6 +61,7 @@ _COMPLETENESS_ITEM_ZH: dict[str, str] = {
     "AI 分析": "AI analysis",
     "规则扫描": "Rule scan",
     "Patch 上下文": "Patch context",
+    "PR head 语法诊断": "PR head syntax check",
 }
 
 _COMPLETENESS_STATUS_ZH: dict[StepStatus, str] = {
@@ -84,6 +85,8 @@ _COMPLETENESS_DETAIL_ZH: dict[str, str] = {
     "裁剪 — 超出 token 预算": "Truncated — exceeded token budget",
     "个文件": "file(s)",
     "个文件跳过（lockfile / 生成内容）": "file(s) skipped (lockfile / generated content)",
+    "未检测到语法错误": "No syntax errors detected",
+    "PR 分支代码存在语法或编码错误，已生成降级报告": "PR head has syntax or encoding errors; degraded report generated",
 }
 
 
@@ -110,6 +113,8 @@ def _render_completeness_detail(detail: str, zh: bool) -> str:
     match = re.match(r"(\d+) 个文件$", detail)
     if match:
         return f"{match.group(1)} file(s)"
+    if detail == "PR 分支代码存在语法或编码错误，已生成降级报告":
+        return "PR head has syntax or encoding errors; degraded report generated"
     return _COMPLETENESS_DETAIL_ZH.get(detail, detail)
 
 
