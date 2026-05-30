@@ -248,8 +248,7 @@ def review_with_ai(
                                         degradation_reason=f"AI 调用失败: {exc}",
                                         report_confidence="partial")
         report.ai_failure_reason = str(exc)
-        report.used_ai = False
-        # Overwrite completeness: AI analysis failed
+        # Re-build completeness to reflect AI-attempted-but-failed state
         report.completeness = _build_completeness(
             pr=pr, files=files,
             skipped_ctx=report.skipped_context_files,
