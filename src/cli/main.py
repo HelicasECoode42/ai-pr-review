@@ -143,10 +143,14 @@ def analyze(
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_text(content, encoding="utf-8")
             console.print(f"[green]Report written to[/green] {output}")
+            # Stage 16: also write JSON sidecar for CI review-comment automation.
+            json_path = output.with_suffix(".json")
+            json_path.write_text(render_json(report), encoding="utf-8")
+            console.print(f"[green]JSON sidecar written to[/green] {json_path}")
         else:
             console.print(content)
     except Exception as exc:
-        # Catch unexpected runtime errors during analysis and produce a diagnostic report
+        # Catch unexpected runtime errors during analysis and produce a diagnostic report.
         console.print(f"[red]Analysis runtime error: {exc}[/red]")
         parts = ["# Analysis Failed", "", "An unexpected error occurred during analysis.", ""]
         parts.append(f"Error: {exc}")
@@ -159,7 +163,7 @@ def analyze(
             console.print(f"[green]Diagnostic report written to[/green] {output}")
         else:
             console.print(content)
-        # Do not fail CI
+        # Do not fail CI.
         raise typer.Exit(code=0)
 
 

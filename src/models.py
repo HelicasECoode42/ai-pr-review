@@ -28,6 +28,7 @@ class PullRequest(BaseModel):
     author: str | None = None
     base_ref: str | None = None
     head_ref: str | None = None
+    head_sha: str | None = None
     html_url: str | None = None
 
 
@@ -75,6 +76,21 @@ class SkippedContextFile(BaseModel):
     reason: str
 
 
+class StepStatus(str, Enum):
+    """Analysis completeness step status."""
+    SUCCESS = "success"
+    PARTIAL = "partial"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+class CompletenessItem(BaseModel):
+    """One row in the analysis completeness table."""
+    item: str
+    status: StepStatus
+    detail: str
+
+
 class ReviewSuggestion(BaseModel):
     file_path: str
     line: int | None = None
@@ -99,3 +115,10 @@ class ReviewReport(BaseModel):
     hidden_suggestions_count: int = 0
     skipped_context_files: list[SkippedContextFile] = Field(default_factory=list)
     hidden_rule_findings_count: int = 0
+    # Stage 15: 运行状态
+    reviewer_version: str = "pr-branch"  # "pr-branch" | "main-fallback"
+    execution_status: str = "success"  # "success" | "degraded"
+    degradation_reason: str | None = None
+    report_confidence: str = "normal"  # "normal" | "fallback" | "partial" | "failed"
+    # Stage 15: 分析完整性
+    completeness: list[CompletenessItem] = Field(default_factory=list)
