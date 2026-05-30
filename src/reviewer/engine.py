@@ -131,6 +131,7 @@ def build_rule_only_report(
     reviewer_version: str = "pr-branch",
     execution_status: str = "success",
     degradation_reason: str | None = None,
+    report_confidence: str = "normal",
 ) -> ReviewReport:
     additions = sum(f.additions for f in files)
     deletions = sum(f.deletions for f in files)
@@ -173,6 +174,7 @@ def build_rule_only_report(
         reviewer_version=reviewer_version,
         execution_status=execution_status,
         degradation_reason=degradation_reason,
+        report_confidence=report_confidence,
         completeness=completeness,
     )
 
@@ -236,13 +238,15 @@ def review_with_ai(
             hidden_suggestions_count=hidden,
             context_truncated=ctx.truncated,
             skipped_context_files=skipped_ctx,
+            report_confidence="normal",
             completeness=completeness,
         )
     except (ProviderError, ValueError) as exc:
         logger.warning("AI review failed, falling back to rule-only: %s", exc)
         report = build_rule_only_report(pr, files, findings, language=language,
                                         execution_status="degraded",
-                                        degradation_reason=f"AI 调用失败: {exc}")
+                                        degradation_reason=f"AI 调用失败: {exc}",
+                                        report_confidence="partial")
         report.ai_failure_reason = str(exc)
         report.used_ai = False
         # Overwrite completeness: AI analysis failed

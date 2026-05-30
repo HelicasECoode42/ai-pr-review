@@ -118,5 +118,6 @@ class ReviewReport(BaseModel):
     reviewer_version: str = "pr-branch"  # "pr-branch" | "main-fallback"
     execution_status: str = "success"  # "success" | "degraded"
     degradation_reason: str | None = None
+    report_confidence: str = "normal"  # "normal" | "fallback" | "partial" | "failed"
     # Stage 15: 分析完整性
     completeness: list[CompletenessItem] = Field(default_factory=list)

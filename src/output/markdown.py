@@ -131,22 +131,22 @@ def _render_run_status(report: ReviewReport, T: _Translator, zh: bool) -> list[s
                 reason_display = reason_display.replace("AI 调用失败", "AI call failed")
         lines.append(f"| {T.t('降级原因')} | {reason_display} |")
 
-    # Confidence hint
-    if report.execution_status == "degraded":
-        if zh:
-            confidence = "可用于评审 PR diff，但不代表 PR 版 reviewer 可正常运行"
-        else:
-            confidence = "Valid for reviewing PR diff, but does not guarantee the PR-branch reviewer is healthy"
-    elif report.reviewer_version == "main-fallback":
-        if zh:
-            confidence = "使用 main 分支稳定版 reviewer，结果可信但不含 PR 分支的新增能力"
-        else:
-            confidence = "Using main-branch stable reviewer; results are trustworthy but lack PR-branch capabilities"
-    else:
-        if zh:
-            confidence = "正常评审，报告完整可信"
-        else:
-            confidence = "Normal review; report is complete and trustworthy"
+    # Confidence hint — driven by report_confidence field
+    confidence_map_zh = {
+        "normal": "正常评审，报告完整可信",
+        "fallback": "使用 main 分支稳定版 reviewer，结果可信但不含 PR 分支的新增能力",
+        "partial": "规则扫描结果可信，但 AI 分析未完成，建议人工复核",
+        "failed": "评审过程存在异常，报告可能不完整，请查看降级原因",
+    }
+    confidence_map_en = {
+        "normal": "Normal review; report is complete and trustworthy",
+        "fallback": "Using main-branch stable reviewer; trustworthy but lacks PR-branch capabilities",
+        "partial": "Rule scan results are trustworthy, but AI analysis did not complete; manual review recommended",
+        "failed": "Review encountered errors; report may be incomplete — see degradation reason",
+    }
+    confidence = confidence_map_zh.get(report.report_confidence, "") if zh else confidence_map_en.get(report.report_confidence, "")
+    if report.report_confidence != "normal":
+        confidence = f"⚠️ {confidence}"
     lines.append(f"| {T.t('报告可信度')} | {confidence} |")
     lines.append("")
     return lines
