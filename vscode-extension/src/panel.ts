@@ -19,6 +19,7 @@ function getWebviewHtml(
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;")
       .replace(/`/g, "&#96;");
   }
@@ -36,7 +37,7 @@ function getWebviewHtml(
   if (meta?.trigger_event) {
     metaRows += formatMetaRow("Trigger Event", `<code>${esc(meta.trigger_event)}</code>`);
   }
-  if (meta?.workflow_run_url) {
+  if (meta?.workflow_run_url && /^https?:\/\//i.test(meta.workflow_run_url)) {
     metaRows += formatMetaRow(
       "Workflow Run",
       `<a href="${esc(meta.workflow_run_url)}">view run ↗</a>`,
@@ -157,7 +158,7 @@ function getWebviewHtml(
   <div class="header">
     <h2>PR #${result.pr.number}: ${esc(result.pr.title)}</h2>
   </div>
-  <span class="risk-badge ${riskClass}">${risk}</span>
+  <span class="risk-badge ${riskClass}">${esc(risk)}</span>
 
   ${metaRows ? `<section><h3>📋 Review Metadata</h3><table>${metaRows}</table></section>` : ""}
 
@@ -190,6 +191,7 @@ export class ReviewPanelProvider {
   private _panel: vscode.WebviewPanel | undefined;
   private _extensionUri: vscode.Uri;
   private _onRefresh: () => Promise<ReviewResult | null>;
+  private _lastResult: ReviewResult | null = null;
 
   constructor(
     extensionUri: vscode.Uri,
@@ -200,6 +202,8 @@ export class ReviewPanelProvider {
   }
 
   async show(result: ReviewResult): Promise<void> {
+    this._lastResult = result;
+
     if (!this._panel) {
       this._panel = vscode.window.createWebviewPanel(
         ReviewPanelProvider.viewType,
@@ -217,14 +221,18 @@ export class ReviewPanelProvider {
         switch (msg.cmd) {
           case "refresh": {
             const r = await this._onRefresh();
+            if (r) {
+              this._lastResult = r;
+            }
             if (r && this._panel) {
               this._panel.webview.html = getWebviewHtml(r, this._panel.webview);
             }
             break;
           }
           case "openPr": {
-            if (result?.pr?.url && /^https?:\/\//i.test(result.pr.url)) {
-              vscode.env.openExternal(vscode.Uri.parse(result.pr.url));
+            const url = this._lastResult?.pr?.url;
+            if (url && /^https?:\/\//i.test(url)) {
+              vscode.env.openExternal(vscode.Uri.parse(url));
             }
             break;
           }

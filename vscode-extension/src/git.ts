@@ -33,6 +33,15 @@ export async function getCurrentBranch(cwd?: string): Promise<string | null> {
   }
 }
 
+/**
+ * Sanitize a branch name for safe interpolation into shell commands.
+ * Only allows characters valid in git branch names.
+ */
+function sanitizeBranch(branch: string): string {
+  // Restrict to git-ref-safe characters: alphanumeric, dash, dot, underscore, slash
+  return branch.replace(/[^a-zA-Z0-9._/-]/g, "");
+}
+
 /** Parse remote URL into owner/repo. Handles both HTTPS and SSH remotes. */
 export async function getRepoSlug(cwd?: string): Promise<string | null> {
   try {
@@ -73,7 +82,7 @@ export async function getPRForBranch(
     headRefName: string;
     headRepositoryOwner?: { login: string };
   }[] | null = await tryJson(
-    `gh pr list --head "${branch}" --json number,title,state,url,headRefName,headRepositoryOwner --limit 1`,
+    `gh pr list --head "${sanitizeBranch(branch)}" --json number,title,state,url,headRefName,headRepositoryOwner --limit 1`,
     cwd,
   );
 
@@ -166,7 +175,7 @@ export async function getLatestWorkflowRun(
     conclusion: string | null;
     url: string;
   }[] = await tryJson(
-    `gh run list --workflow="ai-pr-review.yml" --branch="${branch}" --event=pull_request --limit=1 --json status,conclusion,url`,
+    `gh run list --workflow="ai-pr-review.yml" --branch="${sanitizeBranch(branch)}" --event=pull_request --limit=1 --json status,conclusion,url`,
     cwd,
   ) ?? [];
 
