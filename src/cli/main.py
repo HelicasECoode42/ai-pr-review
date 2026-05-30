@@ -50,6 +50,21 @@ def analyze(
         "--pr-syntax-ok/--pr-syntax-fail",
         help="Whether the PR head branch passed syntax check.",
     ),
+    reviewed_commit: str | None = typer.Option(
+        None,
+        "--reviewed-commit",
+        help="Commit SHA that this review targets.",
+    ),
+    trigger_event: str | None = typer.Option(
+        None,
+        "--trigger-event",
+        help="Event that triggered the review (push / issue_comment / workflow_dispatch).",
+    ),
+    workflow_run_url: str | None = typer.Option(
+        None,
+        "--workflow-run-url",
+        help="URL to the GitHub Actions workflow run.",
+    ),
     language: OutputLanguage = typer.Option(
         OutputLanguage.EN,
         "--language",
@@ -102,6 +117,7 @@ def analyze(
         from src.output.json_report import render_json
         from src.output.markdown import render_markdown
         from src.reviewer.engine import build_rule_only_report, review_with_ai
+        from datetime import datetime, timezone
         from src.reviewer.provider import OpenAICompatibleProvider
     except Exception as exc:
         console.print(f"[red]Runtime import error in analyzer/reviewer modules: {exc}[/red]")
@@ -156,6 +172,12 @@ def analyze(
             degradation_reason=degradation_reason,
             report_confidence=report_confidence,
             pr_syntax_ok=pr_syntax_ok,
+            review_meta=ReviewMeta(
+                reviewed_commit=reviewed_commit,
+                trigger_event=trigger_event,
+                workflow_run_url=workflow_run_url,
+                updated_at=datetime.now(timezone.utc).isoformat(),
+            ),
         )
 
         if use_ai:
@@ -190,6 +212,11 @@ def analyze(
                         degradation_reason=degradation_reason,
                         report_confidence=report_confidence,
                         pr_syntax_ok=pr_syntax_ok,
+                        review_meta=ReviewMeta(
+                            reviewed_commit=reviewed_commit,
+                            trigger_event=trigger_event,
+                            workflow_run_url=workflow_run_url,
+                        ),
                     )
                 finally:
                     provider.close()
