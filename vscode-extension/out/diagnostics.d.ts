@@ -1,13 +1,14 @@
 import * as vscode from "vscode";
-/**
- * Parse a ReviewReport JSON and create per-file Diagnostic arrays.
- */
+import type { ParsedSuggestion } from "./review-fetcher";
+/** Convert a single suggestion to a vscode.Diagnostic. */
+export declare function suggestionToDiagnostic(s: ParsedSuggestion, fileUri: vscode.Uri): vscode.Diagnostic;
+/** Resolve a file_path to an absolute vscode.Uri. */
+export declare function resolveFileUri(filePath: string): vscode.Uri;
+/** Build per-file Diagnostic map from ParsedSuggestion[]. */
+export declare function buildDiagnostics(suggestions: ParsedSuggestion[]): Map<string, vscode.Diagnostic[]>;
+/** Parse JSON report and build per-file diagnostics. */
 export declare function parseAndCreateDiagnostics(json: string): Map<string, vscode.Diagnostic[]> | Error;
-/**
- * Apply diagnostics to the collection — clears old, sets new per file.
- */
+/** Clear and set diagnostics on the collection. */
 export declare function applyDiagnostics(collection: vscode.DiagnosticCollection, byFile: Map<string, vscode.Diagnostic[]>): void;
-/**
- * Get the singleton diagnostic collection name.
- */
+/** The singleton diagnostic collection name. */
 export declare function getCollectionName(): string;

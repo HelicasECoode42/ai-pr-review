@@ -33,14 +33,16 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.suggestionToDiagnostic = suggestionToDiagnostic;
+exports.resolveFileUri = resolveFileUri;
+exports.buildDiagnostics = buildDiagnostics;
 exports.parseAndCreateDiagnostics = parseAndCreateDiagnostics;
 exports.applyDiagnostics = applyDiagnostics;
 exports.getCollectionName = getCollectionName;
+const path = __importStar(require("path"));
 const vscode = __importStar(require("vscode"));
 const DIAGNOSTIC_COLLECTION = "ai-pr-review";
-/**
- * Map a ReviewSuggestion severity to VS Code DiagnosticSeverity.
- */
+/** Map severity string → VS Code DiagnosticSeverity. */
 function mapSeverity(severity) {
     switch (severity) {
         case "critical":
@@ -53,44 +55,59 @@ function mapSeverity(severity) {
             return vscode.DiagnosticSeverity.Information;
     }
 }
-/**
- * Create one VS Code Diagnostic from a ReviewSuggestion.
- *
- * The range covers the target line; if line is null, we show the diagnostic
- * at the beginning of the file (position 0,0).
- */
-function suggestionToDiagnostic(suggestion, documentUri) {
-    const severity = mapSeverity(suggestion.severity);
-    const confidence = Math.round(suggestion.confidence * 100);
-    // Build message: severity badge + title + reason + recommendation
-    const parts = [`[${suggestion.severity.toUpperCase()}] ${confidence}% — ${suggestion.title}`];
-    if (suggestion.reason) {
-        parts.push(`Reason: ${suggestion.reason}`);
-    }
-    if (suggestion.recommendation) {
-        parts.push(`💡 ${suggestion.recommendation}`);
-    }
-    const message = parts.join("\n");
-    // Determine range
-    let range;
-    if (suggestion.line !== null && suggestion.line > 0) {
-        const lineIdx = suggestion.line - 1; // GitHub lines are 1-based
-        range = new vscode.Range(lineIdx, 0, lineIdx, Number.MAX_SAFE_INTEGER);
-    }
-    else {
-        range = new vscode.Range(0, 0, 0, 0);
-    }
-    const diagnostic = new vscode.Diagnostic(range, message, severity);
-    diagnostic.source = "AI PR Review";
-    diagnostic.code = {
-        value: suggestion.title.slice(0, 50),
-        target: vscode.Uri.parse(`https://github.com/ai-pr-review/suggestion?title=${encodeURIComponent(suggestion.title)}`),
-    };
-    return diagnostic;
+/** Build a human-readable diagnostic message. */
+function buildMessage(s) {
+    const confidence = Math.round(s.confidence * 100);
+    const parts = [
+        `[${s.severity.toUpperCase()}] ${confidence}% — ${s.title}`,
+    ];
+    if (s.reason)
+        parts.push(`Reason: ${s.reason}`);
+    if (s.recommendation)
+        parts.push(`💡 ${s.recommendation}`);
+    return parts.join("\n");
 }
-/**
- * Parse a ReviewReport JSON and create per-file Diagnostic arrays.
- */
+/** Determine VS Code Range from a line number (1-based, GitHub convention). */
+function lineToRange(line) {
+    if (line !== null && line > 0) {
+        const idx = line - 1;
+        return new vscode.Range(idx, 0, idx, 1000);
+    }
+    return new vscode.Range(0, 0, 0, 0);
+}
+/** Convert a single suggestion to a vscode.Diagnostic. */
+function suggestionToDiagnostic(s, fileUri) {
+    const diag = new vscode.Diagnostic(lineToRange(s.line), buildMessage(s), mapSeverity(s.severity));
+    diag.source = "AI PR Review";
+    diag.code = s.title.slice(0, 50);
+    return diag;
+}
+/** Resolve a file_path to an absolute vscode.Uri. */
+function resolveFileUri(filePath) {
+    if (path.isAbsolute(filePath))
+        return vscode.Uri.file(filePath);
+    const folders = vscode.workspace.workspaceFolders;
+    if (folders && folders.length > 0) {
+        return vscode.Uri.joinPath(folders[0].uri, filePath);
+    }
+    return vscode.Uri.file(filePath);
+}
+// ── From parsed suggestions (GitHub inline comments) ───
+/** Build per-file Diagnostic map from ParsedSuggestion[]. */
+function buildDiagnostics(suggestions) {
+    const byFile = new Map();
+    for (const s of suggestions) {
+        const uri = resolveFileUri(s.file_path);
+        const diag = suggestionToDiagnostic(s, uri);
+        const key = uri.fsPath;
+        if (!byFile.has(key))
+            byFile.set(key, []);
+        byFile.get(key).push(diag);
+    }
+    return byFile;
+}
+// ── From JSON report file (manual load, kept for backward compat) ──
+/** Parse JSON report and build per-file diagnostics. */
 function parseAndCreateDiagnostics(json) {
     let report;
     try {
@@ -103,44 +120,26 @@ function parseAndCreateDiagnostics(json) {
         return new Error("Invalid report format: missing suggestions array.");
     }
     const byFile = new Map();
-    const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
-    const root = workspaceFolders.length > 0 ? workspaceFolders[0].uri : undefined;
     for (const s of report.suggestions) {
-        // Try to resolve the file path relative to workspace root
-        let fileUri;
-        if (root) {
-            fileUri = vscode.Uri.joinPath(root, s.file_path);
-        }
-        else {
-            fileUri = vscode.Uri.file(s.file_path);
-        }
-        const diag = suggestionToDiagnostic(s, fileUri);
-        if (!diag)
-            continue;
-        const key = fileUri.fsPath;
-        if (!byFile.has(key)) {
+        const uri = resolveFileUri(s.file_path);
+        const diag = suggestionToDiagnostic(s, uri);
+        const key = uri.fsPath;
+        if (!byFile.has(key))
             byFile.set(key, []);
-        }
         byFile.get(key).push(diag);
     }
     return byFile;
 }
-/**
- * Apply diagnostics to the collection — clears old, sets new per file.
- */
+/** Clear and set diagnostics on the collection. */
 function applyDiagnostics(collection, byFile) {
-    // Clear all existing diagnostics from this collection
     collection.clear();
-    // Build the new set per file URI
     const entries = [];
     for (const [fsPath, diags] of byFile) {
         entries.push([vscode.Uri.file(fsPath), diags]);
     }
     collection.set(entries);
 }
-/**
- * Get the singleton diagnostic collection name.
- */
+/** The singleton diagnostic collection name. */
 function getCollectionName() {
     return DIAGNOSTIC_COLLECTION;
 }
