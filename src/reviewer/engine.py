@@ -9,6 +9,7 @@ from pydantic import BaseModel, ValidationError
 from src.analyzer.context_builder import build_review_context
 from src.analyzer.diff_parser import changed_line_map
 from src.models import (
+    ReviewMeta,
     ChangedFile,
     CompletenessItem,
     PullRequest,
@@ -141,6 +142,7 @@ def build_rule_only_report(
     degradation_reason: str | None = None,
     report_confidence: str = "normal",
     pr_syntax_ok: bool = True,
+    review_meta: ReviewMeta | None = None,
 ) -> ReviewReport:
     additions = sum(f.additions for f in files)
     deletions = sum(f.deletions for f in files)
@@ -186,6 +188,7 @@ def build_rule_only_report(
         degradation_reason=degradation_reason,
         report_confidence=report_confidence,
         completeness=completeness,
+        review_meta=review_meta or ReviewMeta(),
     )
 
 
@@ -203,6 +206,7 @@ def review_with_ai(
     degradation_reason: str | None = None,
     report_confidence: str = "normal",
     pr_syntax_ok: bool = True,
+    review_meta: ReviewMeta | None = None,
 ) -> ReviewReport:
     try:
         ctx = build_review_context(pr, files, findings)
@@ -259,6 +263,7 @@ def review_with_ai(
             degradation_reason=degradation_reason,
             report_confidence=report_confidence,
             completeness=completeness,
+            review_meta=review_meta or ReviewMeta(),
         )
     except (ProviderError, ValueError) as exc:
         logger.warning("AI review failed, falling back to rule-only: %s", exc)
@@ -266,7 +271,8 @@ def review_with_ai(
                                         execution_status="degraded",
                                         degradation_reason=f"AI 调用失败: {exc}",
                                         report_confidence="partial",
-                                        pr_syntax_ok=pr_syntax_ok)
+                                        pr_syntax_ok=pr_syntax_ok,
+                                        review_meta=review_meta)
         report.ai_failure_reason = str(exc)
         # Re-build completeness to reflect AI-attempted-but-failed state
         report.completeness = _build_completeness(

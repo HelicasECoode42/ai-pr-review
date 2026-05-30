@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.models import CompletenessItem, ReviewReport, ReviewSuggestion, Severity, StepStatus
+from src.models import CompletenessItem, FixTrackingItem, ReviewMeta, ReviewReport, ReviewSuggestion, Severity, StepStatus
 
 # ── Chinese rule text mappings ────────────────────────────
 
@@ -142,6 +142,84 @@ def _render_completeness_detail(detail: str, zh: bool) -> str:
     return _COMPLETENESS_DETAIL_ZH.get(detail, detail)
 
 
+def _render_review_meta(report: ReviewReport, T: _Translator, zh: bool) -> list[str]:
+    """Render the review metadata section at the top of the report."""
+    lines: list[str] = []
+    meta = report.review_meta
+
+    lines.append(f"## {T.t('审查元信息')}")
+    lines.append("")
+    lines.append(f"| {T.t('字段')} | {T.t('值')} |")
+    lines.append("|---|---|")
+
+    if meta.reviewed_commit:
+        commit_short = meta.reviewed_commit[:7]
+        repo = getattr(report.pr, 'repo', None)
+        if meta.reviewed_commit and repo:
+            commit_url = f"https://github.com/{repo}/commit/{meta.reviewed_commit}"
+            lines.append(f"| {T.t('审查目标 Commit')} | [`{commit_short}`]({commit_url}) |")
+        else:
+            lines.append(f"| {T.t('审查目标 Commit')} | `{commit_short}` |")
+    else:
+        lines.append(f"| {T.t('审查目标 Commit')} | - |")
+
+    if meta.trigger_event:
+        lines.append(f"| {T.t('触发事件')} | `{meta.trigger_event}` |")
+    else:
+        lines.append(f"| {T.t('触发事件')} | - |")
+
+    if meta.workflow_run_url:
+        lines.append(f"| {T.t('Workflow 运行')} | [查看运行]({meta.workflow_run_url}) |")
+    else:
+        lines.append(f"| {T.t('Workflow 运行')} | - |")
+
+    if meta.updated_at:
+        lines.append(f"| {T.t('更新时间')} | {meta.updated_at} |")
+    else:
+        lines.append(f"| {T.t('更新时间')} | - |")
+
+    mode_label = "全量 PR 审查" if zh else "Full PR review"
+    if meta.review_mode == "full_pr":
+        mode_label = "全量 PR 审查" if zh else "Full PR review"
+    elif meta.review_mode == "incremental":
+        mode_label = "增量审查" if zh else "Incremental review"
+    lines.append(f"| {T.t('审查模式')} | {mode_label} |")
+
+    lines.append("")
+    return lines
+
+
+def _render_fix_tracking(report: ReviewReport, T: _Translator, zh: bool) -> list[str]:
+    """Render the fix tracking table — placeholder until GitHub API integration lands."""
+    lines: list[str] = []
+    items = report.fix_tracking
+
+    lines.append(f"## {T.t('修复追踪')}")
+    lines.append("")
+
+    if not items:
+        lines.append(T.t("暂无追踪记录。"))
+    else:
+        lines.append(f"| {T.t('建议')} | {T.t('文件')} | {T.t('状态')} | {T.t('备注')} |")
+        lines.append("|---|---|---|---|")
+        for item in items:
+            file_display = f"`{item.file_path}`" if item.file_path else "-"
+            status_icon = {
+                "fixed": "✅",
+                "still_present": "❌",
+                "unknown": "❓",
+            }.get(item.status, "❓")
+            status_label = {
+                "fixed": "已修复" if zh else "Fixed",
+                "still_present": "仍存在" if zh else "Still present",
+                "unknown": "未知" if zh else "Unknown",
+            }.get(item.status, item.status)
+            lines.append(f"| {item.previous_title} | {file_display} | {status_icon} {status_label} | {item.detail} |")
+
+    lines.append("")
+    return lines
+
+
 def _render_run_status(report: ReviewReport, T: _Translator, zh: bool) -> list[str]:
     """Render the run-status section lines."""
     lines: list[str] = []
@@ -230,6 +308,10 @@ def render_markdown(report: ReviewReport, language: str = "en") -> str:
         title_line = f"# AI PR Review: {report.pr.repo}#{report.pr.number}"
 
     lines = [title_line, ""]
+
+    # ── Review meta & fix tracking ──
+    lines.extend(_render_review_meta(report, T, zh))
+    lines.extend(_render_fix_tracking(report, T, zh))
 
     # ── Stage 15: run status & analysis completeness ──
     lines.extend(_render_run_status(report, T, zh))
@@ -486,6 +568,20 @@ class _Translator:
             "评审范围": "Review Scope",
             "处理方式": "Action",
             "跳过 patch": "patch skipped",
+            # review meta
+            "审查元信息": "Review Metadata",
+            "审查目标 Commit": "Reviewed Commit",
+            "触发事件": "Trigger Event",
+            "Workflow 运行": "Workflow Run",
+            "更新时间": "Updated At",
+            "审查模式": "Review Mode",
+            # fix tracking
+            "修复追踪": "Fix Tracking",
+            "建议": "Suggestion",
+            "文件": "File",
+            "状态": "Status",
+            "备注": "Note",
+            "暂无追踪记录。": "No fix tracking records.",
             # misc
             "unknown": "unknown",
             "yes": "yes",
