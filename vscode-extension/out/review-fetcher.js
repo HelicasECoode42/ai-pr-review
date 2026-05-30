@@ -67,18 +67,24 @@ function normalizeSeverity(s) {
 function parseReviewMeta(summaryMd) {
     if (!summaryMd)
         return null;
+    // Only look at the first 8 KB to avoid pathological input
+    const capped = summaryMd.slice(0, 8192);
     const meta = {};
-    // Match markdown table rows with key-value pairs
-    // Chinese header row pattern
-    const tableRegex = /^\|\s*(.+?)\s*\|\s*(.+?)\s*\|$/gm;
-    let match;
-    while ((match = tableRegex.exec(summaryMd)) !== null) {
-        const key = match[1].trim();
-        const rawValue = match[2].trim();
+    // Parse line-by-line: safer than regex while-loop, avoids ReDoS
+    const lines = capped.split("\n");
+    let parsed = 0;
+    const MAX_ROWS = 20;
+    for (const line of lines) {
+        const trimmed = line.trim();
+        // Match markdown table row: | key | value |
+        const m = trimmed.match(/^\|\s*(.+?)\s*\|\s*(.+?)\s*\|$/);
+        if (!m)
+            continue;
+        const key = m[1].trim();
+        const rawValue = m[2].trim();
         if (rawValue === "-" || rawValue === "")
             continue;
         if (key.includes("Commit") || key.includes("提交")) {
-            // Extract SHA from link: [abc1234](url) or plain `abc1234`
             const shaMatch = rawValue.match(/\[([a-f0-9]+)\]\(.+?\)/) ?? rawValue.match(/`([a-f0-9]+)`/);
             meta.reviewed_commit = shaMatch ? shaMatch[1] : rawValue;
         }
@@ -95,6 +101,9 @@ function parseReviewMeta(summaryMd) {
         else if (key.includes("审查模式") || key.includes("Review Mode")) {
             meta.review_mode = rawValue.includes("增量") ? "incremental" : "full_pr";
         }
+        parsed++;
+        if (parsed >= MAX_ROWS)
+            break;
     }
     // Return null if no fields were parsed
     if (Object.keys(meta).length === 0)
