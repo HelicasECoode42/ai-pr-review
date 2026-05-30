@@ -118,7 +118,7 @@ def analyze(
         from src.output.markdown import render_markdown
         from src.reviewer.engine import build_rule_only_report, review_with_ai
         from datetime import datetime, timezone
-from src.reviewer.provider import OpenAICompatibleProvider
+        from src.reviewer.provider import OpenAICompatibleProvider
     except Exception as exc:
         console.print(f"[red]Runtime import error in analyzer/reviewer modules: {exc}[/red]")
         # Build a minimal diagnostic report including PR metadata to help debugging
