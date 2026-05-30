@@ -274,7 +274,7 @@ def _parse_model_payload(raw: str) -> ModelReviewPayload:
         data = json.loads(raw)
         return ModelReviewPayload.model_validate(data)
     except (json.JSONDecodeError, ValidationError):
-        pass
+        logger.warning("JSON fallback: direct parse failed, trying fenced code block")
 
     # Strategy 2: extract from ```json fenced code block
     match = re.search(r"```json\s*([\s\S]*?)\s*```", raw)
@@ -283,7 +283,7 @@ def _parse_model_payload(raw: str) -> ModelReviewPayload:
             data = json.loads(match.group(1))
             return ModelReviewPayload.model_validate(data)
         except (json.JSONDecodeError, ValidationError):
-            pass
+            logger.warning("JSON fallback: fenced code block parse failed, trying brace extraction")
 
     # Strategy 3: extract from first { to last }
     match = re.search(r"\{[\s\S]*\}", raw)
@@ -292,7 +292,7 @@ def _parse_model_payload(raw: str) -> ModelReviewPayload:
             data = json.loads(match.group(0))
             return ModelReviewPayload.model_validate(data)
         except (json.JSONDecodeError, ValidationError):
-            pass
+            logger.warning("JSON fallback: brace extraction also failed")
 
     raise ValueError(
         f"Model returned invalid review JSON. Raw output prefix: {raw[:300]}"
