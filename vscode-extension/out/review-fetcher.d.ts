@@ -1,4 +1,5 @@
 import { type PRInfo } from "./git";
+import type { ReviewMeta } from "./report";
 export interface ParsedSuggestion {
     file_path: string;
     line: number | null;
@@ -14,6 +15,8 @@ export interface ReviewResult {
     summary: string | null;
     workflowRunUrl: string | null;
     workflowStatus: string | null;
+    reviewMeta: ReviewMeta | null;
+    riskLevel: string | null;
 }
 /**
  * Full pipeline: detect branch → find PR → fetch review comments → parse.

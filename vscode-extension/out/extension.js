@@ -38,8 +38,10 @@ exports.deactivate = deactivate;
 const vscode = __importStar(require("vscode"));
 const review_fetcher_1 = require("./review-fetcher");
 const diagnostics_1 = require("./diagnostics");
+const panel_1 = require("./panel");
 let diagnosticCollection;
 let statusBar;
+let reviewPanel;
 // ── Status bar ──────────────────────────────────────────
 function createStatusBar() {
     const item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
@@ -83,8 +85,16 @@ function updateStatusBar(result, error, loading) {
         const runInfo = result.workflowRunUrl
             ? `\n\nWorkflow: ${result.workflowRunUrl}`
             : "";
+        let metaInfo = "";
+        if (result.reviewMeta?.reviewed_commit) {
+            metaInfo += `\nCommit: ${result.reviewMeta.reviewed_commit.slice(0, 7)}`;
+        }
+        if (result.reviewMeta?.updated_at) {
+            metaInfo += `\nUpdated: ${result.reviewMeta.updated_at}`;
+        }
         statusBar.tooltip =
             `PR #${result.pr.number}: ${result.pr.title}\n${count} suggestion(s) total, ${critical} high/critical` +
+                metaInfo +
                 runInfo;
         statusBar.backgroundColor = new vscode.ThemeColor("statusBarItem.warningBackground");
     }
@@ -164,6 +174,17 @@ function clearDiagnostics() {
     }
     vscode.window.showInformationMessage("AI PR Review: Diagnostics cleared.");
 }
+async function openPanel() {
+    if (!reviewPanel)
+        return;
+    if (lastReviewResult) {
+        await reviewPanel.show(lastReviewResult);
+    }
+    else {
+        await reviewPanel.showLoading();
+        await loadReview();
+    }
+}
 // ── Extension lifecycle ─────────────────────────────────
 function activate(context) {
     // Diagnostic collection
@@ -173,8 +194,11 @@ function activate(context) {
     statusBar = createStatusBar();
     statusBar.show();
     context.subscriptions.push(statusBar);
+    // Review panel provider
+    reviewPanel = new panel_1.ReviewPanelProvider(context.extensionUri, review_fetcher_1.fetchReview);
+    context.subscriptions.push(reviewPanel);
     // Commands
-    context.subscriptions.push(vscode.commands.registerCommand("ai-pr-review.refresh", loadReview), vscode.commands.registerCommand("ai-pr-review.loadReport", loadReportFile), vscode.commands.registerCommand("ai-pr-review.clearDiagnostics", clearDiagnostics));
+    context.subscriptions.push(vscode.commands.registerCommand("ai-pr-review.refresh", loadReview), vscode.commands.registerCommand("ai-pr-review.loadReport", loadReportFile), vscode.commands.registerCommand("ai-pr-review.clearDiagnostics", clearDiagnostics), vscode.commands.registerCommand("ai-pr-review.openPanel", () => openPanel()));
     // Auto-load on activation (after a short delay to let workspace settle)
     setTimeout(() => loadReview(), 500);
 }

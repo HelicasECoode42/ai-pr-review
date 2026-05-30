@@ -54,6 +54,73 @@ function normalizeSeverity(s) {
     }
     return "medium";
 }
+// ── Review meta parser ────────────────────────────────
+/**
+ * Parse the review meta table from the bot summary comment (markdown).
+ * Expected format:
+ * | 审查目标 Commit | - / [sha](url) / `sha` |
+ * | 触发事件 | - / `value` |
+ * | Workflow 运行 | - / [view run](url) |
+ * | 更新时间 | - / timestamp |
+ * | 审查模式 | ... |
+ */
+function parseReviewMeta(summaryMd) {
+    if (!summaryMd)
+        return null;
+    // Only look at the first 8 KB to avoid pathological input
+    const capped = summaryMd.slice(0, 8192);
+    const meta = {};
+    // Parse line-by-line: safer than regex while-loop, avoids ReDoS
+    const lines = capped.split("\n");
+    let parsed = 0;
+    const MAX_ROWS = 20;
+    for (const line of lines) {
+        const trimmed = line.trim();
+        // Match markdown table row: | key | value |
+        const m = trimmed.match(/^\|\s*(.+?)\s*\|\s*(.+?)\s*\|$/);
+        if (!m)
+            continue;
+        const key = m[1].trim();
+        const rawValue = m[2].trim();
+        if (rawValue === "-" || rawValue === "")
+            continue;
+        if (key.includes("Commit") || key.includes("提交")) {
+            const shaMatch = rawValue.match(/\[([a-f0-9]+)\]\(.+?\)/) ?? rawValue.match(/`([a-f0-9]+)`/);
+            meta.reviewed_commit = shaMatch ? shaMatch[1] : rawValue;
+        }
+        else if (key.includes("触发事件") || key.includes("Trigger")) {
+            meta.trigger_event = rawValue.replace(/`/g, "");
+        }
+        else if (key.includes("Workflow") || key.includes("运行")) {
+            const urlMatch = rawValue.match(/\[.+?\]\((.+?)\)/);
+            meta.workflow_run_url = urlMatch ? urlMatch[1] : rawValue;
+        }
+        else if (key.includes("更新时间") || key.includes("Updated")) {
+            meta.updated_at = rawValue;
+        }
+        else if (key.includes("审查模式") || key.includes("Review Mode")) {
+            meta.review_mode = rawValue.includes("增量") ? "incremental" : "full_pr";
+        }
+        parsed++;
+        if (parsed >= MAX_ROWS)
+            break;
+    }
+    // Return null if no fields were parsed
+    if (Object.keys(meta).length === 0)
+        return null;
+    return meta;
+}
+/** Extract risk level from summary markdown. */
+function parseRiskLevel(summaryMd) {
+    if (!summaryMd)
+        return null;
+    const m = summaryMd.match(/整体风险[|* ]+`?\*{0,2}(\w+)\*{0,2}`?/);
+    if (m)
+        return m[1].toUpperCase();
+    // Try English pattern
+    const en = summaryMd.match(/Risk[|* ]+`?\*{0,2}(\w+)\*{0,2}`?/i);
+    return en ? en[1].toUpperCase() : null;
+}
 // ── Main fetcher ───────────────────────────────────────
 /**
  * Full pipeline: detect branch → find PR → fetch review comments → parse.
@@ -86,6 +153,8 @@ async function fetchReview(cwd) {
         workflowStatus: run
             ? (run.conclusion ?? run.status)
             : null,
+        reviewMeta: parseReviewMeta(summary),
+        riskLevel: parseRiskLevel(summary),
     };
 }
 //# sourceMappingURL=review-fetcher.js.map

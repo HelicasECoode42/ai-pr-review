@@ -37,6 +37,14 @@ async function getCurrentBranch(cwd) {
         return null;
     }
 }
+/**
+ * Sanitize a branch name for safe interpolation into shell commands.
+ * Only allows characters valid in git branch names.
+ */
+function sanitizeBranch(branch) {
+    // Restrict to git-ref-safe characters: alphanumeric, dash, dot, underscore, slash
+    return branch.replace(/[^a-zA-Z0-9._/-]/g, "");
+}
 /** Parse remote URL into owner/repo. Handles both HTTPS and SSH remotes. */
 async function getRepoSlug(cwd) {
     try {
@@ -55,7 +63,7 @@ async function getRepoSlug(cwd) {
 /** Find the open PR for the current branch. Returns null if none. */
 async function getPRForBranch(branch, cwd) {
     // Search for PRs with this branch as head
-    const prs = await tryJson(`gh pr list --head "${branch}" --json number,title,state,url,headRefName,headRepositoryOwner --limit 1`, cwd);
+    const prs = await tryJson(`gh pr list --head "${sanitizeBranch(branch)}" --json number,title,state,url,headRefName,headRepositoryOwner --limit 1`, cwd);
     if (!prs || prs.length === 0)
         return null;
     const pr = prs[0];
@@ -100,7 +108,7 @@ async function getBotSummaryComment(owner, repo, prNumber, cwd) {
  * Get the latest AI PR Review workflow run status.
  */
 async function getLatestWorkflowRun(branch, cwd) {
-    const runs = await tryJson(`gh run list --workflow="ai-pr-review.yml" --branch="${branch}" --event=pull_request --limit=1 --json status,conclusion,url`, cwd) ?? [];
+    const runs = await tryJson(`gh run list --workflow="ai-pr-review.yml" --branch="${sanitizeBranch(branch)}" --event=pull_request --limit=1 --json status,conclusion,url`, cwd) ?? [];
     if (!runs || runs.length === 0)
         return null;
     const r = runs[0];
