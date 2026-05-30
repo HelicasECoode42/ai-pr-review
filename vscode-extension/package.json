@@ -5,6 +5,10 @@
   "version": "0.2.0",
   "publisher": "ai-pr-review-team",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/HelicasECoode42/ai-pr-review"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -29,17 +33,23 @@
       {
         "command": "ai-pr-review.clearDiagnostics",
         "title": "AI PR Review: Clear Diagnostics"
+      },
+      {
+        "command": "ai-pr-review.openPanel",
+        "title": "AI PR Review: Open Review Panel"
       }
     ]
   },
   "scripts": {
     "vscode:prepublish": "tsc -p ./",
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
     "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.9.1",
     "typescript": "^5.3.0"
   }
 }

@@ -9,9 +9,11 @@ import {
   getCollectionName,
   parseAndCreateDiagnostics,
 } from "./diagnostics";
+import { ReviewPanelProvider } from "./panel";
 
 let diagnosticCollection: vscode.DiagnosticCollection | undefined;
 let statusBar: vscode.StatusBarItem | undefined;
+let reviewPanel: ReviewPanelProvider | undefined;
 
 // ── Status bar ──────────────────────────────────────────
 
@@ -70,8 +72,16 @@ function updateStatusBar(
     const runInfo = result.workflowRunUrl
       ? `\n\nWorkflow: ${result.workflowRunUrl}`
       : "";
+    let metaInfo = "";
+    if (result.reviewMeta?.reviewed_commit) {
+      metaInfo += `\nCommit: ${result.reviewMeta.reviewed_commit.slice(0, 7)}`;
+    }
+    if (result.reviewMeta?.updated_at) {
+      metaInfo += `\nUpdated: ${result.reviewMeta.updated_at}`;
+    }
     statusBar.tooltip =
       `PR #${result.pr.number}: ${result.pr.title}\n${count} suggestion(s) total, ${critical} high/critical` +
+      metaInfo +
       runInfo;
     statusBar.backgroundColor = new vscode.ThemeColor(
       "statusBarItem.warningBackground",
@@ -171,6 +181,16 @@ function clearDiagnostics(): void {
   vscode.window.showInformationMessage("AI PR Review: Diagnostics cleared.");
 }
 
+async function openPanel(): Promise<void> {
+  if (!reviewPanel) return;
+  if (lastReviewResult) {
+    await reviewPanel.show(lastReviewResult);
+  } else {
+    await reviewPanel.showLoading();
+    await loadReview();
+  }
+}
+
 // ── Extension lifecycle ─────────────────────────────────
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -185,17 +205,16 @@ export function activate(context: vscode.ExtensionContext): void {
   statusBar.show();
   context.subscriptions.push(statusBar);
 
+  // Review panel provider
+  reviewPanel = new ReviewPanelProvider(context.extensionUri, fetchReview);
+  context.subscriptions.push(reviewPanel);
+
   // Commands
   context.subscriptions.push(
     vscode.commands.registerCommand("ai-pr-review.refresh", loadReview),
-    vscode.commands.registerCommand(
-      "ai-pr-review.loadReport",
-      loadReportFile,
-    ),
-    vscode.commands.registerCommand(
-      "ai-pr-review.clearDiagnostics",
-      clearDiagnostics,
-    ),
+    vscode.commands.registerCommand("ai-pr-review.loadReport", loadReportFile),
+    vscode.commands.registerCommand("ai-pr-review.clearDiagnostics", clearDiagnostics),
+    vscode.commands.registerCommand("ai-pr-review.openPanel", () => openPanel()),
   );
 
   // Auto-load on activation (after a short delay to let workspace settle)

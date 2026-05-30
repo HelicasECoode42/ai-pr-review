@@ -33,6 +33,20 @@ export interface CompletenessItem {
     status: "success" | "partial" | "failed" | "skipped";
     detail: string;
 }
+export interface ReviewMeta {
+    reviewed_commit?: string | null;
+    trigger_event?: string | null;
+    workflow_run_url?: string | null;
+    updated_at?: string | null;
+    review_mode?: string;
+}
+export interface FixTrackingItem {
+    previous_title: string;
+    file_path?: string | null;
+    previous_line?: number | null;
+    status: string;
+    detail: string;
+}
 export interface ReviewReport {
     pr: PullRequest;
     files: ChangedFile[];
@@ -52,4 +66,6 @@ export interface ReviewReport {
     degradation_reason?: string | null;
     report_confidence: string;
     completeness: CompletenessItem[];
+    review_meta?: ReviewMeta | null;
+    fix_tracking?: FixTrackingItem[];
 }
