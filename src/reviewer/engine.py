@@ -10,12 +10,14 @@ from src.analyzer.context_builder import build_review_context
 from src.analyzer.diff_parser import changed_line_map
 from src.models import (
     ChangedFile,
+    CompletenessItem,
     PullRequest,
     ReviewReport,
     ReviewSuggestion,
     RiskFinding,
     Severity,
     SkippedContextFile,
+    StepStatus,
 )
 from src.reviewer.prompt import SYSTEM_PROMPT, build_user_prompt
 from src.reviewer.provider import ProviderError, ReviewModelProvider
@@ -29,11 +31,106 @@ class ModelReviewPayload(BaseModel):
     suggestions: list[ReviewSuggestion]
 
 
+def _build_completeness(
+    pr: PullRequest,
+    files: list[ChangedFile],
+    skipped_ctx: list[SkippedContextFile],
+    ctx_truncated: bool,
+    used_ai: bool,
+    ai_failed: bool,
+) -> list[CompletenessItem]:
+    """Build analysis completeness items from review state."""
+    items: list[CompletenessItem] = []
+
+    # PR 元信息
+    pr_ok = bool(pr.repo and pr.repo != "unknown" and pr.number > 0)
+    items.append(CompletenessItem(
+        item="PR 元信息获取",
+        status=StepStatus.SUCCESS if pr_ok else StepStatus.FAILED,
+        detail="成功" if pr_ok else "GitHub API 获取 PR 信息失败",
+    ))
+
+    # 变更文件
+    files_ok = len(files) > 0
+    items.append(CompletenessItem(
+        item="变更文件获取",
+        status=StepStatus.SUCCESS if files_ok else StepStatus.FAILED,
+        detail=f"{len(files)} 个文件" if files_ok else "未获取到变更文件",
+    ))
+
+    # AI 上下文文件
+    skipped_count = len(skipped_ctx)
+    if skipped_count == 0:
+        items.append(CompletenessItem(
+            item="AI 上下文文件",
+            status=StepStatus.SUCCESS,
+            detail="全部文件进入上下文",
+        ))
+    elif skipped_count < len(files):
+        items.append(CompletenessItem(
+            item="AI 上下文文件",
+            status=StepStatus.PARTIAL,
+            detail=f"{skipped_count} 个文件跳过（lockfile / 生成内容）",
+        ))
+    else:
+        items.append(CompletenessItem(
+            item="AI 上下文文件",
+            status=StepStatus.FAILED,
+            detail="全部文件被跳过",
+        ))
+
+    # AI 分析
+    if used_ai and not ai_failed:
+        items.append(CompletenessItem(
+            item="AI 分析",
+            status=StepStatus.SUCCESS,
+            detail="成功",
+        ))
+    elif ai_failed:
+        items.append(CompletenessItem(
+            item="AI 分析",
+            status=StepStatus.FAILED,
+            detail="降级至规则扫描",
+        ))
+    else:
+        items.append(CompletenessItem(
+            item="AI 分析",
+            status=StepStatus.SKIPPED,
+            detail="未启用 AI",
+        ))
+
+    # 规则扫描
+    items.append(CompletenessItem(
+        item="规则扫描",
+        status=StepStatus.SUCCESS,
+        detail="成功",
+    ))
+
+    # Patch 上下文
+    if ctx_truncated:
+        items.append(CompletenessItem(
+            item="Patch 上下文",
+            status=StepStatus.PARTIAL,
+            detail="裁剪 — 超出 token 预算",
+        ))
+    else:
+        items.append(CompletenessItem(
+            item="Patch 上下文",
+            status=StepStatus.SUCCESS,
+            detail="完整",
+        ))
+
+    return items
+
+
 def build_rule_only_report(
     pr: PullRequest,
     files: list[ChangedFile],
     findings: list[RiskFinding],
     language: str = "en",
+    reviewer_version: str = "pr-branch",
+    execution_status: str = "success",
+    degradation_reason: str | None = None,
 ) -> ReviewReport:
     additions = sum(f.additions for f in files)
     deletions = sum(f.deletions for f in files)
@@ -60,6 +157,11 @@ def build_rule_only_report(
         )
         for finding in findings
     ]
+    completeness = _build_completeness(
+        pr=pr, files=files,
+        skipped_ctx=[], ctx_truncated=False,
+        used_ai=False, ai_failed=False,
+    )
     return ReviewReport(
         pr=pr,
         files=files,
@@ -68,6 +170,10 @@ def build_rule_only_report(
         rule_findings=findings,
         suggestions=suggestions,
         used_ai=False,
+        reviewer_version=reviewer_version,
+        execution_status=execution_status,
+        degradation_reason=degradation_reason,
+        completeness=completeness,
     )
 
 
@@ -113,6 +219,11 @@ def review_with_ai(
             warnings.append(
                 f"{len(skipped_ctx)} file(s) excluded from AI patch context: {skipped_names}"
             )
+        completeness = _build_completeness(
+            pr=pr, files=files,
+            skipped_ctx=skipped_ctx, ctx_truncated=ctx.truncated,
+            used_ai=True, ai_failed=False,
+        )
         return ReviewReport(
             pr=pr,
             files=files,
@@ -125,11 +236,22 @@ def review_with_ai(
             hidden_suggestions_count=hidden,
             context_truncated=ctx.truncated,
             skipped_context_files=skipped_ctx,
+            completeness=completeness,
         )
     except (ProviderError, ValueError) as exc:
         logger.warning("AI review failed, falling back to rule-only: %s", exc)
-        report = build_rule_only_report(pr, files, findings)
+        report = build_rule_only_report(pr, files, findings, language=language,
+                                        execution_status="degraded",
+                                        degradation_reason=f"AI 调用失败: {exc}")
         report.ai_failure_reason = str(exc)
+        report.used_ai = False
+        # Overwrite completeness: AI analysis failed
+        report.completeness = _build_completeness(
+            pr=pr, files=files,
+            skipped_ctx=report.skipped_context_files,
+            ctx_truncated=report.context_truncated,
+            used_ai=True, ai_failed=True,
+        )
         report.analysis_warnings = [
             f"AI review unavailable: {exc}. Showing rule-based analysis only."
         ]

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.models import ReviewReport, ReviewSuggestion, Severity
+from src.models import CompletenessItem, ReviewReport, ReviewSuggestion, Severity, StepStatus
 
 # ── Chinese rule text mappings ────────────────────────────
 
@@ -46,6 +46,140 @@ _SEVERITY_ZH: dict[Severity, str] = {
     Severity.LOW: "低",
 }
 
+_STEP_STATUS_ICON: dict[StepStatus, str] = {
+    StepStatus.SUCCESS: "✅",
+    StepStatus.PARTIAL: "⚠️",
+    StepStatus.FAILED: "❌",
+    StepStatus.SKIPPED: "➖",
+}
+
+# Step/item name zh→en mapping for completeness table
+_COMPLETENESS_ITEM_ZH: dict[str, str] = {
+    "PR 元信息获取": "PR metadata fetch",
+    "变更文件获取": "Changed files fetch",
+    "AI 上下文文件": "AI context files",
+    "AI 分析": "AI analysis",
+    "规则扫描": "Rule scan",
+    "Patch 上下文": "Patch context",
+}
+
+_COMPLETENESS_STATUS_ZH: dict[StepStatus, str] = {
+    StepStatus.SUCCESS: "成功",
+    StepStatus.PARTIAL: "部分",
+    StepStatus.FAILED: "失败",
+    StepStatus.SKIPPED: "跳过",
+}
+
+_COMPLETENESS_DETAIL_ZH: dict[str, str] = {
+    "成功": "Success",
+    "完整": "Complete",
+    "全部文件进入上下文": "All files included in context",
+    "文件跳过（lockfile / 生成内容）": "files skipped (lockfile / generated content)",
+    "文件被跳过": "files skipped",
+    "全部文件被跳过": "All files skipped",
+    "未获取到变更文件": "No changed files retrieved",
+    "降级至规则扫描": "Degraded to rule-only",
+    "未启用 AI": "AI not enabled",
+    "GitHub API 获取 PR 信息失败": "GitHub API failed to fetch PR info",
+    "裁剪 — 超出 token 预算": "Truncated — exceeded token budget",
+    "个文件": "file(s)",
+    "个文件跳过（lockfile / 生成内容）": "file(s) skipped (lockfile / generated content)",
+}
+
+
+def _render_completeness_detail(detail: str, zh: bool) -> str:
+    """Translate completeness detail text for non-Chinese output."""
+    if zh:
+        return detail
+    import re
+    # Handle numeric patterns with Chinese suffixes
+    match = re.match(r"(\d+) 个文件跳过（lockfile / 生成内容）", detail)
+    if match:
+        return f"{match.group(1)} file(s) skipped (lockfile / generated content)"
+    match = re.match(r"(\d+) 个文件$", detail)
+    if match:
+        return f"{match.group(1)} file(s)"
+    return _COMPLETENESS_DETAIL_ZH.get(detail, detail)
+
+
+def _render_run_status(report: ReviewReport, T: _Translator, zh: bool) -> list[str]:
+    """Render the run-status section lines."""
+    lines: list[str] = []
+    lines.append(f"## {T.t('运行状态')}")
+    lines.append("")
+
+    # Reviewer version display
+    if report.reviewer_version == "main-fallback":
+        version_display = f"main fallback ⚠️" if zh else f"main fallback ⚠️"
+    else:
+        version_display = "PR 分支" if zh else "PR branch"
+
+    status_display = T.t("成功") if report.execution_status == "success" else T.t("降级")
+    if report.execution_status != "success":
+        status_display = f"⚠️ {status_display}"
+
+    lines.append(f"| {T.t('字段')} | {T.t('值')} |")
+    lines.append("|---|---|")
+    lines.append(f"| {T.t('评审执行版本')} | {version_display} |")
+    lines.append(f"| {T.t('执行状态')} | {status_display} |")
+
+    if report.degradation_reason:
+        reason_display = report.degradation_reason
+        if not zh:
+            # Translate common Chinese degradation reasons
+            if "AI 调用失败" in reason_display:
+                reason_display = reason_display.replace("AI 调用失败", "AI call failed")
+        lines.append(f"| {T.t('降级原因')} | {reason_display} |")
+
+    # Confidence hint
+    if report.execution_status == "degraded":
+        if zh:
+            confidence = "可用于评审 PR diff，但不代表 PR 版 reviewer 可正常运行"
+        else:
+            confidence = "Valid for reviewing PR diff, but does not guarantee the PR-branch reviewer is healthy"
+    elif report.reviewer_version == "main-fallback":
+        if zh:
+            confidence = "使用 main 分支稳定版 reviewer，结果可信但不含 PR 分支的新增能力"
+        else:
+            confidence = "Using main-branch stable reviewer; results are trustworthy but lack PR-branch capabilities"
+    else:
+        if zh:
+            confidence = "正常评审，报告完整可信"
+        else:
+            confidence = "Normal review; report is complete and trustworthy"
+    lines.append(f"| {T.t('报告可信度')} | {confidence} |")
+    lines.append("")
+    return lines
+
+
+def _render_completeness(report: ReviewReport, T: _Translator, zh: bool) -> list[str]:
+    """Render the analysis completeness section lines."""
+    lines: list[str] = []
+    lines.append(f"## {T.t('分析完整性')}")
+    lines.append("")
+
+    lines.append(f"| {T.t('项目')} | {T.t('状态')} | {T.t('备注')} |")
+    lines.append("|---|---|---|")
+
+    for item in report.completeness:
+        icon = _STEP_STATUS_ICON.get(item.status, "")
+        if zh:
+            status_label = _COMPLETENESS_STATUS_ZH.get(item.status, item.status.value)
+        else:
+            status_label = item.status.value.capitalize()
+        status_display = f"{icon} {status_label}"
+
+        detail_display = _render_completeness_detail(item.detail, zh)
+
+        item_name = item.item
+        if not zh:
+            item_name = _COMPLETENESS_ITEM_ZH.get(item.item, item.item)
+
+        lines.append(f"| {item_name} | {status_display} | {detail_display} |")
+
+    lines.append("")
+    return lines
+
 
 def render_markdown(report: ReviewReport, language: str = "en") -> str:
     zh = language == "zh"
@@ -55,7 +189,13 @@ def render_markdown(report: ReviewReport, language: str = "en") -> str:
     if not zh:
         title_line = f"# AI PR Review: {report.pr.repo}#{report.pr.number}"
 
-    lines = [title_line, "", f"## {T.t('PR 概览')}", ""]
+    lines = [title_line, ""]
+
+    # ── Stage 15: run status & analysis completeness ──
+    lines.extend(_render_run_status(report, T, zh))
+    lines.extend(_render_completeness(report, T, zh))
+
+    lines.extend([f"## {T.t('PR 概览')}", ""])
 
     additions = sum(f.additions for f in report.files)
     deletions = sum(f.deletions for f in report.files)
@@ -240,6 +380,8 @@ class _Translator:
         self._zh = zh
         self._map: dict[str, str] = {
             # section headers
+            "运行状态": "Run Status",
+            "分析完整性": "Analysis Completeness",
             "PR 概览": "PR Overview",
             "风险统计": "Risk Summary",
             "变更总结": "Executive Summary",
@@ -250,6 +392,15 @@ class _Translator:
             # table fields
             "字段": "Field",
             "值": "Value",
+            "评审执行版本": "Reviewer Version",
+            "执行状态": "Execution Status",
+            "降级原因": "Degradation Reason",
+            "报告可信度": "Report Confidence",
+            "项目": "Item",
+            "状态": "Status",
+            "备注": "Note",
+            "成功": "Success",
+            "降级": "Degraded",
             "仓库": "Repository",
             "标题": "Title",
             "作者": "Author",
