@@ -322,7 +322,8 @@ def _filter_suggestions(
 ) -> list[ReviewSuggestion]:
     changed_lines = changed_line_map(files)
     filtered: list[ReviewSuggestion] = []
-    seen: set[tuple[str, int | None, str]] = set()
+    seen_exact: set[tuple[str, int | None, str]] = set()
+    seen_reason_prefix: set[tuple[str, int | None, str]] = set()
     per_file_count: dict[str, int] = {}
 
     for suggestion in suggestions:
@@ -334,13 +335,21 @@ def _filter_suggestions(
         if suggestion.line is not None:
             if suggestion.line not in changed_lines.get(suggestion.file_path, set()):
                 continue
-        key = (suggestion.file_path, suggestion.line, suggestion.title.lower())
-        if key in seen:
+        # Exact dedup: same file + line + title
+        exact_key = (suggestion.file_path, suggestion.line, suggestion.title.lower())
+        if exact_key in seen_exact:
             continue
+        # Fuzzy dedup: same file + line + similar reason prefix (>20 chars)
+        reason_prefix = suggestion.reason.strip().lower()[:40]
+        if suggestion.line is not None and len(reason_prefix) >= 15:
+            reason_key = (suggestion.file_path, suggestion.line, reason_prefix)
+            if reason_key in seen_reason_prefix:
+                continue
+            seen_reason_prefix.add(reason_key)
         # Enforce per-file cap
         if per_file_count.get(suggestion.file_path, 0) >= max_suggestions_per_file:
             continue
-        seen.add(key)
+        seen_exact.add(exact_key)
         try:
             Severity(suggestion.severity)
         except ValueError:
