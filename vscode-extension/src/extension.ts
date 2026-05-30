@@ -35,7 +35,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
         const fileUri = uris[0];
         const raw = await vscode.workspace.fs.readFile(fileUri);
-        const json = Buffer.from(raw).toString("utf-8");
+        const json = new TextDecoder("utf-8").decode(raw);
 
         const result = parseAndCreateDiagnostics(json);
         if (result instanceof Error) {
@@ -52,9 +52,15 @@ export function activate(context: vscode.ExtensionContext): void {
         let total = 0;
         for (const diags of result.values()) total += diags.length;
 
-        vscode.window.showInformationMessage(
-          `AI PR Review: Loaded ${total} suggestion(s) from ${vscode.workspace.asRelativePath(fileUri)}`,
-        );
+        if (total === 0) {
+          vscode.window.showInformationMessage(
+            `AI PR Review: No suggestions found in ${vscode.workspace.asRelativePath(fileUri)}`,
+          );
+        } else {
+          vscode.window.showInformationMessage(
+            `AI PR Review: Loaded ${total} suggestion(s) from ${vscode.workspace.asRelativePath(fileUri)}`,
+          );
+        }
       } catch (err: unknown) {
         vscode.window.showErrorMessage(
           `AI PR Review: Unexpected error — ${err instanceof Error ? err.message : String(err)}`,

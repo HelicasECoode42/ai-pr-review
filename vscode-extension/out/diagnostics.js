@@ -36,6 +36,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.parseAndCreateDiagnostics = parseAndCreateDiagnostics;
 exports.applyDiagnostics = applyDiagnostics;
 exports.getCollectionName = getCollectionName;
+const path = __importStar(require("path"));
 const vscode = __importStar(require("vscode"));
 const DIAGNOSTIC_COLLECTION = "ai-pr-review";
 /**
@@ -75,17 +76,14 @@ function suggestionToDiagnostic(suggestion, documentUri) {
     let range;
     if (suggestion.line !== null && suggestion.line > 0) {
         const lineIdx = suggestion.line - 1; // GitHub lines are 1-based
-        range = new vscode.Range(lineIdx, 0, lineIdx, Number.MAX_SAFE_INTEGER);
+        range = new vscode.Range(lineIdx, 0, lineIdx, 1000);
     }
     else {
         range = new vscode.Range(0, 0, 0, 0);
     }
     const diagnostic = new vscode.Diagnostic(range, message, severity);
     diagnostic.source = "AI PR Review";
-    diagnostic.code = {
-        value: suggestion.title.slice(0, 50),
-        target: vscode.Uri.parse(`https://github.com/ai-pr-review/suggestion?title=${encodeURIComponent(suggestion.title)}`),
-    };
+    diagnostic.code = suggestion.title.slice(0, 50);
     return diagnostic;
 }
 /**
@@ -106,9 +104,13 @@ function parseAndCreateDiagnostics(json) {
     const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
     const root = workspaceFolders.length > 0 ? workspaceFolders[0].uri : undefined;
     for (const s of report.suggestions) {
-        // Try to resolve the file path relative to workspace root
+        // Resolve file path: absolute paths are used directly;
+        // relative paths are joined against workspace root.
         let fileUri;
-        if (root) {
+        if (path.isAbsolute(s.file_path)) {
+            fileUri = vscode.Uri.file(s.file_path);
+        }
+        else if (root) {
             fileUri = vscode.Uri.joinPath(root, s.file_path);
         }
         else {
