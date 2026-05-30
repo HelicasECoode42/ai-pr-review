@@ -44,7 +44,12 @@ function getWebviewHtml(result, webview) {
     function esc(s) {
         if (!s)
             return "-";
-        return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        return s
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/'/g, "&#39;")
+            .replace(/`/g, "&#96;");
     }
     function formatMetaRow(label, value) {
         return `<tr><td class="label">${label}</td><td>${value}</td></tr>`;
@@ -230,7 +235,7 @@ class ReviewPanelProvider {
                         break;
                     }
                     case "openPr": {
-                        if (result?.pr?.url) {
+                        if (result?.pr?.url && /^https?:\/\//i.test(result.pr.url)) {
                             vscode.env.openExternal(vscode.Uri.parse(result.pr.url));
                         }
                         break;
