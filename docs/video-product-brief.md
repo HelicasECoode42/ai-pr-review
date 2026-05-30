@@ -1,568 +1,295 @@
-# AI PR Review 视频制作 Brief
+# AI PR Review 视频口播与剪辑文档
 
 ## 一句话定位
 
-AI PR Review 是一个面向开发团队的智能代码审查助手。它从 GitHub Pull Request 或本地 Git 变更中自动读取 diff，结合规则扫描和大模型分析，生成可读、可信、可点击、可追溯的代码审查报告，并逐步扩展到 GitHub、IDE、Web 等多平台使用场景。
+AI PR Review Assistant 是一个面向 Pull Request 生命周期的智能代码审查助手。它会自动读取 GitHub PR diff，结合本地风险规则和大模型分析生成结构化 Review 报告，并把结果同步到 GitHub、Web Console 和 VS Code IDE，让开发者能从报告直接回到代码现场。
 
 ## 视频主旨
 
 视频要表达的不是“我们做了一个会写 Markdown 的 AI 工具”，而是：
 
-> 让代码审查从被动翻 diff，变成自动发现风险、定位代码、解释原因、辅助修复的协作流程。
+> AI PR Review 把代码审查从人工翻 diff，升级为自动整理上下文、发现风险、解释原因、定位代码、辅助修复的工程流程。
 
-当前版本已经能在 GitHub Workflow 中自动运行，生成中文 AI Review 报告。马上要实现的目标是让报告和代码强联动：点击报告即可跳到对应代码行，高置信度问题可以自动出现在 PR 代码旁边。最终形态是 IDE 内直接集成，开发者 pull 或切换分支后即可触发 AI 审查，在编辑器里看到问题、定位代码、处理建议。
+最终观众需要记住三件事：
 
-## 目标观感
+1. 它能自动审查 GitHub PR。
+2. 它不只输出总结，还会给出风险等级、代码位置、原因和建议。
+3. 它能通过 Web 和 VS Code 插件把结果带回开发者使用场景。
 
-整体风格应当是专业、可信、工程感强，但不要做成冰冷的系统监控界面。它应该像一个成熟开发工具的产品演示：清晰、有节奏、有问题驱动，有“从混乱到清楚”的变化。
+## 推荐视频结构
 
-推荐关键词：
-
-- 自动化
-- 可信
-- 可追溯
-- 代码联动
-- 多平台
-- 开发者效率
-- 团队协作
-
-不建议的表达：
-
-- 不要把它包装成“AI 替代人工 Code Review”
-- 不要只强调炫酷大模型
-- 不要做成单纯聊天机器人
-- 不要把界面做得像营销页，重点应在真实开发流程
-
-## 当前已经具备的能力
-
-### 1. GitHub PR 自动审查
-
-当前系统可以在 GitHub Actions 中运行。当 Pull Request 创建、更新或重新打开时，Workflow 自动触发 AI PR Review。
-
-画面建议：
-
-- GitHub PR 页面出现一个新的 Pull Request
-- Actions 自动开始运行 “AI PR Review”
-- 屏幕上展示流程：
-
-```text
-GitHub API
-→ Diff Parser
-→ Risk Rules
-→ Context Builder
-→ LLM Review
-→ Filter
-→ Report
-```
-
-视频旁白可说：
-
-> 当团队提交 PR 后，系统会自动读取 PR 元信息和代码 diff，先用本地规则扫描高风险信号，再把受控上下文交给大模型分析，最终生成结构化审查报告。
-
-### 2. 规则扫描 + AI 审查双层机制
-
-系统不是直接把整个 PR 扔给模型，而是先进行规则预筛，再构建精简上下文，最后由 AI 生成结构化建议。
-
-画面建议：
-
-- 左侧是 PR diff
-- 中间浮现规则命中：SQL 拼接、异常吞掉、敏感信息日志、测试跳过等
-- 右侧生成 AI 建议卡片：严重程度、位置、原因、修复建议、置信度
-
-旁白可说：
-
-> 它不是让 AI 自由发挥，而是用规则先缩小范围，再让模型围绕真实变更和风险证据进行分析，减少误报。
-
-### 3. 中文结构化报告
-
-当前报告包含：
-
-- PR 概览
-- 风险统计
-- 变更总结
-- 文件变更
-- 评审建议
-- 规则扫描结果
-- 分析备注
-
-画面建议：
-
-- 展示一份 Markdown 报告
-- 镜头扫过“整体风险”“是否使用 AI”“评审建议”“规则扫描结果”
-- 高亮一条建议，例如：
-  - 位置：`src/engine.py:104`
-  - 严重程度：HIGH
-  - 原因：异常被吞掉，可能隐藏线上故障
-  - 建议：记录上下文并重新抛出或返回明确错误
-
-旁白可说：
-
-> 审查结果不是一段泛泛的总结，而是按风险等级、代码位置、原因和修复建议组织好的结构化报告。
-
-### 4. 失败时降级，而不是静默崩溃
-
-当前项目已经开始处理 GitHub API 失败、AI 不可用、导入错误等情况。后续会继续增强 workflow 可靠性。
-
-画面建议：
-
-- 一开始展示传统失败状态：Actions 日志里一堆 traceback，开发者困惑
-- 然后切到 AI PR Review 的降级报告：明确写出失败原因、是否使用 AI、哪些分析完成了
-
-旁白可说：
-
-> 即使模型不可用、API 限流、或者 PR 修改了审查工具自身，系统也会尽量生成可读的降级报告，而不是只留下一段难懂的日志。
-
-## 马上准备实现的能力
-
-### 1. 报告顶部显示运行状态
-
-目标是让用户一打开报告就知道：这份报告是否完整、是否降级、是否可信。
-
-建议画面文字：
-
-```markdown
-## 运行状态
-
-| 字段 | 值 |
-|------|-----|
-| 评审执行版本 | PR 分支 |
-| 执行状态 | 成功 |
-| 报告可信度 | 可用于评审当前 PR diff |
-```
-
-如果发生降级：
-
-```markdown
-| 执行状态 | main fallback |
-| 降级原因 | PR 分支 reviewer 启动失败 |
-| 报告可信度 | 可用于评审 PR diff，但不能代表 PR 版 reviewer 可运行 |
-```
-
-视频表达重点：
-
-> 用户不需要猜“0 条建议”到底是真的没问题，还是系统没跑起来。报告会明确告诉用户分析是否完整。
-
-### 2. 分析完整性声明
-
-目标是说明每个分析环节有没有成功。
-
-建议画面文字：
-
-```markdown
-## 分析完整性
-
-| 项目 | 状态 | 备注 |
-|------|------|------|
-| PR 元信息获取 | 成功 | |
-| 变更文件获取 | 成功 | 11 个文件 |
-| AI 上下文文件 | 部分 | 1 个 lockfile 跳过 |
-| AI 分析 | 成功 | |
-| 规则扫描 | 成功 | 12 条命中 |
-| Patch 上下文 | 裁剪 | 超出 token 预算 |
-```
-
-画面建议：
-
-- 用一张状态表展示绿色成功、黄色部分、红色失败
-- 不需要太花，像 GitHub Checks 或 CI Summary 一样清晰即可
-
-### 3. Markdown 报告和代码链接打通
-
-当前报告里的代码位置还是纯文本：
-
-```text
-src/engine.py:104
-```
-
-马上要升级为可点击链接：
-
-```text
-src/engine.py:104 → GitHub 对应代码行
-```
-
-技术上会保存 PR 的 `head_sha`，从而构造：
-
-```text
-https://github.com/owner/repo/blob/<head_sha>/src/engine.py#L104
-```
-
-画面建议：
-
-- 鼠标停在报告中的 `src/engine.py:104`
-- 点击
-- 页面跳转到 GitHub 对应文件和行号
-- 代码行高亮
-
-旁白可说：
-
-> 报告不再是孤立文本。每一条建议都能回到真实代码现场。
-
-### 4. 自动发布 GitHub 行级 Review Comment
-
-高置信度建议会直接出现在 GitHub Files Changed 的代码旁边。
-
-策略建议：
-
-- 只自动发布高置信度建议，例如 confidence ≥ 0.85
-- 严重程度优先 HIGH / CRITICAL
-- 低置信度建议仍放在 summary 报告中，避免刷屏
-
-画面建议：
-
-- GitHub PR Files Changed 页面
-- 某一行代码旁边出现 AI Review Comment
-- 评论内容包括：
-  - 严重程度
-  - 问题原因
-  - 修复建议
-
-旁白可说：
-
-> 高信号问题会直接出现在代码旁边，审查者不用在报告和 diff 之间来回定位。
-
-### 5. PR Summary Comment 升级
-
-PR 讨论区会有一个自动更新的 AI Review 摘要评论。
-
-建议展示内容：
-
-- 当前运行状态
-- 总体风险等级
-- 高信号建议数量
-- 可点击文件链接
-- 完整报告 artifact 链接
-
-画面建议：
-
-- PR Conversation 页面
-- Bot 评论自动更新，而不是每次新增一条刷屏
-- 表格展示高风险建议
-
-## 最终期望形态
-
-### 1. 多平台统一审查引擎
-
-最终产品不只是 GitHub Action，而是一个平台无关的 Review Engine。
-
-核心引擎负责：
-
-- 解析 diff
-- 扫描风险规则
-- 构造模型上下文
-- 调用 AI
-- 过滤低质量建议
-- 输出结构化报告
-
-不同平台只是入口不同：
-
-```text
-GitHub Action
-GitHub App
-IDE 插件
-Web Dashboard
-本地 CLI
-        ↓
-统一 Review Engine
-        ↓
-Markdown / JSON / Review Comments / IDE Diagnostics
-```
-
-画面建议：
-
-- 中间是 “AI Review Engine”
-- 左侧多个入口：GitHub、IDE、CLI、Web
-- 右侧多个输出：报告、代码评论、IDE 诊断、团队仪表盘
-
-### 2. IDE 内集成
-
-这是视频里可以作为“未来最终风格”重点展示的画面。
-
-目标体验：
-
-1. 开发者在 IDE 中 pull 最新代码或切换到 PR 分支
-2. 插件检测到当前分支和 base 分支差异
-3. 用户点击 “Run AI Review”，或开启 pull 后自动审查
-4. AI 审查报告在 IDE 侧边栏弹出
-5. 点击建议后跳到本地代码对应行
-6. 用户可以直接修改代码、重新运行审查
-
-画面建议：
-
-- VS Code / JetBrains 风格界面
-- 左侧文件树
-- 中间代码编辑器
-- 右侧 AI PR Review 面板
-- 面板中有建议列表：
-
-```text
-HIGH  src/auth/session.py:88
-异常被吞掉，可能导致登录失败时没有可观测日志
-
-建议：记录 user_id、错误类型，并返回明确错误状态
-```
-
-交互画面：
-
-- 点击建议卡片
-- 编辑器跳转到对应文件和行
-- 对应代码行轻微高亮
-- 下方显示“原因”和“建议修复”
-
-旁白可说：
-
-> 最终，审查不再只发生在 PR 页面。开发者在 IDE 里 pull 下代码后，就能直接看到 AI 审查结果，并跳转到本地代码处理问题。
-
-### 3. 本地 diff 审查
-
-最终不必等 PR 创建后才审查。用户本地分支也可以直接运行。
-
-目标命令形态：
-
-```bash
-ai-pr-review local --base origin/main --head HEAD
-```
-
-IDE 插件背后也可以调用这个能力。
-
-画面建议：
-
-- 开发者本地修改代码
-- 尚未 push
-- 点击 “Review Current Branch”
-- IDE 弹出本地审查结果
-
-旁白可说：
-
-> 问题可以在提交 PR 前被发现，而不是等到 CI 或人工 Review 后才暴露。
-
-### 4. GitHub App / 服务化
-
-长期产品级方案是服务端稳定运行，而不是每次都执行 PR 分支里的 reviewer 代码。
-
-画面建议：
-
-- GitHub webhook 触发
-- 后端服务接收 PR 事件
-- 服务端拉取 diff
-- 生成报告并发布 comment
-
-旁白可说：
-
-> 服务化之后，审查器本身不再受 PR 分支代码影响，凭证、日志、规则和模型配置也可以集中管理。
-
-## 视频推荐结构
-
-### 第一段：痛点
+### 0. 开场：痛点，15-20 秒
 
 画面：
 
-- 开发者打开一个大 PR
-- 文件很多，diff 很长
-- Actions 失败时只有 traceback
-- Markdown 报告里的位置不能点击
-- 人工在 IDE 和 GitHub 之间反复查找代码
+- 一个文件很多、diff 很长的 PR。
+- 开发者在 GitHub diff、报告、VS Code 之间来回切换。
+- 简单出现风险示例：异常吞掉、敏感日志、测试绕过、workflow 修改。
 
-旁白重点：
+口播：
 
-> 大 PR 难看，风险容易漏，自动化工具能跑但不一定可靠。很多报告只是文本，不能回到代码现场。
+> 大型 Pull Request 往往文件多、上下文长，人工审查需要先理解变更，再定位风险，还要在 GitHub 和 IDE 之间来回切换。AI PR Review Assistant 的目标不是替代审查者，而是自动整理上下文、发现高风险变更，并把问题定位回代码现场。
 
-### 第二段：当前 MVP
+### 1. Web Console：快速审查任意 PR，45-60 秒
 
 画面：
 
-- GitHub PR 创建
-- GitHub Action 自动运行
-- 生成 AI PR Review 报告
-- 报告展示风险统计、变更总结、评审建议
+1. 打开 Web Console。
+2. 粘贴 GitHub PR URL。
+3. 点击 Analyze。
+4. 展示顶部指标：Risk、Files、+/-、AI、Confidence、Duration。
+5. 切换 Suggestions、Completeness、Report。
+6. 展示复制建议、下载 JSON、打开 GitHub PR。
 
-旁白重点：
+口播：
 
-> 当前版本已经完成从 PR diff 到 AI 审查报告的基本链路。
+> 第一种入口是 Web Console。用户只需要粘贴 GitHub PR URL，系统会自动解析仓库和 PR 编号，获取 PR 元信息和变更文件。分析完成后，页面会展示整体风险、文件数量、增删行、AI 是否启用、报告可信度和耗时。
+>
+> 在 Suggestions 里可以看到按严重程度组织的 Review 建议；Completeness 会说明 PR 数据、规则扫描、AI 分析、上下文是否完整；Report 则保留完整 Markdown 报告。这个入口适合评委、队友或不使用 IDE 插件的用户快速体验任意 PR。
 
-### 第三段：马上升级
-
-画面：
-
-- 报告顶部新增运行状态
-- 分析完整性表格
-- 点击报告位置跳转 GitHub 代码行
-- 高置信度建议发布到 GitHub 行级评论
-
-旁白重点：
-
-> 下一步，我们把报告从“能看”升级成“可信、可点击、可追溯”。
-
-### 第四段：最终形态
-
-画面：
-
-- IDE 内 AI Review 面板
-- pull 后提示运行审查
-- 点击建议跳转本地代码
-- GitHub / IDE / Web 共享同一个 Review Engine
-
-旁白重点：
-
-> 最终，它会成为跨平台的代码审查助手，让团队在 PR 页面、IDE 和本地开发流程中都能获得一致的审查体验。
-
-### 第五段：收束
-
-建议收束文案：
-
-> AI PR Review 的目标不是替代审查者，而是把重复定位、风险预筛和上下文整理交给系统，让开发者把注意力放在真正需要判断的代码设计和业务风险上。
-
-## 可展示的界面元素
-
-### GitHub Workflow
-
-- Actions 列表中出现 “AI PR Review”
-- 步骤包括：
-  - Install dependencies
-  - Syntax and encoding check
-  - Run AI PR Review
-  - Upload report
-  - Post summary comment
-
-### Markdown 报告
-
-重点展示：
-
-- `AI PR Review 报告`
-- `PR 概览`
-- `运行状态`
-- `分析完整性`
-- `风险统计`
-- `评审建议`
-- `规则扫描结果`
-
-### GitHub PR Comment
-
-重点展示：
-
-- 总体风险
-- 高信号建议数量
-- 可点击文件位置
-- 完整报告链接
-
-### GitHub 行级评论
-
-重点展示：
-
-- 评论出现在代码旁边
-- 内容短而有证据
-- 不要密密麻麻刷屏
-
-### IDE 插件
-
-建议面板结构：
+字幕关键词：
 
 ```text
-AI PR Review
-
-Overall Risk: HIGH
-Files Changed: 11
-Suggestions: 5
-
-[HIGH] src/auth/session.py:88
-异常被吞掉，可能导致登录失败时无日志
-
-[MEDIUM] src/db/query.py:42
-SQL 字符串拼接存在注入风险
-
-[LOW] tests/test_api.py:13
-测试跳过需要说明原因
+Paste PR URL
+Risk Overview
+Suggestions
+Completeness
+Markdown Report
+JSON Export
 ```
 
-交互按钮：
+### 2. GitHub Actions：团队 PR 自动审查，60-75 秒
 
-- Run Review
-- Open in GitHub
-- Copy Comment
-- Mark Resolved
-- Re-run
+画面：
 
-## 视觉风格建议
+1. 打开 GitHub PR。
+2. 展示 Actions 中的 `AI PR Review` workflow。
+3. 展示 PR conversation 中的 AI Review summary comment。
+4. 展示报告中的：
+   - 审查元信息
+   - 运行状态
+   - 分析完整性
+   - PR 概览
+   - 风险统计
+   - 评审建议
+5. 如果有 inline comment，切到 Files Changed 展示代码旁边的 AI Review comment。
 
-### 色彩
+口播：
 
-推荐使用偏开发工具的中性色底：
-
-- 背景：深灰或浅灰均可
-- 主色：蓝 / 青绿色，用于 AI Review 状态和链接
-- 风险色：
-  - Critical：红色
-  - High：橙红
-  - Medium：黄色
-  - Low：蓝灰或绿色
-
-避免：
-
-- 过度霓虹
-- 大面积紫色渐变
-- 过度科幻化
-- 像营销 SaaS 首页一样的大标题堆叠
-
-### 动效
-
-推荐动效：
-
-- diff 行轻微高亮
-- 风险卡片逐条出现
-- 从报告位置连线到代码行
-- GitHub、IDE、Web 三个平台汇入同一个 Review Engine
-
-避免：
-
-- 太多粒子特效
-- 夸张机器人形象
-- 复杂难读的动态图表
-
-### 字体和信息密度
-
-视频中代码和报告文字要大，宁可少展示几条，也不要把整份报告缩得看不清。
-
-每个镜头只强调一个信息点：
-
-- 自动触发
-- 规则扫描
-- AI 建议
-- 运行状态
-- 可点击链接
-- IDE 跳转
-- 多平台统一
-
-## 推荐旁白版本
-
-### 版本 A：简洁产品版
-
-> 大型 Pull Request 往往文件多、上下文复杂，人工审查很容易漏掉高风险变更。AI PR Review 会在 PR 创建后自动读取 diff，结合本地规则和大模型分析，生成结构化审查报告。
+> 第二种入口是 GitHub Actions。PR 创建或更新后，workflow 会自动运行。它使用稳定的 base 分支 reviewer 来分析 PR diff，即使 PR 修改了审查器自身，也尽量生成可读报告。
 >
-> 它会告诉你变更影响了哪些文件，整体风险等级是什么，哪些代码行可能存在安全、异常处理、数据一致性或测试覆盖问题。
+> 报告顶部会记录审查目标 commit、触发事件、workflow run URL 和更新时间，保证结果可追溯。运行状态和分析完整性会告诉审查者：这份报告是完整分析、降级分析，还是部分上下文被裁剪。
 >
-> 下一步，报告将不再是孤立文本。每一条建议都可以点击跳转到对应代码行，高置信度问题也可以自动发布到 GitHub Files Changed 的行级评论中。
->
-> 最终，AI PR Review 会扩展到 IDE。开发者 pull 下代码后，可以直接在编辑器里运行审查，查看建议，跳转到本地代码并完成修复。
->
-> 它不是替代人工 Review，而是提前整理上下文、发现风险、定位问题，让团队把精力放在真正需要判断的地方。
+> 对于高置信、带行号的问题，系统会发布 GitHub inline review comments；低置信或需要人工判断的内容保留在 summary report 中，避免刷屏。
 
-### 版本 B：偏技术演示版
+字幕关键词：
 
-> 当前系统已经完成 GitHub API 到 AI Review 报告的完整 MVP 链路：获取 PR diff，解析变更行，执行风险规则扫描，构造模型上下文，生成结构化建议，并通过本地过滤控制误报。
+```text
+Auto Review on PR
+ReviewMeta
+Completeness
+High-confidence Inline Comment
+Fallback instead of Silent Failure
+```
+
+### 3. VS Code 插件：回到本地代码处理问题，60-75 秒
+
+画面：
+
+1. VS Code 打开项目仓库。
+2. 状态栏显示 `AI Review: loading / clean / N issues`。
+3. 打开 Problems 面板，展示 AI Review diagnostics。
+4. 点击 Problems 中的一条建议，跳到本地文件行。
+5. 点击状态栏或命令 `AI PR Review: Open Review Panel`。
+6. 展示 Review Panel：
+   - 左侧 inline suggestions。
+   - `Open Code` 按钮。
+   - 文件路径可点击。
+   - 右侧完整 Markdown summary report。
+7. 如果有建议，展示 CodeLens：`AI Review: HIGH 92% - ...`。
+
+口播：
+
+> 第三种入口是 VS Code 插件。插件会根据当前 git 分支查找对应的 open PR，从 GitHub 拉取 AI Review 结果，并映射为本地 IDE 里的 Problems、Review Panel 和 CodeLens。
 >
-> 接下来，我们会重点增强三个方向：第一，Workflow 可靠性，保证失败时也能生成可读的降级报告；第二，报告可信度，在顶部展示运行状态和分析完整性；第三，代码联动，让报告中的文件位置可以直接跳转到 GitHub 代码行，并支持自动发布高置信度 Review Comment。
+> 开发者不用在报告和代码之间来回搜索。点击 Problems、Panel 里的 Open Code，或者代码上方的 CodeLens，就能直接跳到本地文件和对应行。这样 GitHub 上产生的 Review 结果，会回到开发者真正修代码的地方。
+
+字幕关键词：
+
+```text
+VSIX Extension
+Problems Diagnostics
+Review Panel
+Open Code
+CodeLens
+Local File Jump
+```
+
+### 4. 架构与质量保障，45-60 秒
+
+画面：
+
+展示一张架构图：
+
+```text
+GitHub PR
+  -> GitHubClient
+  -> Diff Parser
+  -> Risk Rules
+  -> Context Pack
+  -> LLM Reviewer
+  -> ReviewReport(Pydantic)
+  -> Markdown / JSON
+  -> GitHub Comment / Web Console / VS Code Plugin
+```
+
+可以穿插代码文件：
+
+```text
+src/github/client.py
+src/analyzer/diff_parser.py
+src/analyzer/context_builder.py
+src/analyzer/risk_rules.py
+src/reviewer/engine.py
+src/output/markdown.py
+src/service/app.py
+vscode-extension/src/extension.ts
+```
+
+口播：
+
+> 底层架构上，我们把 GitHub API、diff 解析、规则扫描、上下文构建、模型调用和报告渲染拆成独立模块。模型输出必须符合 Pydantic schema，再经过 changed-line、confidence、重复项和每文件数量限制过滤。
 >
-> 长期来看，AI PR Review 会从 GitHub Workflow 演进为平台无关的 Review Engine。GitHub Action、GitHub App、IDE 插件、本地 CLI 和 Web Dashboard 都可以复用同一套核心分析能力。
+> 如果模型不可用，系统会降级为 rule-only 报告；如果 PR head 语法错误，仍会生成诊断报告，但 workflow 最终失败，防止坏代码被误合并。我们还用项目自身进行 dogfooding，根据 AI Review 反馈修复安全、CSP、协议校验和 IDE 交互问题。
+
+字幕关键词：
+
+```text
+Structured Output
+Confidence Filtering
+Changed-line Filtering
+Rule-only Fallback
+PR Head Syntax Gate
+Dogfooding
+```
+
+### 5. 收束：未来扩展，20-30 秒
+
+画面：
+
+展示未来路线：
+
+```text
+Local Review Mode
+Fix Tracking
+Configurable Rules
+GitHub App / Service
+Team Dashboard
+```
+
+口播：
+
+> 下一步，我们会把 Review 时机继续前移。Local Review Mode 会在开发者 push 前审查本地未提交 diff；Fix Tracking 会对比新旧 commit，追踪上次建议是否已经修复。长期来看，AI PR Review 可以演进为 GitHub App 或团队级 Review 服务。
+
+收尾句：
+
+> AI PR Review Assistant 让每一次代码变更都自动获得一份可读、可信、可追溯的审查结果，并把问题直接带回代码现场。
+
+## 画面优先级
+
+如果视频时间有限，优先展示：
+
+1. Web Console 输入 PR URL 并生成报告。
+2. GitHub PR comment 中的结构化报告。
+3. VS Code Problems / Review Panel 跳本地代码。
+4. 一张架构图说明底层不是简单 prompt，而是工程化 Review Engine。
+
+可以少展示：
+
+- 长日志。
+- 过多命令行安装过程。
+- 过长 Markdown 报告全文。
+- 复杂分支和 PR 历史。
 
 ## 需要避免的误解
 
-视频里建议明确传达：
+视频中建议明确传达：
 
-- 它不是替代人工审查，而是辅助审查
-- 它不会无差别评论所有问题，而是通过置信度和规则过滤控制噪音
-- 它不是只适用于 GitHub Workflow，未来会支持 IDE 和服务化接入
-- 它不只输出总结，还会定位到具体代码行
-- 它会标明分析是否完整，避免假成功、假空报告
+- 它不是替代人工审查，而是辅助审查。
+- 它不会无差别评论所有问题，而是用置信度、变更行和规则过滤控制噪音。
+- GitHub Actions 里的 workflow run 链接是审查溯源，不是本地代码跳转；本地跳转由 VS Code 插件完成。
+- `clean` 表示没有高置信 inline suggestions，不代表没有 summary report。
+- Local Review Mode 是未来扩展，当前主要围绕 GitHub PR。
 
-## 一句话收尾
+## 推荐口播全文
 
-> AI PR Review 让每一次代码变更都自动获得一份可读、可信、可追溯的审查结果，并把问题直接带回代码现场。
+下面是一版可以直接录制的口播稿，可根据视频节奏删减。
+
+```text
+大型 Pull Request 往往文件多、上下文长，人工审查需要先理解变更，再定位风险，还要在 GitHub 和 IDE 之间来回切换。AI PR Review Assistant 的目标不是替代审查者，而是自动整理上下文、发现高风险变更，并把问题定位回代码现场。
+
+第一种入口是 Web Console。用户只需要粘贴 GitHub PR URL，系统会自动解析仓库和 PR 编号，获取 PR 元信息和变更文件。分析完成后，页面会展示整体风险、文件数量、增删行、AI 是否启用、报告可信度和耗时。
+
+在 Suggestions 里可以看到按严重程度组织的 Review 建议；Completeness 会说明 PR 数据、规则扫描、AI 分析、上下文是否完整；Report 则保留完整 Markdown 报告。这个入口适合评委、队友或不使用 IDE 插件的用户快速体验任意 PR。
+
+第二种入口是 GitHub Actions。PR 创建或更新后，workflow 会自动运行。它使用稳定的 base 分支 reviewer 来分析 PR diff，即使 PR 修改了审查器自身，也尽量生成可读报告。
+
+报告顶部会记录审查目标 commit、触发事件、workflow run URL 和更新时间，保证结果可追溯。运行状态和分析完整性会告诉审查者：这份报告是完整分析、降级分析，还是部分上下文被裁剪。
+
+对于高置信、带行号的问题，系统会发布 GitHub inline review comments；低置信或需要人工判断的内容保留在 summary report 中，避免刷屏。
+
+第三种入口是 VS Code 插件。插件会根据当前 git 分支查找对应的 open PR，从 GitHub 拉取 AI Review 结果，并映射为本地 IDE 里的 Problems、Review Panel 和 CodeLens。
+
+开发者不用在报告和代码之间来回搜索。点击 Problems、Panel 里的 Open Code，或者代码上方的 CodeLens，就能直接跳到本地文件和对应行。这样 GitHub 上产生的 Review 结果，会回到开发者真正修代码的地方。
+
+底层架构上，我们把 GitHub API、diff 解析、规则扫描、上下文构建、模型调用和报告渲染拆成独立模块。模型输出必须符合 Pydantic schema，再经过 changed-line、confidence、重复项和每文件数量限制过滤。
+
+如果模型不可用，系统会降级为 rule-only 报告；如果 PR head 语法错误，仍会生成诊断报告，但 workflow 最终失败，防止坏代码被误合并。我们还用项目自身进行 dogfooding，根据 AI Review 反馈修复安全、CSP、协议校验和 IDE 交互问题。
+
+下一步，我们会把 Review 时机继续前移。Local Review Mode 会在开发者 push 前审查本地未提交 diff；Fix Tracking 会对比新旧 commit，追踪上次建议是否已经修复。长期来看，AI PR Review 可以演进为 GitHub App 或团队级 Review 服务。
+
+AI PR Review Assistant 让每一次代码变更都自动获得一份可读、可信、可追溯的审查结果，并把问题直接带回代码现场。
+```
+
+## 镜头清单
+
+| 顺序 | 画面 | 目的 |
+|---|---|---|
+| 1 | 大 PR / 长 diff | 建立痛点 |
+| 2 | Web Console 粘贴 PR URL | 展示开箱即用 |
+| 3 | Web Console Suggestions / Completeness / Report | 展示分析结果 |
+| 4 | GitHub Actions run | 展示自动化 |
+| 5 | PR summary comment | 展示团队协作入口 |
+| 6 | GitHub inline comment | 展示高置信建议贴近 diff |
+| 7 | VS Code Problems | 展示 IDE 诊断 |
+| 8 | Review Panel + Open Code | 展示本地跳转 |
+| 9 | CodeLens | 展示代码 inline 入口 |
+| 10 | 架构图 | 展示工程质量 |
+| 11 | 未来路线 | 收束扩展方向 |
+
+## 评分点对应表达
+
+### 作品完整度与创新性
+
+表达重点：
+
+```text
+不是单一脚本，而是 GitHub Actions、Web Console、VS Code 插件三入口产品。
+不是简单文本生成，而是结构化 ReviewReport、置信度控制、代码联动和 IDE 回流。
+```
+
+### 开发过程与质量
+
+表达重点：
+
+```text
+模块化架构、Pydantic schema、fallback、误报控制、测试、PR 迭代、dogfooding。
+```
+
+### 演示与表达
+
+表达重点：
+
+```text
+Web 快速体验 -> GitHub 自动协作 -> VS Code 本地处理，形成完整用户旅程。
+```
