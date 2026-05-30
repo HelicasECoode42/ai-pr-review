@@ -9,6 +9,7 @@ from src.analyzer.diff_parser import parse_file_hunks
 from src.models import ChangedFile, PullRequest, RiskFinding, FileStatus
 from src.github.client import GitHubClient, GitHubApiError
 from src.utils.config import get_settings
+from pathlib import Path
 
 import os
 logger = logging.getLogger(__name__)
@@ -117,6 +118,96 @@ def _skip_patch_reason(filename: str) -> str | None:
         return None
 
 
+_CONTEXT_PACK_BUDGET = 4000  # max chars for context pack injection
+
+
+def _load_context_pack_text() -> str:
+    """Load the project Review Guide as context pack text."""
+    guide_path = Path(__file__).resolve().parent.parent / "docs" / "review-guide.md"
+    try:
+        with open(guide_path, "r", encoding="utf-8") as f:
+            return f.read()
+    except (FileNotFoundError, OSError):
+        logger.debug("docs/review-guide.md not found; skipping context pack")
+        return ""
+
+
+def _get_relevant_function_index(changed_files: list[str]) -> str:
+    """Load functions-index.md and extract entries for changed files."""
+    index_path = Path(__file__).resolve().parent.parent / "docs" / "functions-index.md"
+    try:
+        with open(index_path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except (FileNotFoundError, OSError):
+        logger.debug("docs/functions-index.md not found; skipping function index")
+        return ""
+
+    # Normalise file paths (both Windows \\ and POSIX /)
+    changed_set = set()
+    for cf in changed_files:
+        normalised = cf.replace("\\", "/")
+        changed_set.add(normalised)
+        changed_set.add(cf)
+
+    sections = content.split("\n## ")
+    relevant_lines: list[str] = ["## Function Index (relevant files only)"]
+
+    for section in sections:
+        if not section.strip():
+            continue
+        # First line is the heading like `src\analyzer\context_builder.py`
+        first_line = section.split("\n")[0].strip().strip("`")
+        # Check if this section's file is in the changed files
+        if any(cf in first_line or cf.replace("/", "\\") in first_line for cf in changed_set):
+            relevant_lines.append("")
+            relevant_lines.append(section.strip())
+
+    if len(relevant_lines) <= 1:
+        return ""
+
+    return "\n".join(relevant_lines)
+
+
+def _build_context_pack(
+    changed_files: list[str],
+    budget: int = _CONTEXT_PACK_BUDGET,
+) -> str:
+    """Build Context Pack string from review guide and function index."""
+    parts: list[str] = []
+    remaining = budget
+
+    # 1. Review Guide (prioritised: project conventions)
+    guide = _load_context_pack_text()
+    if guide and remaining > 0:
+        # Only inject sections relevant to the review
+        guide_lines = guide.split("\n")
+        condensed: list[str] = []
+        for line in guide_lines:
+            if line.startswith("#") or line.startswith("- **") or line.startswith("|"):
+                condensed.append(line)
+        guide_condensed = "\n".join(condensed)
+        if len(guide_condensed) > remaining:
+            guide_condensed = guide_condensed[:remaining]
+        parts.append("## Project Review Conventions")
+        parts.append(guide_condensed)
+        remaining -= len(guide_condensed)
+
+    # 2. Function index for changed files
+    if remaining > 0:
+        func_index = _get_relevant_function_index(changed_files)
+        if func_index:
+            if len(func_index) > remaining:
+                # Truncate from the end to fit budget
+                func_index = func_index[:remaining] + "\n...[truncated]"
+            parts.append(func_index)
+            remaining -= len(func_index)
+
+    result = "\n\n".join(parts)
+    if result:
+        result = "\n\n---\n\n" + result + "\n\n---"
+    return result
+
+
 def _fetch_repo_file_text(repo: str, path: str, ref: str | None) -> str | None:
     """Try to fetch file text from the given ref; if ref fetch fails, fall back to 'main'.
 
@@ -199,6 +290,11 @@ def build_review_context(
         except Exception as e:
             logger.warning(f"Failed to add file info for {getattr(file, 'filename', '?')}: {e}")
             continue
+
+    # ── Context Pack injection ──
+    context_pack = _build_context_pack([f.filename for f in files])
+    if context_pack:
+        parts.append(context_pack)
 
     if findings:
         parts.extend(["", "## Rule findings"])
