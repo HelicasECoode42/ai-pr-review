@@ -217,6 +217,7 @@ def analyze(
                             reviewed_commit=reviewed_commit,
                             trigger_event=trigger_event,
                             workflow_run_url=workflow_run_url,
+                            updated_at=datetime.now(timezone.utc).isoformat(),
                         ),
                     )
                 finally:
