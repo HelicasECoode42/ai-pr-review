@@ -28,6 +28,7 @@ class PullRequest(BaseModel):
     author: str | None = None
     base_ref: str | None = None
     head_ref: str | None = None
+    head_sha: str | None = None
     html_url: str | None = None
 
 

@@ -87,6 +87,17 @@ _COMPLETENESS_DETAIL_ZH: dict[str, str] = {
 }
 
 
+def _format_location(report: ReviewReport, file_path: str, line: int | None) -> str:
+    """Format file location as clickable GitHub blob URL when head_sha is available."""
+    text = file_path if line is None else f"{file_path}:{line}"
+    if report.pr.head_sha and report.pr.repo:
+        url = f"https://github.com/{report.pr.repo}/blob/{report.pr.head_sha}/{file_path}"
+        if line is not None:
+            url += f"#L{line}"
+        return f"[`{text}`]({url})"
+    return f"`{text}`"
+
+
 def _render_completeness_detail(detail: str, zh: bool) -> str:
     """Translate completeness detail text for non-Chinese output."""
     if zh:
@@ -292,26 +303,22 @@ def render_markdown(report: ReviewReport, language: str = "en") -> str:
         )
         lines.append("|---|---|---|---|---|")
         for index, s in enumerate(report.suggestions, start=1):
-            location = s.file_path
-            if s.line is not None:
-                location = f"{location}:{s.line}"
+            location_link = _format_location(report, s.file_path, s.line)
             sev_display = _SEVERITY_ZH.get(s.severity, s.severity.value) if zh else s.severity.value.upper()
             lines.append(
                 f"| {index} | `{sev_display}` "
-                f"| `{location}` | {s.confidence:.0%} | {s.title} |"
+                f"| {location_link} | {s.confidence:.0%} | {s.title} |"
             )
 
         lines.extend(["", "---", ""])
         for index, s in enumerate(report.suggestions, start=1):
-            location = s.file_path
-            if s.line is not None:
-                location = f"{location}:{s.line}"
+            location_link = _format_location(report, s.file_path, s.line)
             sev_display = _SEVERITY_ZH.get(s.severity, s.severity.value) if zh else s.severity.value.upper()
             lines.extend(
                 [
                     f"### {index}. [{sev_display}] {s.title}",
                     "",
-                    f"- **{T.t('位置')}**: `{location}`",
+                    f"- **{T.t('位置')}**: {location_link}",
                     f"- **{T.t('置信度')}**: {s.confidence:.0%}",
                     f"- **{T.t('原因')}**: {s.reason}",
                     f"- **{T.t('建议')}**: {s.recommendation}",
@@ -324,6 +331,8 @@ def render_markdown(report: ReviewReport, language: str = "en") -> str:
                     f"> {s.reason}",
                     "",
                     f"{T.t('建议')}: {s.recommendation}",
+                    "",
+                    f"💡 {T.t('可直接复制到 PR Files Changed 页面发布')}",
                     "",
                     "</details>",
                     "",
@@ -344,15 +353,13 @@ def render_markdown(report: ReviewReport, language: str = "en") -> str:
         )
         lines.append("|---|---|---|---|")
         for finding in visible_findings:
-            location = finding.file_path
-            if finding.line is not None:
-                location = f"{location}:{finding.line}"
+            location_link = _format_location(report, finding.file_path, finding.line)
             sev_display = _SEVERITY_ZH.get(finding.severity, finding.severity.value) if zh else finding.severity.value
             zh_title = _RULE_ZH.get(finding.rule_id, (finding.title,))[0]
             display_title = zh_title if zh else finding.title
             lines.append(
                 f"| `{sev_display}` | `{finding.rule_id}` "
-                f"| `{location}` | {display_title} |"
+                f"| {location_link} | {display_title} |"
             )
 
     total_hidden = report.hidden_suggestions_count + len(hidden_findings)
@@ -431,6 +438,7 @@ class _Translator:
             "原因": "Reason",
             "建议": "Recommendation",
             "可复制 GitHub 评论": "Suggested GitHub comment",
+            "可直接复制到 PR Files Changed 页面发布": "Copy and paste into PR Files Changed to publish",
             # rule findings
             "规则": "Rule",
             "发现": "Finding",

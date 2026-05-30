@@ -91,6 +91,10 @@ def analyze(
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(content, encoding="utf-8")
         console.print(f"[green]Report written to[/green] {output}")
+        # Stage 16: also write JSON sidecar for CI review-comment automation
+        json_path = output.with_suffix(".json")
+        json_path.write_text(render_json(report), encoding="utf-8")
+        console.print(f"[green]JSON sidecar written to[/green] {json_path}")
     else:
         console.print(content)
 

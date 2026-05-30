@@ -61,8 +61,60 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ai-pr-review-report
-          path: reports/pr-review.md
+          path: |
+            reports/pr-review.md
+            reports/pr-review.json
           retention-days: 30
+
+      - name: Post inline review comments (high-confidence only)
+        if: >-
+          success() &&
+          (github.event_name == 'pull_request') &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("fs");
+            const path = "reports/pr-review.json";
+            if (!fs.existsSync(path)) return;
+
+            const report = JSON.parse(fs.readFileSync(path, "utf8"));
+            const highConfidence = (report.suggestions || []).filter(
+              s => s.confidence >= 0.85 && s.line != null
+            );
+
+            if (highConfidence.length === 0) {
+              core.info("No high-confidence suggestions to post.");
+              return;
+            }
+
+            const prNumber = context.payload.pull_request.number;
+            const commitId = report.pr?.head_sha;
+            if (!commitId) {
+              core.warning("No head_sha in report; cannot post inline comments.");
+              return;
+            }
+
+            core.info(`Posting ${highConfidence.length} inline review comment(s)...`);
+            for (const s of highConfidence) {
+              try {
+                const body = `**${s.severity}** (${Math.round(s.confidence * 100)}%): ${s.title}\n\n${s.reason}\n\n> ${s.recommendation}`;
+                await github.rest.pulls.createReviewComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: prNumber,
+                  commit_id: commitId,
+                  path: s.file_path,
+                  line: s.line,
+                  side: "RIGHT",
+                  body: body,
+                });
+                core.info(`  ✓ ${s.file_path}:${s.line} — ${s.title}`);
+              } catch (error) {
+                core.warning(`  ✗ ${s.file_path}:${s.line} — ${error.message}`);
+              }
+            }
 
       - name: Post summary comment
         if: >-
