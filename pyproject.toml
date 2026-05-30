@@ -14,7 +14,9 @@ dependencies = [
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
     "PyYAML>=6.0",
+    "fastapi>=0.110",
     "rich>=13.0",
+    "uvicorn[standard]>=0.29",
     "structlog>=24.0",
     "tiktoken>=0.7",
     "tree-sitter>=0.22",
@@ -34,6 +36,7 @@ dev = [
 
 [project.scripts]
 ai-pr-review = "src.cli.main:app"
+ai-pr-review-web = "src.service.app:app"
 
 [build-system]
 requires = ["hatchling"]
