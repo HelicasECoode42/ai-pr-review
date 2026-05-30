@@ -1,16 +1,23 @@
 from __future__ import annotations
 
 import httpx
+import logging
+from typing import Optional
 
 from src.models import ChangedFile, FileStatus, PullRequest
 
+logger = logging.getLogger(__name__)
+
 
 class GitHubApiError(Exception):
-    """Raised when the GitHub API returns an error or is unreachable."""
+    """Raised when GitHub API request fails (network, auth, HTTP error)."""
+    pass
 
 
 class GitHubClient:
     def __init__(self, token: str | None, timeout: float = 45.0) -> None:
+        self.token = token
+        self.timeout = timeout
         headers = {
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
@@ -18,6 +25,8 @@ class GitHubClient:
         }
         if token:
             headers["Authorization"] = f"Bearer {token}"
+        else:
+            logger.warning("GitHub token not provided, API requests may be limited")
         self._client = httpx.Client(
             base_url="https://api.github.com",
             headers=headers,
@@ -28,33 +37,24 @@ class GitHubClient:
         self._client.close()
 
     def _request(self, path: str, **kwargs: object) -> httpx.Response:
+        """Make a GET request; raise GitHubApiError on failure."""
         try:
             response = self._client.get(path, **kwargs)
             response.raise_for_status()
             return response
         except httpx.TimeoutException:
-            raise GitHubApiError("GitHub API 请求超时，请检查网络或稍后重试。") from None
+            raise GitHubApiError(f"GitHub API timeout: {path}")
         except httpx.HTTPStatusError as exc:
             status = exc.response.status_code
             if status == 401:
-                raise GitHubApiError(
-                    "GitHub API 认证失败：token 无效或已过期。"
-                ) from exc
+                raise GitHubApiError("Authentication failed: token invalid or expired")
             if status == 403:
-                raise GitHubApiError(
-                    "GitHub API 访问被拒绝：可能是 rate limit 超限或权限不足。"
-                ) from exc
+                raise GitHubApiError("Access denied: rate limit exceeded or insufficient permissions")
             if status == 404:
-                raise GitHubApiError(
-                    "仓库或 PR 不存在，请检查 owner/repo 和 PR 编号是否正确。"
-                ) from exc
-            raise GitHubApiError(
-                f"GitHub API 返回错误 (HTTP {status})。"
-            ) from exc
+                raise GitHubApiError(f"Resource not found: {path}")
+            raise GitHubApiError(f"HTTP {status}: {path}")
         except httpx.RequestError as exc:
-            raise GitHubApiError(
-                f"无法连接 GitHub API：{exc}"
-            ) from exc
+            raise GitHubApiError(f"Failed to connect to GitHub API: {exc}")
 
     def get_pull_request(self, repo: str, number: int) -> PullRequest:
         response = self._request(f"/repos/{repo}/pulls/{number}")
@@ -63,7 +63,7 @@ class GitHubClient:
         return PullRequest(
             repo=repo,
             number=number,
-            title=data["title"],
+            title=data.get("title", ""),
             body=data.get("body"),
             author=(data.get("user") or {}).get("login"),
             base_ref=(data.get("base") or {}).get("ref"),
@@ -84,19 +84,22 @@ class GitHubClient:
             if not batch:
                 break
             for item in batch:
-                files.append(
-                    ChangedFile(
-                        filename=item["filename"],
-                        status=FileStatus(item.get("status", "unknown"))
-                        if item.get("status") in FileStatus._value2member_map_
-                        else FileStatus.UNKNOWN,
-                        additions=item.get("additions", 0),
-                        deletions=item.get("deletions", 0),
-                        changes=item.get("changes", 0),
-                        patch=item.get("patch"),
-                        previous_filename=item.get("previous_filename"),
+                try:
+                    status_str = item.get("status", "unknown")
+                    status = FileStatus(status_str) if status_str in FileStatus._value2member_map_ else FileStatus.UNKNOWN
+                    files.append(
+                        ChangedFile(
+                            filename=item.get("filename", ""),
+                            status=status,
+                            additions=item.get("additions", 0),
+                            deletions=item.get("deletions", 0),
+                            changes=item.get("changes", 0),
+                            patch=item.get("patch"),
+                            previous_filename=item.get("previous_filename"),
+                        )
                     )
-                )
+                except Exception as e:
+                    logger.warning(f"Failed to parse file entry: {e}, skipping")
             page += 1
         return files
 
