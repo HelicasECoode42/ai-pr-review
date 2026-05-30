@@ -101,16 +101,11 @@ jobs:
             echo "Checked-out reviewer does not support runtime metadata flags; continuing without them."
           fi
 
-          REVIEW_META_ARGS=()
-          if uv run python -m src.cli.main --help | grep -q -- "--reviewed-commit"; then
-            REVIEW_META_ARGS=(
-              --reviewed-commit "${{ github.event.pull_request.head.sha || github.sha }}"
-              --trigger-event "${{ github.event_name }}"
-              --workflow-run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-            )
-          else
-            echo "Checked-out reviewer does not support review metadata flags; continuing without them."
-          fi
+          REVIEW_META_ARGS=(
+            --reviewed-commit "${{ github.event.pull_request.head.sha || github.sha }}"
+            --trigger-event "${{ github.event_name }}"
+            --workflow-run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          )
 
           uv run python -m src.cli.main "${REPO}" "${PR_NUMBER}" \
             --language "${LANGUAGE}" \
