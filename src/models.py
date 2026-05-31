@@ -91,6 +91,24 @@ class CompletenessItem(BaseModel):
     detail: str
 
 
+class ReviewMeta(BaseModel):
+    """Metadata about this review run."""
+    reviewed_commit: str | None = None
+    trigger_event: str | None = None
+    workflow_run_url: str | None = None
+    updated_at: str | None = None
+    review_mode: str = "full_pr"
+
+
+class FixTrackingItem(BaseModel):
+    """Tracks whether a previous review suggestion has been addressed."""
+    previous_title: str
+    file_path: str | None = None
+    previous_line: int | None = None
+    status: str = "unknown"  # fixed | still_present | unknown
+    detail: str = ""
+
+
 class ReviewSuggestion(BaseModel):
     file_path: str
     line: int | None = None
@@ -122,3 +140,6 @@ class ReviewReport(BaseModel):
     report_confidence: str = "normal"  # "normal" | "fallback" | "partial" | "failed"
     # Stage 15: 分析完整性
     completeness: list[CompletenessItem] = Field(default_factory=list)
+    pr_syntax_check_ok: bool = True
+    review_meta: ReviewMeta = Field(default_factory=ReviewMeta)
+    fix_tracking: list[FixTrackingItem] = Field(default_factory=list)

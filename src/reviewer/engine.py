@@ -9,6 +9,7 @@ from pydantic import BaseModel, ValidationError
 from src.analyzer.context_builder import build_review_context
 from src.analyzer.diff_parser import changed_line_map
 from src.models import (
+    ReviewMeta,
     ChangedFile,
     CompletenessItem,
     PullRequest,
@@ -38,6 +39,7 @@ def _build_completeness(
     ctx_truncated: bool,
     used_ai: bool,
     ai_failed: bool,
+    pr_syntax_ok: bool = True,
 ) -> list[CompletenessItem]:
     """Build analysis completeness items from review state."""
     items: list[CompletenessItem] = []
@@ -120,6 +122,13 @@ def _build_completeness(
             detail="完整",
         ))
 
+    # PR head 语法诊断
+    items.append(CompletenessItem(
+        item="PR head 语法诊断",
+        status=StepStatus.SUCCESS if pr_syntax_ok else StepStatus.FAILED,
+        detail="未检测到语法错误" if pr_syntax_ok else "PR 分支代码存在语法或编码错误，已生成降级报告",
+    ))
+
     return items
 
 
@@ -132,6 +141,8 @@ def build_rule_only_report(
     execution_status: str = "success",
     degradation_reason: str | None = None,
     report_confidence: str = "normal",
+    pr_syntax_ok: bool = True,
+    review_meta: ReviewMeta | None = None,
 ) -> ReviewReport:
     additions = sum(f.additions for f in files)
     deletions = sum(f.deletions for f in files)
@@ -162,6 +173,7 @@ def build_rule_only_report(
         pr=pr, files=files,
         skipped_ctx=[], ctx_truncated=False,
         used_ai=False, ai_failed=False,
+        pr_syntax_ok=pr_syntax_ok,
     )
     return ReviewReport(
         pr=pr,
@@ -176,6 +188,7 @@ def build_rule_only_report(
         degradation_reason=degradation_reason,
         report_confidence=report_confidence,
         completeness=completeness,
+        review_meta=review_meta or ReviewMeta(),
     )
 
 
@@ -192,6 +205,8 @@ def review_with_ai(
     execution_status: str = "success",
     degradation_reason: str | None = None,
     report_confidence: str = "normal",
+    pr_syntax_ok: bool = True,
+    review_meta: ReviewMeta | None = None,
 ) -> ReviewReport:
     try:
         ctx = build_review_context(pr, files, findings)
@@ -229,6 +244,7 @@ def review_with_ai(
             pr=pr, files=files,
             skipped_ctx=skipped_ctx, ctx_truncated=ctx.truncated,
             used_ai=True, ai_failed=False,
+            pr_syntax_ok=pr_syntax_ok,
         )
         return ReviewReport(
             pr=pr,
@@ -247,13 +263,16 @@ def review_with_ai(
             degradation_reason=degradation_reason,
             report_confidence=report_confidence,
             completeness=completeness,
+            review_meta=review_meta or ReviewMeta(),
         )
     except (ProviderError, ValueError) as exc:
         logger.warning("AI review failed, falling back to rule-only: %s", exc)
         report = build_rule_only_report(pr, files, findings, language=language,
                                         execution_status="degraded",
                                         degradation_reason=f"AI 调用失败: {exc}",
-                                        report_confidence="partial")
+                                        report_confidence="partial",
+                                        pr_syntax_ok=pr_syntax_ok,
+                                        review_meta=review_meta)
         report.ai_failure_reason = str(exc)
         # Re-build completeness to reflect AI-attempted-but-failed state
         report.completeness = _build_completeness(
@@ -261,6 +280,7 @@ def review_with_ai(
             skipped_ctx=report.skipped_context_files,
             ctx_truncated=report.context_truncated,
             used_ai=True, ai_failed=True,
+            pr_syntax_ok=pr_syntax_ok,
         )
         report.analysis_warnings = [
             f"AI review unavailable: {exc}. Showing rule-based analysis only."
@@ -274,7 +294,7 @@ def _parse_model_payload(raw: str) -> ModelReviewPayload:
         data = json.loads(raw)
         return ModelReviewPayload.model_validate(data)
     except (json.JSONDecodeError, ValidationError):
-        pass
+        logger.warning("JSON fallback: direct parse failed, trying fenced code block")
 
     # Strategy 2: extract from ```json fenced code block
     match = re.search(r"```json\s*([\s\S]*?)\s*```", raw)
@@ -283,7 +303,7 @@ def _parse_model_payload(raw: str) -> ModelReviewPayload:
             data = json.loads(match.group(1))
             return ModelReviewPayload.model_validate(data)
         except (json.JSONDecodeError, ValidationError):
-            pass
+            logger.warning("JSON fallback: fenced code block parse failed, trying brace extraction")
 
     # Strategy 3: extract from first { to last }
     match = re.search(r"\{[\s\S]*\}", raw)
@@ -292,7 +312,7 @@ def _parse_model_payload(raw: str) -> ModelReviewPayload:
             data = json.loads(match.group(0))
             return ModelReviewPayload.model_validate(data)
         except (json.JSONDecodeError, ValidationError):
-            pass
+            logger.warning("JSON fallback: brace extraction also failed")
 
     raise ValueError(
         f"Model returned invalid review JSON. Raw output prefix: {raw[:300]}"
@@ -308,7 +328,8 @@ def _filter_suggestions(
 ) -> list[ReviewSuggestion]:
     changed_lines = changed_line_map(files)
     filtered: list[ReviewSuggestion] = []
-    seen: set[tuple[str, int | None, str]] = set()
+    seen_exact: set[tuple[str, int | None, str]] = set()
+    seen_reason_prefix: set[tuple[str, int | None, str]] = set()
     per_file_count: dict[str, int] = {}
 
     for suggestion in suggestions:
@@ -320,13 +341,21 @@ def _filter_suggestions(
         if suggestion.line is not None:
             if suggestion.line not in changed_lines.get(suggestion.file_path, set()):
                 continue
-        key = (suggestion.file_path, suggestion.line, suggestion.title.lower())
-        if key in seen:
+        # Exact dedup: same file + line + title
+        exact_key = (suggestion.file_path, suggestion.line, suggestion.title.lower())
+        if exact_key in seen_exact:
             continue
+        # Fuzzy dedup: same file + line + similar reason prefix (>20 chars)
+        reason_prefix = suggestion.reason.strip().lower()[:40]
+        if suggestion.line is not None and len(reason_prefix) >= 15:
+            reason_key = (suggestion.file_path, suggestion.line, reason_prefix)
+            if reason_key in seen_reason_prefix:
+                continue
+            seen_reason_prefix.add(reason_key)
         # Enforce per-file cap
         if per_file_count.get(suggestion.file_path, 0) >= max_suggestions_per_file:
             continue
-        seen.add(key)
+        seen_exact.add(exact_key)
         try:
             Severity(suggestion.severity)
         except ValueError:

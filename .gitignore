@@ -50,3 +50,8 @@ reports/
 .DS_Store
 Thumbs.db.vs/
 Thumbs.db
+node_modules/
+
+# VS Code extension artifacts
+*.vsix
+vscode-extension/vscode-extension/

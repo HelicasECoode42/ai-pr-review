@@ -9,7 +9,9 @@ from src.analyzer.diff_parser import parse_file_hunks
 from src.models import ChangedFile, PullRequest, RiskFinding, FileStatus
 from src.github.client import GitHubClient, GitHubApiError
 from src.utils.config import get_settings
+from pathlib import Path
 
+import os
 logger = logging.getLogger(__name__)
 
 
@@ -50,6 +52,59 @@ class ReviewContext:
     skipped_files: list[tuple[str, str]] = field(default_factory=list)
 
 
+
+
+# File extensions that are typically binary and should not be parsed for patches
+_BINARY_EXTENSIONS: set[str] = {
+    # Images
+    ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".svg",
+    ".webp", ".tiff", ".psd",
+    # Archives
+    ".zip", ".tar", ".gz", ".bz2", ".7z", ".rar",
+    # Compilation artifacts
+    ".pyc", ".pyo", ".class", ".o", ".obj", ".lib", ".dll", ".so", ".dylib",
+    ".exe", ".wasm",
+    # Documents
+    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+    # Media
+    ".mp3", ".mp4", ".avi", ".mov", ".wav", ".flac", ".ogg",
+    # Data / assets
+    ".ttf", ".otf", ".woff", ".woff2", ".eot",
+    ".ico", ".cur",
+    ".db", ".sqlite",
+    # Lockfiles (already handled elsewhere)
+    ".lock",
+}
+
+
+def _has_binary_extension(filename: str) -> bool:
+    """Check if file has a binary extension that should be skipped."""
+    _, ext = os.path.splitext(filename.lower())
+    return ext in _BINARY_EXTENSIONS
+
+
+def _patch_has_encoding_issues(filename: str, patch_text: str | None) -> bool:
+    """Check if patch content has problematic non-UTF-8 artifacts.
+
+    Returns True if the file should be skipped due to encoding issues.
+    """
+    if not patch_text:
+        return False
+    # Check for high density of replacement characters (\\ufffd)
+    replacement_count = patch_text.count("\ufffd")
+    if replacement_count > 0 and len(patch_text) > 0:
+        ratio = replacement_count / len(patch_text)
+        # If more than 0.5% of characters are replacements, likely an encoding mismatch
+        if ratio > 0.005:
+            logger.debug(f"Encoding issue detected in {filename}: {replacement_count} replacement chars ({ratio:.1%})")
+            return True
+    # Check for NUL bytes (common in binary files misidentified as text)
+    if "\x00" in patch_text:
+        return True
+    return False
+
+
+
 def _skip_patch_reason(filename: str) -> str | None:
     try:
         name = filename.split("/")[-1]
@@ -61,6 +116,107 @@ def _skip_patch_reason(filename: str) -> str | None:
         return None
     except Exception:
         return None
+
+
+_CONTEXT_PACK_BUDGET = 4000  # max chars for context pack injection
+
+
+def _load_context_pack_text() -> str:
+    """Load the project Review Guide as context pack text."""
+    guide_path = Path(__file__).resolve().parent.parent / "docs" / "review-guide.md"
+    try:
+        with open(guide_path, "r", encoding="utf-8") as f:
+            return f.read()
+    except (FileNotFoundError, OSError):
+        logger.debug("docs/review-guide.md not found; skipping context pack")
+        return ""
+
+
+def _get_relevant_function_index(changed_files: list[str]) -> str:
+    """Load functions-index.md and extract entries for changed files."""
+    index_path = Path(__file__).resolve().parent.parent / "docs" / "functions-index.md"
+    try:
+        with open(index_path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except (FileNotFoundError, OSError):
+        logger.debug("docs/functions-index.md not found; skipping function index")
+        return ""
+
+    # Normalise file paths (both Windows \\ and POSIX /)
+    changed_set = set()
+    for cf in changed_files:
+        normalised = cf.replace("\\", "/")
+        changed_set.add(normalised)
+        changed_set.add(cf)
+
+    sections = content.split("\n## ")
+    relevant_lines: list[str] = ["## Function Index (relevant files only)"]
+
+    for section in sections:
+        if not section.strip():
+            continue
+        # First line is the heading like `src\analyzer\context_builder.py`
+        first_line = section.split("\n")[0].strip().strip("`")
+        # Check if this section's file is in the changed files
+        if any(cf in first_line or cf.replace("/", "\\") in first_line for cf in changed_set):
+            relevant_lines.append("")
+            relevant_lines.append(section.strip())
+
+    if len(relevant_lines) <= 1:
+        return ""
+
+    return "\n".join(relevant_lines)
+
+
+def _build_context_pack(
+    changed_files: list[str],
+    budget: int = _CONTEXT_PACK_BUDGET,
+    small_pr: bool = False,
+) -> str:
+    """Build Context Pack string from review guide and function index.
+
+    For small PRs (≤5 files), the full review guide is injected instead of
+    a condensed summary, giving the model complete project conventions context.
+    """
+    parts: list[str] = []
+    remaining = budget
+
+    # 1. Review Guide (prioritised: project conventions)
+    guide = _load_context_pack_text()
+    if guide and remaining > 0:
+        if small_pr:
+            # Small PR — inject full guide for richer context
+            guide_text = guide
+            if len(guide_text) > remaining:
+                guide_text = guide_text[:remaining]
+        else:
+            # Large PR — condensed version (headers + key rules only)
+            guide_lines = guide.split("\n")
+            condensed: list[str] = []
+            for line in guide_lines:
+                if line.startswith("#") or line.startswith("- **") or line.startswith("|"):
+                    condensed.append(line)
+            guide_text = "\n".join(condensed)
+            if len(guide_text) > remaining:
+                guide_text = guide_text[:remaining]
+        parts.append("## Project Review Conventions")
+        parts.append(guide_text)
+        remaining -= len(guide_text)
+
+    # 2. Function index for changed files
+    if remaining > 0:
+        func_index = _get_relevant_function_index(changed_files)
+        if func_index:
+            if len(func_index) > remaining:
+                # Truncate from the end to fit budget
+                func_index = func_index[:remaining] + "\n...[truncated]"
+            parts.append(func_index)
+            remaining -= len(func_index)
+
+    result = "\n\n".join(parts)
+    if result:
+        result = "\n\n---\n\n" + result + "\n\n---"
+    return result
 
 
 def _fetch_repo_file_text(repo: str, path: str, ref: str | None) -> str | None:
@@ -146,6 +302,11 @@ def build_review_context(
             logger.warning(f"Failed to add file info for {getattr(file, 'filename', '?')}: {e}")
             continue
 
+    # ── Context Pack injection ──
+    context_pack = _build_context_pack([f.filename for f in files], small_pr=len(files) <= 5)
+    if context_pack:
+        parts.append(context_pack)
+
     if findings:
         parts.extend(["", "## Rule findings"])
         for finding in findings:
@@ -180,6 +341,12 @@ def build_review_context(
                 skipped_files.append((file.filename, reason))
                 if reason == "lockfile":
                     lockfiles_skipped += 1
+                continue
+
+            # Check for binary or encoding issues before processing
+            if _has_binary_extension(file.filename) or _patch_has_encoding_issues(file.filename, file.patch):
+                skipped_files.append((file.filename, "encoding_skipped"))
+                partial_flag = True
                 continue
 
             parse_failed = False

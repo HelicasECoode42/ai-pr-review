@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI PR Review Console</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>🤖 AI PR Review Console</h1>
+    <span class="subtitle">Web Console for pull request analysis</span>
+  </header>
+
+  <main>
+    <!-- Input -->
+    <section class="card" id="input-section">
+      <div class="form-row url-row">
+        <div class="field full-width">
+          <label for="pr-url">🔗 Paste GitHub PR URL</label>
+          <input type="text" id="pr-url"
+                 placeholder="https://github.com/owner/repo/pull/123"
+                 oninput="parseURL()">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="field">
+          <label for="repo">Repository</label>
+          <input type="text" id="repo"
+                 placeholder="owner/repo"
+                 value="HelicasECoode42/ai-pr-review">
+        </div>
+        <div class="field">
+          <label for="pr-number">PR Number</label>
+          <input type="number" id="pr-number" placeholder="1" value="1" min="1">
+        </div>
+        <div class="field">
+          <label for="language">Language</label>
+          <select id="language">
+            <option value="zh" selected>中文</option>
+            <option value="">Auto</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="use-ai">AI Review</label>
+          <select id="use-ai">
+            <option value="1" selected>On</option>
+            <option value="0">Rule-only</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button id="analyze-btn" onclick="runAnalysis()">🔍 Analyze</button>
+        <button class="btn-outline" onclick="fillDemo()">✨ Try Demo</button>
+        <span id="status-msg" class="status-msg hidden"></span>
+      </div>
+    </section>
+
+    <!-- Repo Timeline -->
+    <section class="card" id="timeline-section">
+      <h2>📈 Repo Timeline</h2>
+      <p class="subtitle">See how a repository evolved through its PRs</p>
+      <div class="form-row">
+        <div class="field" style="flex:3">
+          <label for="tl-repo">Repository</label>
+          <input type="text" id="tl-repo" placeholder="owner/repo" value="HelicasECoode42/ai-pr-review">
+        </div>
+        <div class="field" style="flex:1">
+          <label for="tl-count">PRs</label>
+          <input type="number" id="tl-count" value="10" min="1" max="20">
+        </div>
+        <div class="field timeline-action">
+          <button id="tl-btn" class="timeline-btn" onclick="loadTimeline()">Load timeline</button>
+        </div>
+      </div>
+      <div class="timeline-actions">
+        <button class="btn-outline" onclick="fillTimelineDemo()">OpenClaw demo</button>
+      </div>
+      <div id="timeline-loading" class="hidden"><p class="muted">Fetching PR history…</p></div>
+      <div id="timeline-error" class="hidden"></div>
+      <div id="timeline-results" class="hidden">
+        <div id="timeline-summary"></div>
+        <div id="timeline-list"></div>
+      </div>
+    </section>
+
+    <!-- Loading -->
+    <section class="card hidden" id="loading-section">
+      <div class="spinner"></div>
+      <span id="loading-text">Analyzing…</span>
+    </section>
+
+    <!-- Error -->
+    <section class="card error-card hidden" id="error-section">
+      <h3>❌ Analysis Failed</h3>
+      <pre id="error-msg"></pre>
+    </section>
+
+    <!-- Results -->
+    <section class="card hidden" id="results-section">
+      <!-- Overview -->
+      <div class="overview-grid" id="overview">
+        <div class="metric" id="m-risk"><span class="label">Risk</span><span class="value">–</span></div>
+        <div class="metric" id="m-files"><span class="label">Files</span><span class="value">–</span></div>
+        <div class="metric" id="m-changes"><span class="label">+/-</span><span class="value">–</span></div>
+        <div class="metric" id="m-ai"><span class="label">AI</span><span class="value">–</span></div>
+        <div class="metric" id="m-confidence"><span class="label">Confidence</span><span class="value">–</span></div>
+        <div class="metric" id="m-duration"><span class="label">Duration</span><span class="value">–</span></div>
+      </div>
+
+      <div class="actions-bar">
+        <a id="gh-link" class="btn-link" target="_blank" rel="noopener">🔗 Open PR on GitHub</a>
+        <button class="btn-outline" onclick="downloadJSON()">⬇ JSON</button>
+        <button class="btn-outline" onclick="copyReport()">📋 Copy Report</button>
+      </div>
+
+      <!-- Tabs -->
+      <nav class="tabs">
+        <button class="tab active" data-tab="suggestions">💡 Suggestions</button>
+        <button class="tab" data-tab="completeness">📊 Completeness</button>
+        <button class="tab" data-tab="report">📄 Report</button>
+        <button class="tab" data-tab="history">📈 History</button>
+      </nav>
+
+      <!-- Suggestions panel -->
+      <div class="tab-panel active" id="panel-suggestions">
+        <div id="filter-bar" class="filter-bar">
+          <button class="filter-chip active" data-sev="all">All</button>
+          <button class="filter-chip" data-sev="critical">🔴 Critical</button>
+          <button class="filter-chip" data-sev="high">🟠 High</button>
+          <button class="filter-chip" data-sev="medium">🟡 Medium</button>
+          <button class="filter-chip" data-sev="low">🟢 Low</button>
+        </div>
+        <div id="suggestions-list"></div>
+        <p id="no-suggestions" class="muted hidden">No suggestions to display.</p>
+      </div>
+
+      <!-- Completeness panel -->
+      <div class="tab-panel" id="panel-completeness">
+        <div id="completeness-list"></div>
+      </div>
+
+      <!-- Report panel -->
+      <div class="tab-panel" id="panel-report">
+        <div id="report-html" class="markdown-body"></div>
+      </div>
+
+      <!-- History panel -->
+      <div class="tab-panel" id="panel-history">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <h3 style="margin:0">📈 Review History</h3>
+          <button class="btn-outline" onclick="loadHistory()" style="font-size: 0.85rem;">🔄 Refresh</button>
+        </div>
+        <div id="history-summary" class="history-summary"></div>
+        <div id="history-list"></div>
+        <p id="no-history" class="muted hidden">No review history yet. Run an analysis to start building your history.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>AI PR Review Assistant · <a href="https://github.com/HelicasECoode42/ai-pr-review" target="_blank" rel="noopener">GitHub</a></p>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>

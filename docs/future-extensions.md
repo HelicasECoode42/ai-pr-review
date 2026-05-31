@@ -1,168 +1,251 @@
-# 未来扩展（Roadmap & 实施说明）
+# 未来扩展
 
-本文档基于当前代码库（`src/` 下的 `analyzer`、`reviewer`、`github`、`output`、`cli` 等模块）提出可落地的扩展方向、实现要点与注意事项。每项扩展都包含与现有代码的映射位置和优先级建议，便于逐步推进并保持向后兼容。
+本文记录 AI PR Review Assistant 的产品和工程路线图。当前项目已经具备 CLI、GitHub Action、规则扫描、AI review、Markdown / JSON 报告和基础失败门禁；下一步重点是提升交互体验、稳定性和组织级可维护性。
 
----
+当前阶段的具体分工、文件改动范围和验收方式见 [当前开发计划与分工](current-development-plan.md)。
 
-## 1. 服务化：GitHub App / 独立服务（高优先级）
+## 1. VS Code 扩展：把 Review 带回编辑器
 
-目标：将工具从运行在被评审 PR 分支的 Action 演进为独立的 GitHub App 或托管服务，避免评审器被 PR 改动影响，提升审计与可维护性。
+优先级：高
 
-实现要点：
-- 构建 webhook 接收器（推荐 FastAPI）负责接收 `pull_request`、`issue_comment` 等事件。
-- 将 `src/cli/main.py` 中的触发逻辑抽象为可被 HTTP/队列触发的服务函数。
-- 保持 `src/github/client.py` 作为 GitHub REST 调用的单一入口；为 App 模式新增安装/权限校验逻辑。
-- 安全实践：为 App 使用最小权限（只读 PR、contents、metadata；写评论按需）、验证 webhook 签名、启用重放与速率保护。
-- 部署：提供 Dockerfile、简单的 Kubernetes/Helm 或 GitHub Actions 部署示例。
+### 目标
 
-代码映射：
-- 事件触发 & 入口：`src/cli/main.py` -> 提取为 `src/service/webhook.py`
-- GitHub 通信：`src/github/client.py`
-- 分析任务：复用 `src/analyzer/*`、`src/reviewer/*`、`src/output/*`
+当前主要痛点是上下文切换：
 
-收益：稳定性、集中日志/监控、更可控的凭证管理与回归行为。
+```text
+写代码 -> git push -> 等 GitHub Action -> 去 PR 页面看评论 -> 回 VS Code 修改
+```
 
----
+报告和 PR comment 是静态结果，不能直接在本地编辑器里定位、筛选和处理。VS Code 扩展的目标是把 JSON 报告投射回 IDE：
 
-## 2. 离线 Demo 与本地 Provider（中优先级）
+- 在侧边栏输入 `owner/repo` 和 PR number，一键运行 review。
+- 将 `ReviewSuggestion` 映射为 VS Code Diagnostics，显示在 Problems 面板。
+- 点击建议直接跳转到本地文件对应行。
+- 在侧边栏显示风险摘要、文件列表、建议详情和复制评论入口。
 
-目标：提供在无网络或无 API Key 情况下可运行的演示模式，便于本地演示、教育和 CI 测试。
+### MVP 范围
 
-实现要点：
-- 在 `src/reviewer/provider.py` 中新增 `LocalProvider`（或 `DemoProvider`）实现，返回预定义的 JSON 结构或调用本地模板生成器。
-- 在 CLI 增加 `--offline`/`--demo` 参数，让 `review_with_ai` 在无 Key 时自动降级为本地 provider。
-- 将 `docs/demo/` 下的示例报告与测试 fixture 整合为 provider 的数据源。
+第一版只做只读体验，不碰 merge：
 
-代码映射：
-- Provider 抽象：`src/reviewer/provider.py`
-- 调用点：`src/reviewer/engine.py`（`review_with_ai`）
-- CLI：`src/cli/main.py`
+- `AI PR Review: Analyze PR`
+- `AI PR Review: Load Existing Report`
+- `AI PR Review: Clear Diagnostics`
+- 调用现有 CLI 生成 `reports/pr-review.json`
+- 读取 JSON 并创建 `DiagnosticCollection`
+- Diagnostic severity 映射：
+  - `critical` -> Error
+  - `high` -> Error
+  - `medium` -> Warning
+  - `low` -> Information
 
-收益：减少外部依赖、提高用户体验并便于回归测试。
+### 后续能力
 
----
+- Sidebar Webview：风险统计、文件筛选、建议列表。
+- CodeLens / inline hint：在变更行附近显示 AI review 摘要。
+- Quick Fix：复制建议、打开报告、跳到 GitHub PR。
+- Git 状态提示：当前分支是否落后 main、是否需要 fetch/merge。
+- Merge 预览：逐文件或逐 hunk 查看冲突，后续再考虑交互式合并。
 
-## 3. 项目级上下文索引（RAG）：跨文件检索与补充证据（中-高优先级）
+### 代码映射
 
-目标：在构建 AI 上下文时引入仓库级检索（函数签名、关键模块、历史 Review），提升模型输出精确度并减少误报。
+- 后端复用：`src.cli.main`、`src/reviewer/*`、`src/output/json_report.py`
+- 新增目录建议：`vscode-extension/`
+- 关键边界：稳定 `ReviewReport` JSON schema
 
-实现要点：
-- 建立轻量索引（倒排或向量）：索引 repo 中重要文件和 API（例如 `src/` 下核心模块、README、架构文档）。可以先用 SQLite + simple embeddings，后期可切换到 Milvus/Chroma。
-- 在 `src/analyzer/context_builder.py` 的 `build_review_context` 中接入检索步骤：针对当前 diff 中的符号/文件名检索相关定义并将检索结果附加到 context 前缀。
-- 提供增量索引更新机制（commit hook / CI job）以控制索引时效性。
+## 2. GitHub App / 独立服务化
 
-注意：索引与 embedding 会增加存储和运维成本，建议作为可选开关。
+优先级：高
 
----
+### 目标
 
-## 4. 规则库可配置化与动态加载（中优先级）
+将工具从“跑在仓库 workflow 中”演进为独立 GitHub App 或托管服务，进一步避免 reviewer 被 PR 代码影响，并提供集中日志、权限治理和组织级配置。
 
-目标：把 `src/analyzer/risk_rules.py` 中的规则迁移为可配置的规则集（JSON/YAML），允许仓库级或组织级覆写。
+### 实现要点
 
-实现要点：
-- 将 `LINE_RULES`、`RISK_PATH_PATTERNS` 等抽象为配置文件，提供 schema 校验（`src/utils/config.py` 可扩展加载器）。
-- 在 `scan_risks` 中按优先级合并内置规则与用户规则，并支持规则启用/禁用、置信度调整。
-- 提供 CLI 命令用于测试新规则：`ai-pr-review rules validate|test path/to/rules.yml`
+- 构建 webhook 接收器，推荐 FastAPI，处理 `pull_request`、`issue_comment` 等事件。
+- 将 `src/cli/main.py` 中的触发逻辑抽成服务函数，供 CLI、Action、Webhook 共用。
+- 保持 `src/github/client.py` 作为 GitHub REST 调用单一入口。
+- 使用 GitHub App installation token，遵循最小权限原则。
+- 验证 webhook 签名，防止重放，记录审计日志。
+- 提供 Dockerfile 和部署示例。
 
-代码映射：
-- 默认规则：`src/analyzer/risk_rules.py`（重构为加载配置）
-- 配置与校验：`src/utils/config.py`
+### 收益
 
-收益：支持团队自定义策略、降低误报并便于合规性管理。
+- reviewer 运行环境完全独立于被审查仓库。
+- 组织级统一配置 provider、规则、评论策略。
+- 更容易做监控、重试、队列和成本控制。
 
----
+## 3. 本地 / 离线 Demo Provider
 
-## 5. 强化 Model Provider 抽象与多后端支持（高优先级）
+优先级：中高
 
-目标：增强 `ReviewModelProvider` 的适配能力，支持 Azure OpenAI、DeepSeek、自建 LLM 服务及本地 LLM（如 llama.cpp）等多种后端。
+### 目标
 
-实现要点：
-- 明确 provider 契约：输入（system/user prompt、max_suggestions、schema）、输出（raw string、tokens 使用统计）与错误行为。
-- 增加通用重试/退避、超时与速率限制策略；记录 token/cost 指标。
-- 支持分层调用策略：先用轻量模型快速筛选，再对候选问题用大模型精审（在 `src/reviewer/engine.py` 中实现流水线）。
+在无网络、无 API Key 或演示场景中仍能跑完整流程，方便教学、调试和 CI 回归。
 
-代码映射：
-- 抽象与实现：`src/reviewer/provider.py`
-- 调用：`src/reviewer/engine.py`
+### 实现要点
 
-收益：成本控制、后端灵活性与更稳定的可用性。
+- 在 `src/reviewer/provider.py` 增加 `LocalProvider` 或 `DemoProvider`。
+- 返回预定义 JSON，或根据 fixture 做简单模板生成。
+- CLI 增加 `--demo` / `--offline` 参数。
+- 将 `docs/demo/` 和测试 fixture 整合为 provider 数据源。
 
----
+### 收益
 
-## 6. Web UI / Dashboard（低-中优先级）
+- 降低演示门槛。
+- 不依赖外部模型服务即可做端到端测试。
+- 方便验证 Markdown / JSON schema 和前端集成。
 
-目标：为审阅者提供交互式界面，显示报告、接受/忽略建议并导出为 GitHub review comments。
+## 4. 规则库配置化
 
-实现要点：
-- 前端：React + Vite（或团队既有栈），显示 PR 概览、风险统计和文件级建议。
-- 后端：FastAPI，复用 `src/output/markdown.py`、`src/output/json_report.py` 的渲染逻辑，提供 REST 接口用于获取报告、触发分析、发布评论。
-- 支持交互：接受/拒绝建议、批量操作、导出草稿作 GitHub Review。
+优先级：中高
 
-代码映射：
-- 渲染：`src/output/*.py`
-- 导出评论：将使用 `src/github/client.py` 的评论 API
+### 目标
 
----
+将 `src/analyzer/risk_rules.py` 中的内置规则迁移为可配置规则集，支持仓库级、团队级或组织级覆盖。
 
-## 7. 自动发布 Review Comments 与交互流程（中优先级）
+### 实现要点
 
-目标：将 AI 建议半自动或自动发布为 GitHub review comments，同时保留人工审核路径，避免噪音评论。
+- 定义 YAML / JSON schema。
+- 支持 path pattern、line pattern、severity、confidence、recommendation。
+- 内置规则和用户规则按优先级合并。
+- 支持启用、禁用、覆盖严重程度和置信度。
+- 提供 CLI：
 
-实现要点：
-- `src/github/client.py` 增加创建、更新、删除 review comment 的接口与批量操作支持。
-- 定义发布策略：例如只自动发布 HIGH/CRITICAL 且置信度 > 0.8 的建议；低置信度建议作为 summary 或草稿。
-- 记录审计日志与用户反馈：当建议被采纳或忽略时，将结果写入持久层以便后续规则/模型迭代。
+```bash
+ai-pr-review rules validate path/to/rules.yml
+ai-pr-review rules test path/to/rules.yml path/to/patch.diff
+```
 
-注意：必须避免在大型 PR 中生成海量评论，建议合并相似建议并提供限速策略。
+### 收益
 
----
+- 团队可以沉淀自己的 review 策略。
+- 降低误报。
+- 更适合合规和组织级治理。
 
-## 8. 性能、可观测性与成本控制（高优先级）
+## 5. Provider 强化与多后端支持
 
-要点：
-- 指标监控：记录模型响应时延、token 使用、规则扫描耗时（建议接入 Prometheus/Grafana）。
-- 缓存：对相同 patch/context 的模型响应做缓存，避免重复付费。
-- 并行与分层分析：规则扫描先行，AI 分析异步或并行执行（受速率与并发限制）。
-- 在 `src/analyzer`、`src/reviewer` 中增加轻量 profiler 与日志点，用于定位热点（可使用 Python 的 `cProfile` 或第三方工具）。
+优先级：中
 
----
+### 目标
 
-## 9. 测试策略与质量保障（高优先级）
+强化 `ReviewModelProvider` 抽象，支持 OpenAI、Azure OpenAI、DeepSeek、自建 LLM、本地 LLM 等多种后端，并记录稳定的错误和成本信息。
 
-要点：
-- 单元测试覆盖：扩展 `tests/` 覆盖 `src/analyzer`（diff 解析、规则）、`src/reviewer`（payload 解析、过滤逻辑）、`src/github`（使用 HTTP mock）。
-- 集成测试：引入录制 fixtures（vcr.py / snapshots）以验证端到端行为与 provider 兼容性。
-- 合约测试：为 provider 定义契约测试，确保不同后端返回的结构在 `src/reviewer/engine.py` 中可以通用解析。
+### 实现要点
 
----
+- 明确 provider 契约：输入、输出、错误类型、超时行为。
+- 增加 retry、backoff、速率限制和超时配置。
+- 记录 token usage、cost、latency。
+- 支持分层调用：小模型预筛，大模型精审。
+- 增加 provider contract tests。
 
-## 10. 隐私、脱敏与安全注意事项
+## 6. 自动发布 Review Comments 策略治理
 
-要点：
-- 在发送给模型的上下文中脱敏敏感信息（密钥、密码、用户 PII），`secret-logging` 规则已有检测但应在 `build_review_context` 中增加脱敏流水线。
-- 日志策略：避免把原始 API Key、完整 diff（若包含敏感数据）写入持久日志；审计日志需要访问控制。
-- 合规性：区分公开仓库与私有仓库的处理策略，以及模型数据使用声明。
+优先级：中
 
----
+### 目标
 
-## 优先级与阶段性计划建议
+在避免噪声的前提下，将高置信建议发布为 GitHub review comments，并保留人工审核和反馈路径。
 
-短期（0–4 周）：
-- 强化 provider 抽象与本地 demo provider（`src/reviewer/provider.py`）
-- 增加离线模式与示例 fixture（`docs/demo/`）
-- 优化 context 构建中的脱敏与错误处理（`src/analyzer/context_builder.py`）
+### 实现要点
 
-中期（1–3 个月）：
-- 服务化（GitHub App）并提供部署示例
-- 规则配置化并提供 CLI 管理接口
-- 自动发布 review comments 的可控策略
+- 在 `src/github/client.py` 增加 review comment 创建、更新、删除接口。
+- 定义发布策略：
+  - 只发布 HIGH / CRITICAL。
+  - 只发布 confidence 大于指定阈值。
+  - 每个文件和每个 PR 限制评论数量。
+  - 低置信建议只进入 summary。
+- 记录哪些建议被发布、隐藏或人工忽略。
+- 防止重复评论，支持更新 bot comment。
 
-长期（3 个月以上）：
-- 项目级 RAG 索引、Web UI、组织级规则管理与权限控制
+## 7. Web UI / Dashboard
 
----
+优先级：中
 
-如果你愿意，我可以现在开始实现其中的一项改进（例如：
-- 在 `src/reviewer/provider.py` 中增加一个 `LocalProvider` mock 实现，或
-- 将 `src/analyzer/risk_rules.py` 的内置规则迁移为 YAML 配置并实现加载器），
-并把变更提交到仓库。请指定你希望我优先实现的任务。
+### 目标
+
+为 reviewer 提供可交互的报告页面，支持筛选、跳转、忽略建议和导出评论草稿。
+
+### 实现要点
+
+- 前端：React + Vite。
+- 后端：FastAPI 或复用服务化 API。
+- 数据源：`ReviewReport` JSON。
+- 页面能力：
+  - PR 概览。
+  - 风险统计。
+  - 文件级建议。
+  - 建议筛选和隐藏。
+  - 复制 GitHub comment。
+  - 链接到 GitHub changed lines。
+
+## 8. 项目级上下文索引 / RAG
+
+优先级：中
+
+### 目标
+
+在构建 AI 上下文时补充仓库级相关信息，例如函数定义、调用方、历史 review、架构文档和团队规则。
+
+### 实现要点
+
+- 建立轻量索引：SQLite、倒排索引或向量索引。
+- 从 diff 中提取符号、路径和关键词。
+- 检索相关定义和文档，追加到模型上下文。
+- 支持增量更新，避免每次全量扫描。
+- 对敏感信息做脱敏和访问控制。
+
+## 9. 可观测性与成本控制
+
+优先级：中
+
+### 目标
+
+让运行状态、失败原因、模型成本和性能瓶颈可见。
+
+### 实现要点
+
+- 记录 model latency、token usage、cost、rule scan time、context size。
+- 为 provider 调用增加 structured logging。
+- 对相同 patch/context 的模型响应做缓存。
+- 区分错误类型：GitHub API、provider、schema、context truncation、runtime。
+- 在报告中更清楚地展示 partial / fallback / failed 状态。
+
+## 10. 安全、隐私与脱敏
+
+优先级：中
+
+### 目标
+
+降低把敏感信息发送给模型或写入持久日志的风险。
+
+### 实现要点
+
+- 在 `build_review_context` 前增加脱敏流水线。
+- 对 token、password、secret、api key、private key 做模式识别和替换。
+- 避免将完整 diff 写入非必要持久日志。
+- 区分公开仓库和私有仓库的数据策略。
+- 文档化模型数据使用说明。
+
+## 阶段计划
+
+### 短期：1-2 周
+
+- 完善 PR head 诊断报告的可读性。
+- 增加 demo provider。
+- 稳定 `ReviewReport` JSON schema。
+- 搭建 VS Code 扩展 MVP，把 suggestions 显示到 Problems 面板。
+
+### 中期：2-6 周
+
+- 规则库配置化。
+- GitHub App / 服务化原型。
+- 自动评论策略治理。
+- Web UI 基础版。
+
+### 长期：6 周以上
+
+- 项目级 RAG。
+- 组织级规则管理。
+- VS Code 内 merge 预览和交互式修复。
+- 成本、监控、审计和权限体系。

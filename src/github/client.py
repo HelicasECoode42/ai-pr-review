@@ -44,18 +44,18 @@ class GitHubClient:
             response.raise_for_status()
             return response
         except httpx.TimeoutException:
-            raise GitHubApiError(f"GitHub API timeout: {path}")
+            raise GitHubApiError(f"GitHub API timeout: {path}") from None
         except httpx.HTTPStatusError as exc:
             status = exc.response.status_code
             if status == 401:
-                raise GitHubApiError("Authentication failed: token invalid or expired")
+                raise GitHubApiError("Authentication failed: token invalid or expired") from exc
             if status == 403:
-                raise GitHubApiError("Access denied: rate limit exceeded or insufficient permissions")
+                raise GitHubApiError("Access denied: rate limit exceeded or insufficient permissions") from exc
             if status == 404:
-                raise GitHubApiError(f"Resource not found: {path}")
-            raise GitHubApiError(f"HTTP {status}: {path}")
+                raise GitHubApiError(f"Resource not found: {path}") from exc
+            raise GitHubApiError(f"HTTP {status}: {path}") from exc
         except httpx.RequestError as exc:
-            raise GitHubApiError(f"Failed to connect to GitHub API: {exc}")
+            raise GitHubApiError(f"Failed to connect to GitHub API: {exc}") from exc
 
     def get_pull_request(self, repo: str, number: int) -> PullRequest:
         response = self._request(f"/repos/{repo}/pulls/{number}")
@@ -72,6 +72,34 @@ class GitHubClient:
             head_sha=head_info.get("sha"),
             html_url=data.get("html_url"),
         )
+
+    def list_pull_requests(self, repo: str, count: int = 10) -> list[PullRequest]:
+        """List recent PRs for a repository (updated desc)."""
+        response = self._request(
+            f"/repos/{repo}/pulls",
+            params={"state": "all", "per_page": count, "sort": "updated", "direction": "desc"},
+        )
+        data = response.json()
+        if not isinstance(data, list):
+            return []
+        results: list[PullRequest] = []
+        for item in data[:count]:
+            try:
+                head_info = item.get("head") or {}
+                results.append(PullRequest(
+                    repo=repo,
+                    number=item.get("number", 0),
+                    title=item.get("title", ""),
+                    body=item.get("body"),
+                    author=(item.get("user") or {}).get("login"),
+                    base_ref=(item.get("base") or {}).get("ref"),
+                    head_ref=head_info.get("ref"),
+                    head_sha=head_info.get("sha"),
+                    html_url=item.get("html_url"),
+                ))
+            except Exception:
+                continue
+        return results
 
     def get_changed_files(self, repo: str, number: int) -> list[ChangedFile]:
         files: list[ChangedFile] = []
@@ -132,7 +160,7 @@ class GitHubClient:
             # Re-raise for caller to handle
             raise
         except Exception as e:
-            raise GitHubApiError(f"Failed to fetch file contents for {repo}/{path}@{ref}: {e}")
+            raise GitHubApiError(f"Failed to fetch file contents for {repo}/{path}@{ref}: {e}") from e
 
     def __enter__(self) -> GitHubClient:
         return self
