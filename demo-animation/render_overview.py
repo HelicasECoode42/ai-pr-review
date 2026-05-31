@@ -322,7 +322,7 @@ def scene_one(image: Image.Image, t: float) -> None:
     if scan_p > 0:
         draw.ellipse((x - 32, 430 - 32, x + 32, 430 + 32), outline=rgba(BLUE, int(230 * alpha * scan_p)), width=5)
         draw.line((x + 25, 455, x + 72, 502), fill=rgba(BLUE, int(230 * alpha * scan_p)), width=6)
-    write_text(image, (1455, 770), "人会漏。", F_NUM, RED, reveal(t, 8.0, 1.2), alpha=alpha)
+    write_text(image, (1455, 770), "人工审核容易漏掉代码内容", F_NUM, RED, reveal(t, 8.0, 1.2), alpha=alpha)
 
 
 def scene_two(image: Image.Image, t: float) -> None:
@@ -353,7 +353,7 @@ def scene_two(image: Image.Image, t: float) -> None:
         write_text(image, (cx, 625), title, F_H2, color, reveal(t, 13.25 + i * 0.55, 0.9), alpha=alpha)
         write_text(image, (cx, 715), body, F_BODY, TEXT, reveal(t, 13.85 + i * 0.55, 1.0), alpha=alpha, spacing=13)
 
-    write_text(image, (W / 2, 910), "裸调不够。", F_CLOSE, TEXT, reveal(t, 17.0, 1.25), alpha=alpha)
+    write_text(image, (W / 2, 910), "裸调无法满足需求", F_CLOSE, TEXT, reveal(t, 17.0, 1.25), alpha=alpha)
 
 
 PIPE = [
