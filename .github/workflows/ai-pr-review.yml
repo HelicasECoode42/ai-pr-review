@@ -203,30 +203,148 @@ jobs:
         with:
           script: |
             const fs = require("fs");
-            const report = fs.readFileSync("reports/pr-review.md", "utf8");
-            const lines = report.split("\n");
-
-            let commentBody = "";
-            const maxLines = 80;
-            for (let i = 0; i < Math.min(lines.length, maxLines); i++) {
-              commentBody += lines[i] + "\n";
+            const path = "reports/pr-review.json";
+            if (!fs.existsSync(path)) {
+              core.warning("No pr-review.json found; skipping summary comment.");
+              return;
             }
-            if (lines.length > maxLines) {
-              commentBody += "\n\n...\n\n> 完整报告请查看 [GitHub Actions Artifact](";
-              commentBody += `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}`;
-              commentBody += `/actions/runs/${process.env.GITHUB_RUN_ID}) 或下载 `;
-              commentBody += "`ai-pr-review-report` artifact。\n";
+            const report = JSON.parse(fs.readFileSync(path, "utf8"));
+            const pr = report.pr || {};
+            const files = report.files || [];
+            const suggestions = report.suggestions || [];
+            const ruleFindings = report.rule_findings || [];
+            const completeness = report.completeness || [];
+            const meta = report.review_meta || {};
+            const artifactUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+
+            // ── Helpers ──
+            const riskEmoji = { low: "🟢", medium: "🟡", high: "🟠", critical: "🔴" };
+            const riskLabel = { low: "低", medium: "中", high: "高", critical: "严重" };
+            const sevEmoji = { low: "ℹ️", medium: "🟡", high: "🟠", critical: "🔴" };
+            const statusEmoji = { success: "✅", partial: "⚠️", failed: "❌", skipped: "⏭️" };
+
+            const risk = report.risk_level || "unknown";
+            const additions = files.reduce((s, f) => s + (f.additions || 0), 0);
+            const deletions = files.reduce((s, f) => s + (f.deletions || 0), 0);
+            const aiStatus = report.used_ai
+              ? (report.ai_failure_reason ? "⚠️ 降级" : "✅ 正常")
+              : "⏭️ 未启用";
+            const confLabel = {
+              normal: "完整可信",
+              fallback: "base 分支审查",
+              partial: "部分分析",
+              failed: "异常"
+            };
+            const confidence = confLabel[report.report_confidence] || report.report_confidence || "未知";
+
+            // ── Build comment ──
+            let body = "<!-- ai-pr-review-bot -->\n\n";
+            body += "## 🤖 AI PR Review\n\n";
+            body += `| | |\n|---|---|\n`;
+            body += `| **风险等级** | ${riskEmoji[risk] || ""} **${riskLabel[risk] || risk}** |\n`;
+            body += `| **变更文件** | ${files.length} 个 (+${additions}/-${deletions}) |\n`;
+            body += `| **AI 状态** | ${aiStatus} |\n`;
+            body += `| **可信度** | ${confidence} |\n`;
+            if (report.hidden_suggestions_count > 0) {
+              body += `| **已过滤** | ${report.hidden_suggestions_count} 条低置信/未变更行建议 |\n`;
+            }
+            if (report.context_truncated) {
+              body += `| **上下文** | ⚠️ 超出 token 预算，部分文件未分析 |\n`;
+            }
+            body += `\n`;
+
+            // ── Completeness (collapsible) ──
+            if (completeness.length > 0) {
+              body += "<details><summary>📊 分析完整性</summary>\n\n";
+              body += "| 检查项 | 状态 | 说明 |\n|---|---|---|\n";
+              for (const c of completeness) {
+                body += `| ${c.item} | ${statusEmoji[c.status] || ""} | ${c.detail} |\n`;
+              }
+              body += "\n</details>\n\n";
             }
 
+            // ── Top suggestions by severity (grouped, collapsible) ──
+            if (suggestions.length > 0) {
+              const grouped = { critical: [], high: [], medium: [], low: [] };
+              for (const s of suggestions) {
+                (grouped[s.severity] = grouped[s.severity] || []).push(s);
+              }
+              const order = ["critical", "high", "medium", "low"];
+              const maxShow = 5;
+              let shown = 0;
+
+              body += `### 🔍 审查建议 (${suggestions.length} 条)\n\n`;
+
+              for (const sev of order) {
+                const group = grouped[sev] || [];
+                if (group.length === 0) continue;
+
+                if (shown >= maxShow) {
+                  const remaining = suggestions.length - shown;
+                  body += `> ... 还有 ${remaining} 条建议，详见完整报告\n`;
+                  break;
+                }
+
+                if (shown === 0) {
+                  // Show first few items expanded
+                  for (const s of group) {
+                    if (shown >= maxShow) break;
+                    const pct = Math.round(s.confidence * 100);
+                    body += `<details open><summary>${sevEmoji[sev] || ""} **${s.file_path}${s.line ? ":" + s.line : ""}** — ${s.title} (${pct}%)</summary>\n\n`;
+                    body += `**原因**: ${s.reason}\n\n**建议**: ${s.recommendation}\n\n`;
+                    body += `</details>\n\n`;
+                    shown++;
+                  }
+                } else {
+                  // Collapse remaining groups
+                  body += `<details><summary>${sevEmoji[sev] || ""} ${riskLabel[sev] || sev} 严重度 — ${group.length} 条</summary>\n\n`;
+                  for (const s of group) {
+                    const pct = Math.round(s.confidence * 100);
+                    body += `- **${s.file_path}${s.line ? ":" + s.line : ""}** ${s.title} (${pct}%)\n`;
+                  }
+                  body += `\n</details>\n\n`;
+                  shown += group.length;
+                }
+              }
+            } else if (ruleFindings.length > 0) {
+              body += `### 🔍 规则命中 (${ruleFindings.length} 条)\n\n`;
+              // Show up to 5 rule findings
+              const showRules = ruleFindings.slice(0, 5);
+              for (const r of showRules) {
+                const line = r.line ? `:${r.line}` : "";
+                body += `- **${r.file_path}${line}** — ${r.title}\n`;
+              }
+              if (ruleFindings.length > 5) {
+                body += `\n> ... 还有 ${ruleFindings.length - 5} 条规则命中\n`;
+              }
+              body += `\n`;
+            } else {
+              body += `### ✅ 未发现问题\n\n`;
+              body += `AI 审查和规则扫描均未发现需要关注的问题。\n\n`;
+            }
+
+            // ── Report summary ──
+            if (report.summary) {
+              body += `---\n\n### 📝 概要\n\n${report.summary}\n\n`;
+            }
+
+            // ── Footer ──
+            body += `---\n\n`;
+            if (meta.reviewed_commit) {
+              body += `审查 commit: \`${meta.reviewed_commit.slice(0, 7)}\` · `;
+            }
+            body += `[📄 完整报告](${artifactUrl}) `;
+            if (meta.trigger_event) {
+              body += `· 触发: ${meta.trigger_event}`;
+            }
+            body += `\n`;
+
+            // ── Post / Update comment ──
             const prNumber =
               context.payload.pull_request?.number ||
               parseInt(process.env.PR_NUMBER || "0", 10);
 
             if (!prNumber) return;
-
-            // Look for an existing bot comment to update
-            const botMarker = "<!-- ai-pr-review-bot -->";
-            commentBody = botMarker + "\n" + commentBody;
 
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
@@ -234,6 +352,7 @@ jobs:
               issue_number: prNumber,
             });
 
+            const botMarker = "<!-- ai-pr-review-bot -->";
             const botLogin = "github-actions[bot]";
             const existing = comments.find(
               c => c.user?.login === botLogin && c.body?.includes(botMarker)
@@ -245,15 +364,17 @@ jobs:
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   comment_id: existing.id,
-                  body: commentBody,
+                  body: body,
                 });
+                core.info("Updated existing bot summary comment.");
               } else {
                 await github.rest.issues.createComment({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   issue_number: prNumber,
-                  body: commentBody,
+                  body: body,
                 });
+                core.info("Created new bot summary comment.");
               }
             } catch (error) {
               core.warning(`Failed to post PR comment: ${error.message}`);
