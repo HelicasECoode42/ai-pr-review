@@ -1,4 +1,7 @@
 import { exec } from "child_process";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import { promisify } from "util";
 
 const execAsync = promisify(exec);
@@ -68,40 +71,73 @@ export interface PRInfo {
   headRefName: string;
 }
 
-/** Find the open PR for the current branch. Returns null if none. */
-export async function getPRForBranch(
-  branch: string,
-  cwd?: string,
-): Promise<PRInfo | null> {
-  // Search for PRs with this branch as head
-  const prs: {
-    number: number;
-    title: string;
-    state: string;
-    url: string;
-    headRefName: string;
-    headRepositoryOwner?: { login: string };
-  }[] | null = await tryJson(
-    `gh pr list --head "${sanitizeBranch(branch)}" --json number,title,state,url,headRefName,headRepositoryOwner --limit 1`,
-    cwd,
-  );
+interface GhPullRequest {
+  number: number;
+  title: string;
+  state: string;
+  url: string;
+  headRefName: string;
+}
 
-  if (!prs || prs.length === 0) return null;
-
-  const pr = prs[0];
-  const repo = await getRepoSlug(cwd);
-  if (!repo) return null;
-
-  const [owner, repoName] = repo.split("/");
+function toPRInfo(pr: GhPullRequest, repoSlug: string): PRInfo {
+  const [owner, repo] = repoSlug.split("/");
   return {
-    owner: pr.headRepositoryOwner?.login ?? owner,
-    repo: repoName,
+    owner,
+    repo,
     number: pr.number,
     title: pr.title,
     state: pr.state.toUpperCase(),
     url: pr.url,
     headRefName: pr.headRefName,
   };
+}
+
+/** Get the current commit SHA. */
+export async function getCurrentCommit(cwd?: string): Promise<string | null> {
+  try {
+    return await run("git rev-parse HEAD", cwd);
+  } catch {
+    return null;
+  }
+}
+
+/** Find the open PR for the current branch. Returns null if none. */
+export async function getPRForBranch(
+  branch: string,
+  cwd?: string,
+): Promise<PRInfo | null> {
+  const repoSlug = await getRepoSlug(cwd);
+  if (!repoSlug) return null;
+
+  // Search for PRs with this branch as head
+  const prs: GhPullRequest[] | null = await tryJson(
+    `gh pr list --head "${sanitizeBranch(branch)}" --json number,title,state,url,headRefName,headRepositoryOwner --limit 1`,
+    cwd,
+  );
+
+  if (!prs || prs.length === 0) return null;
+
+  return toPRInfo(prs[0], repoSlug);
+}
+
+/**
+ * Find an open PR associated with a commit. This covers detached HEAD, a local
+ * main branch checked out at a PR commit, and branch names that differ locally.
+ */
+export async function getPRForCommit(
+  commit: string,
+  cwd?: string,
+): Promise<PRInfo | null> {
+  const repoSlug = await getRepoSlug(cwd);
+  if (!repoSlug) return null;
+
+  const prs: GhPullRequest[] | null = await tryJson(
+    `gh api -H "Accept: application/vnd.github+json" "repos/${repoSlug}/commits/${commit}/pulls"`,
+    cwd,
+  );
+
+  const pr = prs?.find((item) => item.state.toUpperCase() === "OPEN");
+  return pr ? toPRInfo(pr, repoSlug) : null;
 }
 
 export interface GitHubReviewComment {
@@ -175,11 +211,48 @@ export async function getLatestWorkflowRun(
     conclusion: string | null;
     url: string;
   }[] = await tryJson(
-    `gh run list --workflow="ai-pr-review.yml" --branch="${sanitizeBranch(branch)}" --event=pull_request --limit=1 --json status,conclusion,url`,
+    `gh run list --workflow="ai-pr-review.yml" --branch="${sanitizeBranch(branch)}" --limit=1 --json status,conclusion,url`,
     cwd,
   ) ?? [];
 
   if (!runs || runs.length === 0) return null;
   const r = runs[0];
   return { status: r.status, conclusion: r.conclusion, url: r.url };
+}
+
+/**
+ * Download the latest workflow artifact report for a branch and return
+ * reports/pr-review.json. Returns null when no suitable run/artifact exists.
+ */
+export async function getLatestReportArtifactJson(
+  branch: string,
+  cwd?: string,
+): Promise<string | null> {
+  const runs: { databaseId: number; status: string }[] = await tryJson(
+    `gh run list --workflow="ai-pr-review.yml" --branch="${sanitizeBranch(branch)}" --limit=5 --json databaseId,status,conclusion,createdAt,event`,
+    cwd,
+  ) ?? [];
+
+  for (const workflowRun of runs) {
+    if (workflowRun.status !== "completed") continue;
+
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ai-pr-review-"));
+    try {
+      await run(
+        `gh run download ${workflowRun.databaseId} --name ai-pr-review-report --dir "${tempDir}"`,
+        cwd,
+      );
+
+      const reportPath = path.join(tempDir, "pr-review.json");
+      if (fs.existsSync(reportPath)) {
+        return fs.readFileSync(reportPath, "utf8");
+      }
+    } catch {
+      // Try the next run; artifact upload may have been skipped on failure.
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  }
+
+  return null;
 }

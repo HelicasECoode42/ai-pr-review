@@ -134,7 +134,7 @@ jobs:
           fi
 
       - name: Upload report
-        if: success()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ai-pr-review-report
@@ -143,11 +143,12 @@ jobs:
             reports/pr-review.json
             reports/pr-syntax-check.md
             reports/pr-syntax-check.txt
+          if-no-files-found: warn
           retention-days: 30
 
       - name: Post inline review comments (high-confidence only)
         if: >-
-          success() &&
+          always() &&
           (github.event_name == 'pull_request') &&
           github.event.pull_request.head.repo.full_name == github.repository
         continue-on-error: true
@@ -219,7 +220,7 @@ jobs:
 
       - name: Post summary comment
         if: >-
-          success() &&
+          always() &&
           (github.event_name != 'pull_request' ||
            github.event.pull_request.head.repo.full_name == github.repository)
         continue-on-error: true

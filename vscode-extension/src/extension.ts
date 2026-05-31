@@ -15,6 +15,16 @@ let diagnosticCollection: vscode.DiagnosticCollection | undefined;
 let statusBar: vscode.StatusBarItem | undefined;
 let reviewPanel: ReviewPanelProvider | undefined;
 
+function getWorkspaceRoot(): string | undefined {
+  const activeUri = vscode.window.activeTextEditor?.document.uri;
+  if (activeUri) {
+    const folder = vscode.workspace.getWorkspaceFolder(activeUri);
+    if (folder) return folder.uri.fsPath;
+  }
+
+  return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+}
+
 // ── Status bar ──────────────────────────────────────────
 
 function createStatusBar(): vscode.StatusBarItem {
@@ -99,7 +109,7 @@ async function loadReview(): Promise<void> {
   updateStatusBar(null, undefined, true);
 
   try {
-    const result = await fetchReview();
+    const result = await fetchReview(getWorkspaceRoot());
     lastReviewResult = result;
 
     if (!diagnosticCollection) return;
@@ -206,7 +216,10 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(statusBar);
 
   // Review panel provider
-  reviewPanel = new ReviewPanelProvider(context.extensionUri, fetchReview);
+  reviewPanel = new ReviewPanelProvider(
+    context.extensionUri,
+    () => fetchReview(getWorkspaceRoot()),
+  );
   context.subscriptions.push(reviewPanel);
 
   // Commands

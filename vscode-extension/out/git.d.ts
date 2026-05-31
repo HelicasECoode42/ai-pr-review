@@ -11,8 +11,15 @@ export interface PRInfo {
     url: string;
     headRefName: string;
 }
+/** Get the current commit SHA. */
+export declare function getCurrentCommit(cwd?: string): Promise<string | null>;
 /** Find the open PR for the current branch. Returns null if none. */
 export declare function getPRForBranch(branch: string, cwd?: string): Promise<PRInfo | null>;
+/**
+ * Find an open PR associated with a commit. This covers detached HEAD, a local
+ * main branch checked out at a PR commit, and branch names that differ locally.
+ */
+export declare function getPRForCommit(commit: string, cwd?: string): Promise<PRInfo | null>;
 export interface GitHubReviewComment {
     id: number;
     path: string;
@@ -42,3 +49,8 @@ export declare function getLatestWorkflowRun(branch: string, cwd?: string): Prom
     conclusion: string | null;
     url: string;
 } | null>;
+/**
+ * Download the latest workflow artifact report for a branch and return
+ * reports/pr-review.json. Returns null when no suitable run/artifact exists.
+ */
+export declare function getLatestReportArtifactJson(branch: string, cwd?: string): Promise<string | null>;
