@@ -25,6 +25,20 @@ Pillow/ffmpeg preview instead:
 python demo-animation/render_preview.py
 ```
 
+To render the 65-second overview animation based on `demo-video-script.md`:
+
+```bash
+python demo-animation/render_overview.py
+```
+
+Outputs are written to:
+
+```text
+demo-animation/media/overview/overview.mp4
+demo-animation/media/overview/overview.gif
+demo-animation/media/overview/poster.png
+```
+
 ## Scene
 
 `OpeningFlow` introduces the product flow:
