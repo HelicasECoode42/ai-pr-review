@@ -1,3 +1,9 @@
+<!-- ai-pr-review-bot -->
+
+[▶️ 观看产品演示视频（百度网盘）](https://pan.baidu.com/s/1wkruMjTolEZRQ9H7p3K8rQ?pwd=3drW) 提取码：`3drW`
+
+---
+
 # AI PR Review Assistant
 
 > AI PR Review Assistant 将 PR diff 自动转化为可读、可信、可追溯的审查结果，并通过 GitHub、Web Console 和 VS Code 插件把问题带回开发者的代码上下文。AI 辅助人工 Review，而非替代。
