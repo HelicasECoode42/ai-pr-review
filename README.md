@@ -1,5 +1,7 @@
 # AI PR Review Assistant
 
+> AI PR Review Assistant 将 PR diff 自动转化为可读、可信、可追溯的审查结果，并通过 GitHub、Web Console 和 VS Code 插件把问题带回开发者的代码上下文。AI 辅助人工 Review，而非替代。
+
 AI PR Review Assistant 是一个面向 GitHub Pull Request 的 AI 代码审查工具。它围绕真实 Review 流程设计：自动获取 PR 变更，结合本地规则扫描和大模型分析生成结构化报告，再把结果发布到 GitHub、Web Console 和 VS Code IDE 中，帮助开发者更快理解变更、定位风险并回到代码现场处理问题。
 
 项目目标不是用 AI 替代人工 Review，而是把重复性的上下文整理、风险预筛、报告生成和代码定位交给系统，让审查者把注意力放在真正需要判断的设计、业务和安全风险上。
@@ -26,6 +28,18 @@ GitHub PR
 | VS Code 插件 | 正在本地修代码的开发者 | 自动识别当前分支 PR，把 Review 结果同步到 Problems、Review Panel 和 CodeLens |
 
 底层 CLI 和 Review Engine 被多个入口复用，保证同一套分析逻辑可以运行在本地、CI、Web 服务和 IDE 插件中。
+
+## 快速演示
+
+观看 AI PR Review 的完整使用流程：
+
+- **Web Console**：粘贴 PR URL → 一键分析 → 可视化建议与报告
+- **GitHub Actions**：PR 创建/更新后自动审查，发布 summary comment 和 inline review
+- **VS Code 插件**：Problems 面板跳转本地代码，Review Panel 展示完整报告
+
+> Demo 视频：[]（即将添加 GIF / BiliBili / YouTube 链接）
+
+最短体验路径（无需克隆仓库、不配环境）：打开 Web Console，粘贴任意公开仓库的 PR URL，点击 Analyze。
 
 ## 解决的问题
 
@@ -166,6 +180,19 @@ OPENAI_BASE_URL=https://api.deepseek.com/v1
 REVIEW_MODEL=deepseek-chat
 ```
 
+### 模型选择依据
+
+项目默认推荐两种模型，兼顾成本、速度和代码理解能力：
+
+| 模型 | 推荐场景 | 优势 |
+|------|----------|------|
+| `gpt-4.1-mini` | 默认推荐，英文/通用项目 | OpenAI 最新 mini 模型，代码理解和结构化输出优秀；速度快（~100 tok/s）；原生支持 `response_format: json_object` 保证输出 schema；成本低，适合高频自动审查 |
+| `deepseek-chat` | 中文项目、成本敏感场景 | 中文审查质量好；成本极低（约 ¥1/1M tokens）；OpenAI-compatible API 无缝接入；旗舰模型代码能力强 |
+
+两种模型通过相同的 OpenAI-compatible 接口调用。你可以通过修改 `OPENAI_BASE_URL` 接入任何兼容服务（Azure OpenAI、Ollama 本地模型、其他第三方代理）。
+
+> 为什么不用 GPT-4o 或 Claude？这些大模型在代码审查场景的边际收益有限——对 diff hunk 的局部分析，mini 级别模型已经足够。大模型增加的延迟和成本（5-10x），换来的只是更华丽的措辞，而非更准确的发现。
+
 ## CLI 用法
 
 AI + 规则分析：
@@ -300,6 +327,25 @@ python -m compileall src tests
 - diff parser
 - reviewer engine
 - risk rules
+
+## 安全性
+
+### Token 管理
+
+- GitHub Token 和 API Key 通过 `.env` 文件配置（已加入 `.gitignore`，不会提交到仓库）。
+- CI 环境中使用 GitHub Actions Secrets（`GITHUB_TOKEN`、`OPENAI_API_KEY`），运行时注入，不落盘。
+- 支持 GitHub fine-grained token，最小权限原则：仅需 Metadata Read、Pull Requests Read、Contents Read。
+
+### 数据隐私
+
+- **上下文最小化**：传给 AI 模型的 context 仅包含 PR diff（patch hunk + 上下文行），不传全量源码。模型看到的只是变更片段和周围几行代码，不是整个仓库。
+- **不外传敏感内容**：lockfile、生成报告、demo artifact 等低价值文件只展示变更统计，不消耗 AI token，也不会被发送到外部 API。
+- **不落盘**：除 GitHub Actions artifact（`pr-review.md`、`pr-review.json`）外，系统不将 PR 内容持久化到数据库或日志文件。artifact 受 GitHub 访问权限保护。
+- **全链路 HTTPS**：所有与 GitHub API 和 AI provider 的通信均通过 HTTPS 加密传输。
+
+### Provider 隔离
+
+OpenAI-compatible 接口允许用户指向自托管模型（如通过 Ollama 或 vLLM 部署的本地模型）。设置 `OPENAI_BASE_URL=http://localhost:11434/v1` 即可确保代码数据不出企业网络。
 
 ## 开发迭代
 
