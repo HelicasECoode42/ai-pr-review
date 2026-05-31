@@ -58,6 +58,15 @@ def health() -> dict:
     return {"status": "ok", "service": "ai-pr-review-console"}
 
 
+@app.get("/api/rules")
+def list_rules() -> list[dict]:
+    """Return current rule definitions."""
+    from src.utils.rule_loader import rules_to_dict
+    from src.analyzer.risk_rules import _RISK_PATH_RULES, _LINE_RULES_RUNTIME, _ensure_rules_loaded
+    _ensure_rules_loaded()
+    return rules_to_dict(list(_RISK_PATH_RULES), list(_LINE_RULES_RUNTIME))
+
+
 @app.post("/api/analyze")
 def analyze(req: AnalyzeRequest) -> AnalyzeResponse | dict:
     settings = get_settings()

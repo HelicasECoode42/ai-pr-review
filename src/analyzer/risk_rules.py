@@ -5,6 +5,7 @@ import logging
 
 from src.analyzer.diff_parser import parse_file_hunks
 from src.models import ChangedFile, RiskFinding, Severity
+from src.utils.rule_loader import load_rules
 
 logger = logging.getLogger(__name__)
 
@@ -43,98 +44,38 @@ _LANG_REQUIRED_RULES: dict[str, str] = {
     "swallowed-exception-js": "javascript",
 }
 
+# Runtime rule storage — loaded from YAML via rule_loader
+_RISK_PATH_RULES: list = []
+_LINE_RULES_RUNTIME: list = []
+_DISABLED_RULES: set[str] = set()
 
-# Path risk patterns: each entry is (rule_id, severity, regex, title, recommendation, confidence)
-_RISK_PATH_RULES: list[tuple[str, Severity, re.Pattern[str], str, str, float]] = [
-    (
-        "risk-path-auth",
-        Severity.MEDIUM,
-        re.compile(r"auth|permission|rbac|acl|login|session|jwt", re.IGNORECASE),
-        "Auth/permission code changed",
-        "Review authorization, data integrity, and rollback behavior carefully.",
-        0.6,
-    ),
-    (
-        "risk-path-payment",
-        Severity.MEDIUM,
-        re.compile(r"payment|billing|invoice|migration", re.IGNORECASE),
-        "Payment/migration code changed",
-        "Review financial logic, rollback behavior, and data integrity carefully.",
-        0.6,
-    ),
-    (
-        "risk-path-infra-workflow",
-        Severity.HIGH,
-        re.compile(r"^\.github/workflows/", re.IGNORECASE),
-        "CI/CD workflow changed",
-        "Workflow changes affect review pipeline stability. Verify fallback and gate logic.",
-        0.7,
-    ),
-    (
-        "risk-path-infra-reviewer",
-        Severity.HIGH,
-        re.compile(r"^src/cli/|^src/reviewer/|^src/github/", re.IGNORECASE),
-        "Review tool infrastructure changed",
-        "Changes to reviewer code may affect review stability, fallback behavior, "
-        "or workflow gating. Request a second reviewer.",
-        0.7,
-    ),
-]
 
-LINE_RULES: list[tuple[str, re.Pattern[str], Severity, str, str]] = [
-    (
-        "sql-string-concat",
-        re.compile(r"(SELECT|INSERT|UPDATE|DELETE).*(\+|f\"|format\()", re.IGNORECASE),
-        Severity.HIGH,
-        "Possible SQL injection risk",
-        "Use parameterized queries or the ORM query builder instead of string interpolation.",
-    ),
-    (
-        "shell-execution",
-        re.compile(r"(subprocess|os\.system|child_process\.exec|Runtime\.getRuntime)", re.IGNORECASE),
-        Severity.HIGH,
-        "Shell command execution changed",
-        "Validate user-controlled input and avoid shell=True or string-built commands.",
-    ),
-    (
-        "dynamic-execution",
-        re.compile(r"\b(eval|exec)\s*\(", re.IGNORECASE),
-        Severity.CRITICAL,
-        "Dynamic code execution introduced",
-        "Avoid dynamic execution or strictly sandbox and validate the input.",
-    ),
-    (
-        "secret-logging",
-        re.compile(r"(log|print|console\.).*(token|password|passwd|secret|api[_-]?key)", re.IGNORECASE),
-        Severity.HIGH,
-        "Potential secret logging",
-        "Do not write credentials or secrets to logs. Mask sensitive values before logging.",
-    ),
-    (
-        "swallowed-exception-python",
-        re.compile(r"except\s+\w*\s*:\s*pass\s*$", re.IGNORECASE),
-        Severity.MEDIUM,
-        "Exception handling may hide failures (Python)",
-        "Log enough context, rethrow when appropriate, or return an explicit error.",
-    ),
-    (
-        "swallowed-exception-js",
-        re.compile(r"catch\s*\(.*?\)\s*\{\s*\}"),
-        Severity.MEDIUM,
-        "Exception handling may hide failures (JS/TS)",
-        "Log enough context, rethrow when appropriate, or return an explicit error.",
-    ),
-    (
-        "test-skip",
-        re.compile(r"(pytest\.mark\.skip|describe\.skip|it\.skip|test\.skip|@Disabled)", re.IGNORECASE),
-        Severity.MEDIUM,
-        "Test skip introduced",
-        "Avoid skipping tests in production branches unless the reason and follow-up are explicit.",
-    ),
-]
+def _ensure_rules_loaded() -> None:
+    """Load rules from YAML if not already loaded."""
+    global _RISK_PATH_RULES, _LINE_RULES_RUNTIME, _DISABLED_RULES
+    if not _RISK_PATH_RULES:
+        path_rules, line_rules, disabled = load_rules()
+        _RISK_PATH_RULES[:] = path_rules
+        _LINE_RULES_RUNTIME[:] = line_rules
+        _DISABLED_RULES.clear()
+        _DISABLED_RULES.update(disabled)
+
+
+def reload_rules(user_rules_path: str | None = None) -> None:
+    """Reload rules from YAML, optionally with a user override file."""
+    global _RISK_PATH_RULES, _LINE_RULES_RUNTIME, _DISABLED_RULES
+    path_rules, line_rules, disabled = load_rules(user_rules_path)
+    _RISK_PATH_RULES[:] = path_rules
+    _LINE_RULES_RUNTIME[:] = line_rules
+    _DISABLED_RULES.clear()
+    _DISABLED_RULES.update(disabled)
+
+
+LINE_RULES = _LINE_RULES_RUNTIME  # alias for backward compat
 
 
 def scan_risks(files: list[ChangedFile] | None) -> list[RiskFinding]:
+    _ensure_rules_loaded()
     if not files:
         return []
     findings: list[RiskFinding] = []
@@ -154,6 +95,8 @@ def scan_risks(files: list[ChangedFile] | None) -> list[RiskFinding]:
 def _scan_path_risk(file: ChangedFile) -> list[RiskFinding]:
     findings: list[RiskFinding] = []
     for rule_id, severity, pattern, title, recommendation, confidence in _RISK_PATH_RULES:
+        if rule_id in _DISABLED_RULES:
+            continue
         if pattern.search(file.filename):
             findings.append(
                 RiskFinding(
@@ -184,8 +127,9 @@ def _scan_line_rules(file: ChangedFile) -> list[RiskFinding]:
     lang = _detect_language(file.filename)
     for hunk in hunks:
         for changed in hunk.added_lines:
-            for rule_id, pattern, severity, title, recommendation in LINE_RULES:
-                # Skip language-specific rules that don't match the detected language
+            for rule_id, pattern, severity, title, recommendation in _LINE_RULES_RUNTIME:
+                if rule_id in _DISABLED_RULES:
+                    continue
                 if rule_id in _LANG_REQUIRED_RULES and _LANG_REQUIRED_RULES[rule_id] != lang:
                     continue
                 try:
@@ -209,7 +153,6 @@ def _scan_line_rules(file: ChangedFile) -> list[RiskFinding]:
                         )
                     )
                 except Exception:
-                    # Single rule matching failed, skip this rule
                     continue
     return findings
 

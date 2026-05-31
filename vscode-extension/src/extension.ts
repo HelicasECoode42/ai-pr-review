@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import {
   fetchReview,
+  fetchReviewViaHttp,
   type ReviewResult,
 } from "./review-fetcher";
 import {

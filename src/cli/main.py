@@ -251,6 +251,7 @@ def analyze(
                 workflow_run_url=workflow_run_url,
                 updated_at=datetime.now(timezone.utc).isoformat(),
             ),
+            gh_client=github,
         )
 
         if use_ai:
@@ -291,6 +292,7 @@ def analyze(
                             workflow_run_url=workflow_run_url,
                             updated_at=datetime.now(timezone.utc).isoformat(),
                         ),
+                        gh_client=github,
                     )
                 finally:
                     provider.close()
