@@ -92,6 +92,7 @@
         <button class="tab active" data-tab="suggestions">💡 Suggestions</button>
         <button class="tab" data-tab="completeness">📊 Completeness</button>
         <button class="tab" data-tab="report">📄 Report</button>
+        <button class="tab" data-tab="history">📈 History</button>
       </nav>
 
       <!-- Suggestions panel -->
@@ -115,6 +116,17 @@
       <!-- Report panel -->
       <div class="tab-panel" id="panel-report">
         <div id="report-html" class="markdown-body"></div>
+      </div>
+
+      <!-- History panel -->
+      <div class="tab-panel" id="panel-history">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <h3 style="margin:0">📈 Review History</h3>
+          <button class="btn-outline" onclick="loadHistory()" style="font-size: 0.85rem;">🔄 Refresh</button>
+        </div>
+        <div id="history-summary" class="history-summary"></div>
+        <div id="history-list"></div>
+        <p id="no-history" class="muted hidden">No review history yet. Run an analysis to start building your history.</p>
       </div>
     </section>
   </main>

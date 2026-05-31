@@ -320,3 +320,125 @@ function hideError() {
 function hideResults() {
   document.getElementById("results-section").classList.add("hidden");
 }
+
+// ── History ──
+let _historyCache = [];
+
+async function loadHistory() {
+  const list = document.getElementById("history-list");
+  const summary = document.getElementById("history-summary");
+  const noop = document.getElementById("no-history");
+  list.innerHTML = '<p class="muted">Loading history…</p>';
+  summary.innerHTML = "";
+
+  try {
+    const resp = await fetch("/api/history");
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    _historyCache = await resp.json();
+
+    if (!_historyCache.length) {
+      list.innerHTML = "";
+      noop.classList.remove("hidden");
+      return;
+    }
+    noop.classList.add("hidden");
+
+    // Trend summary
+    const levels = _historyCache.map(e => e.risk_level);
+    const recent = levels.slice(0, 5);
+    const totalReviews = _historyCache.length;
+    const totalSuggestions = _historyCache.reduce((s, e) => s + e.suggestions_count, 0);
+    const avgSuggestions = totalReviews ? (totalSuggestions / totalReviews).toFixed(1) : 0;
+
+    // Risk trend: count risk levels
+    const riskCounts = {};
+    levels.forEach(l => { riskCounts[l] = (riskCounts[l] || 0) + 1; });
+    const riskEmoji = { low: "🟢", medium: "🟡", high: "🟠", critical: "🔴" };
+    const riskLabel = { low: "低", medium: "中", high: "高", critical: "严重" };
+
+    let trendHtml = `<div class="history-summary-grid">`;
+    trendHtml += `<div class="hs-item"><span class="hs-value">${totalReviews}</span><span class="hs-label">总审查次数</span></div>`;
+    trendHtml += `<div class="hs-item"><span class="hs-value">${totalSuggestions}</span><span class="hs-label">总建议数</span></div>`;
+    trendHtml += `<div class="hs-item"><span class="hs-value">${avgSuggestions}</span><span class="hs-label">平均建议/次</span></div>`;
+    trendHtml += `<div class="hs-item"><span class="hs-value">`;
+    for (const [lev, cnt] of Object.entries(riskCounts).sort()) {
+      trendHtml += `${riskEmoji[lev] || ""}${cnt} `;
+    }
+    trendHtml += `</span><span class="hs-label">风险分布</span></div>`;
+    trendHtml += `</div>`;
+    summary.innerHTML = trendHtml;
+
+    // Table
+    const rows = _historyCache.map((e, i) => {
+      const date = (e.analyzed_at || "").replace(/(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/, "$1-$2-$3 $4:$5");
+      return `
+        <tr class="history-row" onclick="loadHistoryEntry(${i})" style="cursor:pointer">
+          <td><a href="${escHtml(e.html_url || '#')}" onclick="event.stopPropagation()" target="_blank" rel="noopener">#${e.pr_number}</a></td>
+          <td>${escHtml(e.title || "")}</td>
+          <td>${date}</td>
+          <td><span class="sev-badge sev-${e.risk_level}">${riskLabel[e.risk_level] || e.risk_level}</span></td>
+          <td>${e.files_count} files</td>
+          <td>+${e.additions}/-${e.deletions}</td>
+          <td>${e.suggestions_count} suggestions</td>
+          <td>${e.used_ai ? "✅" : "⏭️"}</td>
+        </tr>`;
+    }).join("");
+
+    list.innerHTML = `
+      <div class="table-scroll">
+        <table class="history-table">
+          <thead>
+            <tr>
+              <th>PR</th>
+              <th>Title</th>
+              <th>Date</th>
+              <th>Risk</th>
+              <th>Files</th>
+              <th>Changes</th>
+              <th>Issues</th>
+              <th>AI</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  } catch (err) {
+    list.innerHTML = `<p class="error">Failed to load history: ${escHtml(err.message)}</p>`;
+  }
+}
+
+async function loadHistoryEntry(idx) {
+  const entry = _historyCache[idx];
+  if (!entry) return;
+
+  setLoading(true, "Loading historical report…");
+  hideError();
+
+  try {
+    const resp = await fetch(`/api/history/${entry.id}_full`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const report = await resp.json();
+
+    _report = report;
+    _markdown = "";
+    _duration = 0;
+
+    renderResults();
+    setLoading(false);
+    showStatus(`Loaded review for PR #${entry.pr_number}`, "ok");
+    // Scroll to results
+    document.getElementById("results-section").scrollIntoView({ behavior: "smooth" });
+  } catch (err) {
+    setLoading(false);
+    showError("Failed to load historical report: " + err.message);
+  }
+}
+
+// Override switchTab to auto-load history
+const _originalSwitchTab = switchTab;
+switchTab = function(name) {
+  _originalSwitchTab(name);
+  if (name === "history") {
+    loadHistory();
+  }
+};
