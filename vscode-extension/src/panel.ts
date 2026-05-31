@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
-import type { ReviewResult, ParsedSuggestion } from "./review-fetcher";
+import type { ReviewResult } from "./review-fetcher";
 import type { ReviewMeta } from "./report";
+import { resolveFileUri } from "./diagnostics";
 
 // ── HTML template ──────────────────────────────────────
 
@@ -216,19 +217,23 @@ export class ReviewPanelProvider {
   private _panel: vscode.WebviewPanel | undefined;
   private _extensionUri: vscode.Uri;
   private _onRefresh: () => Promise<ReviewResult | null>;
+  private _onResultChanged: (result: ReviewResult) => void;
   private _lastResult: ReviewResult | null = null;
+  private _currentDecoration: vscode.TextEditorDecorationType | undefined;
+  private _decorationDisposable: vscode.Disposable | undefined;
 
   constructor(
     extensionUri: vscode.Uri,
     onRefresh: () => Promise<ReviewResult | null>,
+    onResultChanged: (result: ReviewResult) => void,
   ) {
     this._extensionUri = extensionUri;
     this._onRefresh = onRefresh;
+    this._onResultChanged = onResultChanged;
   }
 
-  async show(result: ReviewResult): Promise<void> {
-    this._lastResult = result;
-
+  /** Ensure the webview panel is created, with message handler bound exactly once. */
+  private _ensurePanel(): vscode.WebviewPanel {
     if (!this._panel) {
       this._panel = vscode.window.createWebviewPanel(
         ReviewPanelProvider.viewType,
@@ -242,11 +247,14 @@ export class ReviewPanelProvider {
       );
       this._panel.onDidDispose(() => { this._panel = undefined; });
 
+      // Message handler registered ONCE — always available regardless of
+      // whether the panel was created via show() or showLoading() first.
       this._panel.webview.onDidReceiveMessage(async (msg) => {
         switch (msg.cmd) {
           case "refresh": {
             const r = await this._onRefresh();
             if (r) {
+              this._onResultChanged(r);
               this._lastResult = r;
             }
             if (r && this._panel) {
@@ -263,52 +271,105 @@ export class ReviewPanelProvider {
           }
           case "openCode": {
             const { filePath, line, severity, title, reason, recommendation } = msg;
-            const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
-            if (workspaceRoot && filePath) {
-              const fileUri = vscode.Uri.joinPath(workspaceRoot, filePath);
+            if (!filePath) {
+              vscode.window.showWarningMessage("AI PR Review: No file path in this suggestion.");
+              break;
+            }
+            try {
+              const fileUri = resolveFileUri(filePath);
               const doc = await vscode.workspace.openTextDocument(fileUri);
               const editor = await vscode.window.showTextDocument(doc, { preserveFocus: false });
+
               if (line > 0) {
                 const pos = new vscode.Position(line - 1, 0);
+                const lineEnd = doc.lineAt(pos).range.end;
+                const range = new vscode.Range(pos, lineEnd);
+
                 editor.selection = new vscode.Selection(pos, pos);
-                editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+                editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+
+                // Build hover message with full problem context
+                const sevIcon = severity === 'critical' || severity === 'high'
+                  ? '🔴' : severity === 'medium' ? '🟡' : '🟢';
+                const hoverMarkdown = new vscode.MarkdownString();
+                hoverMarkdown.isTrusted = true;
+                hoverMarkdown.supportHtml = true;
+                hoverMarkdown.appendMarkdown(
+                  `### ${sevIcon} [${(severity || '?').toUpperCase()}] ${title || '(no title)'}\n\n`
+                );
+                if (reason) {
+                  hoverMarkdown.appendMarkdown(`---\n\n**📋 Reason:** ${reason}\n\n`);
+                }
+                if (recommendation) {
+                  hoverMarkdown.appendMarkdown(`---\n\n**💡 Recommendation:** ${recommendation}\n\n`);
+                }
+                hoverMarkdown.appendMarkdown(`---\n\n📁 *${filePath}:${line}*`);
+
+                // Show decoration at the target line with hover message
+                this._cleanupDecoration();
+                this._currentDecoration = vscode.window.createTextEditorDecorationType({
+                  backgroundColor: new vscode.ThemeColor('editor.findMatchHighlightBackground'),
+                  borderColor: new vscode.ThemeColor('editorInfo.foreground'),
+                  borderStyle: 'solid',
+                  borderWidth: '0 0 0 2px',
+                  isWholeLine: true,
+                  overviewRulerColor: new vscode.ThemeColor('editorInfo.foreground'),
+                  overviewRulerLane: vscode.OverviewRulerLane.Right,
+                });
+                editor.setDecorations(this._currentDecoration, [
+                  { range, hoverMessage: hoverMarkdown },
+                ]);
+
+                // Auto-clear decoration when user moves cursor away
+                const targetLine = line;
+                this._decorationDisposable?.dispose();
+                this._decorationDisposable = vscode.window.onDidChangeTextEditorSelection((e) => {
+                  if (e.textEditor === editor && e.selections[0]?.active.line !== targetLine - 1) {
+                    this._cleanupDecoration();
+                    this._decorationDisposable?.dispose();
+                    this._decorationDisposable = undefined;
+                  }
+                });
+              } else {
+                vscode.window.showInformationMessage(
+                  `AI PR Review: Opened ${filePath} (no line number specified).`
+                );
               }
-              // Show risk info as an information message so the reviewer sees context
-              const sevIcon = severity === 'critical' || severity === 'high' ? '🔴' : severity === 'medium' ? '🟡' : '🟢';
-              const msgParts = [`${sevIcon} [${(severity || '').toUpperCase()}] ${title || ''}`];
-              if (reason) msgParts.push(`Reason: ${reason}`);
-              if (recommendation) msgParts.push(`💡 ${recommendation}`);
-              vscode.window.showInformationMessage(msgParts.join('\n'), { modal: false }, 'OK');
+            } catch (err: unknown) {
+              const msg = err instanceof Error ? err.message : String(err);
+              vscode.window.showErrorMessage(
+                `AI PR Review: Cannot open ${filePath} — ${msg}`
+              );
             }
             break;
           }
         }
       });
     }
+    return this._panel;
+  }
 
-    this._panel.webview.html = getWebviewHtml(result, this._panel.webview);
-    this._panel.reveal();
+  async show(result: ReviewResult): Promise<void> {
+    this._lastResult = result;
+    const panel = this._ensurePanel();
+    panel.webview.html = getWebviewHtml(result, panel.webview);
+    panel.reveal();
   }
 
   async showLoading(): Promise<void> {
-    if (!this._panel) {
-      this._panel = vscode.window.createWebviewPanel(
-        ReviewPanelProvider.viewType,
-        "AI PR Review",
-        vscode.ViewColumn.Beside,
-        {
-          enableScripts: true,
-          retainContextWhenHidden: true,
-          localResourceRoots: [this._extensionUri],
-        },
-      );
-      this._panel.onDidDispose(() => { this._panel = undefined; });
-    }
-    this._panel.webview.html = `<html><body style="font-family:var(--vscode-font-family);color:var(--vscode-foreground);background:var(--vscode-sideBar-background);display:flex;align-items:center;justify-content:center;height:100vh;"><p>⏳ Loading review results...</p></body></html>`;
-    this._panel.reveal();
+    const panel = this._ensurePanel();
+    panel.webview.html = `<html><body style="font-family:var(--vscode-font-family);color:var(--vscode-foreground);background:var(--vscode-sideBar-background);display:flex;align-items:center;justify-content:center;height:100vh;"><p>⏳ Loading review results...</p></body></html>`;
+    panel.reveal();
+  }
+
+  private _cleanupDecoration(): void {
+    this._currentDecoration?.dispose();
+    this._currentDecoration = undefined;
   }
 
   dispose(): void {
+    this._cleanupDecoration();
+    this._decorationDisposable?.dispose();
     this._panel?.dispose();
   }
 }

@@ -228,7 +228,7 @@ def _render_run_status(report: ReviewReport, T: _Translator, zh: bool) -> list[s
 
     # Reviewer version display
     if report.reviewer_version == "main-fallback":
-        version_display = f"main fallback ⚠️" if zh else f"main fallback ⚠️"
+        version_display = "main fallback ⚠️"
     else:
         version_display = "PR 分支" if zh else "PR branch"
 

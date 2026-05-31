@@ -73,3 +73,9 @@ class OpenAICompatibleProvider:
 
     def close(self) -> None:
         self._client.close()
+
+    def __enter__(self) -> "OpenAICompatibleProvider":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()

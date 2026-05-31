@@ -11,23 +11,13 @@ import {
   type PRInfo,
   type GitHubReviewComment,
 } from "./git";
-import type { ReviewMeta, ReviewReport } from "./report";
+import type { ReviewMeta, ReviewReport, ReviewSuggestion } from "./report";
 
 // ── Types ──────────────────────────────────────────────
 
-export interface ParsedSuggestion {
-  file_path: string;
-  line: number | null;
-  severity: "critical" | "high" | "medium" | "low";
-  confidence: number;
-  title: string;
-  reason: string;
-  recommendation: string;
-}
-
 export interface ReviewResult {
   pr: PRInfo;
-  suggestions: ParsedSuggestion[];
+  suggestions: ReviewSuggestion[];
   summary: string | null;
   workflowRunUrl: string | null;
   workflowStatus: string | null;
@@ -51,7 +41,7 @@ export interface ReviewResult {
  */
 function parseSuggestion(
   comment: GitHubReviewComment,
-): ParsedSuggestion | null {
+): ReviewSuggestion | null {
   const body = comment.body;
   // Parse header: **severity** (confidence%): title
   const headerMatch = body.match(
@@ -89,10 +79,10 @@ function parseSuggestion(
   };
 }
 
-function normalizeSeverity(s: string): ParsedSuggestion["severity"] {
+function normalizeSeverity(s: string): ReviewSuggestion["severity"] {
   const lower = s.toLowerCase();
   if (["critical", "high", "medium", "low"].includes(lower)) {
-    return lower as ParsedSuggestion["severity"];
+    return lower as ReviewSuggestion["severity"];
   }
   return "medium";
 }
@@ -235,7 +225,7 @@ export async function fetchReview(
   // Fall back to bot inline comments when artifact is unavailable.
   const comments = await getBotReviewComments(pr.owner, pr.repo, pr.number, cwd);
 
-  const suggestions: ParsedSuggestion[] = [];
+  const suggestions: ReviewSuggestion[] = [];
   for (const c of comments) {
     const parsed = parseSuggestion(c);
     if (parsed) suggestions.push(parsed);

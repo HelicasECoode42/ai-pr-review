@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,14 +20,13 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         env_prefix="",
         extra="ignore",
+        env_ignore_empty=True,
     )
 
 
 def get_settings() -> Settings:
     return Settings()
 
-
-import re
 
 # CJK Unicode ranges
 _CJK_RE = re.compile(
@@ -34,7 +35,7 @@ _CJK_RE = re.compile(
     r'\uac00-\ud7af]'                                   # Hangul
 )
 
-def detect_language(title: str = "", body: str = "") -> str:
+def detect_output_language(title: str = "", body: str = "") -> str:
     """Detect output language from PR title and body.
 
     Returns 'zh' if CJK characters make up >20% of the text, otherwise 'en'.

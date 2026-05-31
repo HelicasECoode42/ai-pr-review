@@ -37,7 +37,7 @@ class GitHubClient:
     def close(self) -> None:
         self._client.close()
 
-    def _request(self, path: str, **kwargs: object) -> httpx.Response:
+    def _get(self, path: str, **kwargs: object) -> httpx.Response:
         """Make a GET request; raise GitHubApiError on failure."""
         try:
             response = self._client.get(path, **kwargs)
@@ -58,7 +58,7 @@ class GitHubClient:
             raise GitHubApiError(f"Failed to connect to GitHub API: {exc}") from exc
 
     def get_pull_request(self, repo: str, number: int) -> PullRequest:
-        response = self._request(f"/repos/{repo}/pulls/{number}")
+        response = self._get(f"/repos/{repo}/pulls/{number}")
         data = response.json()
         head_info = data.get("head") or {}
         return PullRequest(
@@ -75,7 +75,7 @@ class GitHubClient:
 
     def list_pull_requests(self, repo: str, count: int = 10) -> list[PullRequest]:
         """List recent PRs for a repository (updated desc)."""
-        response = self._request(
+        response = self._get(
             f"/repos/{repo}/pulls",
             params={"state": "all", "per_page": count, "sort": "updated", "direction": "desc"},
         )
@@ -107,8 +107,8 @@ class GitHubClient:
         Returns ChangedFile list like get_changed_files, for incremental review.
         base/head can be branch names or commit SHAs.
         """
-        from src.models import ChangedFile, FileStatus
-        response = self._request(
+
+        response = self._get(
             f"/repos/{repo}/compare/{base}...{head}",
             params={"per_page": 300},
         )
@@ -142,7 +142,7 @@ class GitHubClient:
         files: list[ChangedFile] = []
         page = 1
         while True:
-            response = self._request(
+            response = self._get(
                 f"/repos/{repo}/pulls/{number}/files",
                 params={"per_page": 100, "page": page},
             )
@@ -175,7 +175,7 @@ class GitHubClient:
         Returns a list of comment dicts with keys: id, path, line, body, user.login, created_at.
         """
         try:
-            response = self._request(f"/repos/{repo}/pulls/{number}/comments")
+            response = self._get(f"/repos/{repo}/pulls/{number}/comments")
             data = response.json()
             if not isinstance(data, list):
                 return []
@@ -204,7 +204,7 @@ class GitHubClient:
         if ref:
             params["ref"] = ref
         try:
-            response = self._request(f"/repos/{repo}/contents/{path}", params=params)
+            response = self._get(f"/repos/{repo}/contents/{path}", params=params)
             data = response.json()
             content = data.get("content")
             encoding = data.get("encoding")
@@ -229,7 +229,7 @@ class GitHubClient:
 
         Returns list of comment objects with keys: id, body, user.login, created_at.
         """
-        response = self._request(
+        response = self._get(
             f"/repos/{repo}/issues/{issue_number}/comments",
             params={"per_page": 50, "sort": "created", "direction": "desc"},
         )

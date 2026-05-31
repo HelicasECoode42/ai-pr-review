@@ -1,11 +1,11 @@
 import * as vscode from "vscode";
-import type { ParsedSuggestion } from "./review-fetcher";
+import type { ReviewSuggestion } from "./report";
 /** Convert a single suggestion to a vscode.Diagnostic. */
-export declare function suggestionToDiagnostic(s: ParsedSuggestion, fileUri: vscode.Uri): vscode.Diagnostic;
+export declare function suggestionToDiagnostic(s: ReviewSuggestion, fileUri: vscode.Uri): vscode.Diagnostic;
 /** Resolve a file_path to an absolute vscode.Uri. */
 export declare function resolveFileUri(filePath: string): vscode.Uri;
-/** Build per-file Diagnostic map from ParsedSuggestion[]. */
-export declare function buildDiagnostics(suggestions: ParsedSuggestion[]): Map<string, vscode.Diagnostic[]>;
+/** Build per-file Diagnostic map from ReviewSuggestion[]. */
+export declare function buildDiagnostics(suggestions: ReviewSuggestion[]): Map<string, vscode.Diagnostic[]>;
 /** Parse JSON report and build per-file diagnostics. */
 export declare function parseAndCreateDiagnostics(json: string): Map<string, vscode.Diagnostic[]> | Error;
 /** Clear and set diagnostics on the collection. */

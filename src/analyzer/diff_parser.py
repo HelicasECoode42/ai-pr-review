@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 import logging
-from typing import List, Dict, Set
 
 from src.models import ChangedFile, ChangedLine, DiffHunk
 
