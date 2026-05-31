@@ -3,6 +3,7 @@ import {
   fetchReview,
   type ReviewResult,
 } from "./review-fetcher";
+import type { ReviewReport } from "./report";
 import {
   buildDiagnostics,
   applyDiagnostics,
@@ -161,17 +162,51 @@ async function loadReportFile(): Promise<void> {
     const raw = await vscode.workspace.fs.readFile(uris[0]);
     const json = new TextDecoder("utf-8").decode(raw);
 
+    // Diagnostics (Problems panel)
     const result = parseAndCreateDiagnostics(json);
     if (result instanceof Error) {
       vscode.window.showErrorMessage(`AI PR Review: ${result.message}`);
       return;
     }
 
-    if (!diagnosticCollection) return;
-    applyDiagnostics(diagnosticCollection, result);
+    if (diagnosticCollection) {
+      applyDiagnostics(diagnosticCollection, result);
+    }
 
     let total = 0;
     for (const diags of result.values()) total += diags.length;
+
+    // Also update the Panel with the loaded report
+    const report = JSON.parse(json) as ReviewReport;
+    lastReviewResult = {
+      pr: {
+        number: report.pr?.number ?? 0,
+        title: report.pr?.title ?? "Loaded Report",
+        url: report.pr?.html_url ?? "",
+        headRefName: report.pr?.head_ref ?? "",
+        owner: report.pr?.repo?.split("/")[0] ?? "",
+        repo: report.pr?.repo?.split("/")[1] ?? "",
+        state: "OPEN",
+      },
+      suggestions: (report.suggestions || []).map(s => ({
+        file_path: s.file_path,
+        line: s.line,
+        severity: s.severity,
+        confidence: s.confidence,
+        title: s.title,
+        reason: s.reason,
+        recommendation: s.recommendation,
+      })),
+      summary: report.summary ?? null,
+      workflowRunUrl: null,
+      workflowStatus: null,
+      reviewMeta: report.review_meta ?? null,
+      riskLevel: report.risk_level ?? null,
+    };
+
+    if (reviewPanel && lastReviewResult) {
+      await reviewPanel.show(lastReviewResult);
+    }
 
     vscode.window.showInformationMessage(
       total === 0

@@ -69,9 +69,11 @@ function getWebviewHtml(
           </div>
           <div class="suggestion-location">
             📁 <code>${esc(s.file_path)}</code>${s.line ? ` : <code>L${s.line}</code>` : ""}
-            <button class="open-code-btn" onclick="
-              vscode.postMessage({cmd:'openCode', filePath:'${esc(s.file_path)}', line:${s.line ?? 0}})
-            ">📍 Open Code</button>
+            <button class="open-code-btn"
+              data-file="${esc(s.file_path)}" data-line="${s.line ?? 0}"
+              data-severity="${esc(s.severity)}" data-title="${esc(s.title)}"
+              data-reason="${esc(s.reason)}" data-recommendation="${esc(s.recommendation)}"
+            >📍 Open Code</button>
           </div>
           ${s.reason ? `<div class="suggestion-reason">${esc(s.reason)}</div>` : ""}
           ${s.recommendation ? `<div class="suggestion-rec">💡 ${esc(s.recommendation)}</div>` : ""}
@@ -179,6 +181,20 @@ function getWebviewHtml(
     const vscode = acquireVsCodeApi();
     document.getElementById('refresh-btn').addEventListener('click', () => vscode.postMessage({cmd:'refresh'}));
     document.getElementById('open-pr-btn').addEventListener('click', () => vscode.postMessage({cmd:'openPr'}));
+    // Open Code buttons — use data attributes instead of inline onclick (CSP-safe)
+    document.querySelectorAll('.open-code-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const filePath = btn.getAttribute('data-file');
+        const line = parseInt(btn.getAttribute('data-line') || '0', 10);
+        vscode.postMessage({cmd:'openCode', filePath, line,
+          // Pass risk info so the extension can show it as a diagnostic at the jumped line
+          severity: btn.getAttribute('data-severity'),
+          title: btn.getAttribute('data-title'),
+          reason: btn.getAttribute('data-reason'),
+          recommendation: btn.getAttribute('data-recommendation'),
+        });
+      });
+    });
   </script>
 </body>
 </html>`;
@@ -246,7 +262,7 @@ export class ReviewPanelProvider {
             break;
           }
           case "openCode": {
-            const { filePath, line } = msg;
+            const { filePath, line, severity, title, reason, recommendation } = msg;
             const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
             if (workspaceRoot && filePath) {
               const fileUri = vscode.Uri.joinPath(workspaceRoot, filePath);
@@ -257,6 +273,12 @@ export class ReviewPanelProvider {
                 editor.selection = new vscode.Selection(pos, pos);
                 editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
               }
+              // Show risk info as an information message so the reviewer sees context
+              const sevIcon = severity === 'critical' || severity === 'high' ? '🔴' : severity === 'medium' ? '🟡' : '🟢';
+              const msgParts = [`${sevIcon} [${(severity || '').toUpperCase()}] ${title || ''}`];
+              if (reason) msgParts.push(`Reason: ${reason}`);
+              if (recommendation) msgParts.push(`💡 ${recommendation}`);
+              vscode.window.showInformationMessage(msgParts.join('\n'), { modal: false }, 'OK');
             }
             break;
           }
