@@ -133,6 +133,67 @@ def _build_completeness(
     return items
 
 
+def validate_report(report: ReviewReport) -> list[str]:
+    """Run post-generation validation checks on a ReviewReport.
+
+    Returns a list of issues found. Each issue is a human-readable string
+    that should be appended to analysis_warnings.
+    """
+    issues: list[str] = []
+
+    # 1. PR metadata must be present
+    if not report.pr or not report.pr.repo or report.pr.number == 0:
+        issues.append("PR metadata missing — report may be incomplete")
+
+    # 2. AI flag consistency
+    if report.used_ai and report.ai_failure_reason:
+        issues.append(
+            "Inconsistency: report.used_ai=True but ai_failure_reason is set"
+        )
+
+    # 3. If suggestions exist, summary must be non-empty
+    if report.suggestions and not report.summary.strip():
+        issues.append(
+            "Suggestions present but summary is empty — possible parse error"
+        )
+
+    # 4. report_confidence must be one of the known values
+    valid_confidence = {"normal", "fallback", "partial", "failed"}
+    if report.report_confidence not in valid_confidence:
+        issues.append(
+            f"Unknown report_confidence '{report.report_confidence}'"
+        )
+
+    # 5. execution_status consistency
+    if report.execution_status == "success" and report.degradation_reason:
+        issues.append(
+            "Inconsistency: execution_status=success but degradation_reason is set"
+        )
+    if report.execution_status == "degraded" and not report.degradation_reason:
+        issues.append(
+            "execution_status=degraded but degradation_reason is missing"
+        )
+
+    # 6. ReviewMeta basic checks
+    if report.review_meta:
+        if report.review_meta.reviewed_commit and len(report.review_meta.reviewed_commit) < 6:
+            issues.append(
+                f"reviewed_commit looks truncated: '{report.review_meta.reviewed_commit}'"
+            )
+
+    # 7. Completeness table: should not be empty
+    if not report.completeness:
+        issues.append("Completeness table is empty — analysis status unknown")
+
+    # 8. Pr_syntax_check_ok vs report_confidence
+    if not report.pr_syntax_check_ok and report.report_confidence == "normal":
+        issues.append(
+            "pr_syntax_check failed but report_confidence=normal — should be partial or failed"
+        )
+
+    return issues
+
+
 def build_rule_only_report(
     pr: PullRequest,
     files: list[ChangedFile],
@@ -185,7 +246,7 @@ def build_rule_only_report(
         used_ai=False, ai_failed=False,
         pr_syntax_ok=pr_syntax_ok,
     )
-    return ReviewReport(
+    report = ReviewReport(
         pr=pr,
         files=files,
         summary=summary,
@@ -201,6 +262,12 @@ def build_rule_only_report(
         review_meta=review_meta or ReviewMeta(),
         fix_tracking=fix_tracking,
     )
+    # Post-generation validation
+    validation_issues = validate_report(report)
+    if validation_issues:
+        report.analysis_warnings.extend(validation_issues)
+        logger.warning(f"Report validation issues: {validation_issues}")
+    return report
 
 
 def review_with_ai(
@@ -267,7 +334,7 @@ def review_with_ai(
             used_ai=True, ai_failed=False,
             pr_syntax_ok=pr_syntax_ok,
         )
-        return ReviewReport(
+        report = ReviewReport(
             pr=pr,
             files=files,
             summary=payload.summary,
@@ -285,7 +352,14 @@ def review_with_ai(
             report_confidence=report_confidence,
             completeness=completeness,
             review_meta=review_meta or ReviewMeta(),
+            fix_tracking=fix_tracking,
         )
+        # Post-generation validation
+        validation_issues = validate_report(report)
+        if validation_issues:
+            report.analysis_warnings.extend(validation_issues)
+            logger.warning(f"Report validation issues: {validation_issues}")
+        return report
     except (ProviderError, ValueError) as exc:
         logger.warning("AI review failed, falling back to rule-only: %s", exc)
         report = build_rule_only_report(pr, files, findings, language=language,
