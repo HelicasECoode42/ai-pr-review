@@ -96,9 +96,18 @@ vscode-extension/ai-pr-review-0.2.0.vsix
 
 安装：
 
+### 方法1：
+
 ```bash
 code --install-extension vscode-extension/ai-pr-review-0.2.0.vsix --force
 ```
+
+### 方法2：
+    1. 打开 VS Code
+    2. 按 Ctrl+Shift+X 打开扩展面板（或左侧边栏点那个四个方块图标）
+    3. 右上角点 ...（三个点，Views and More Actions）
+    4. 选 "Install from VSIX..."（从 VSIX 安装）
+    5. 在弹出的文件选择窗口里，找到你项目里的 vscode-extension\ai-pr-review-0.2.0.vsix，选中，确认
 
 安装后在 VS Code 中可使用：
 
