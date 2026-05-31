@@ -16,6 +16,12 @@ let statusBar: vscode.StatusBarItem | undefined;
 let reviewPanel: ReviewPanelProvider | undefined;
 
 function getWorkspaceRoot(): string | undefined {
+  const activeUri = vscode.window.activeTextEditor?.document.uri;
+  if (activeUri) {
+    const folder = vscode.workspace.getWorkspaceFolder(activeUri);
+    if (folder) return folder.uri.fsPath;
+  }
+
   return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 }
 

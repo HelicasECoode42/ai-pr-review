@@ -73,6 +73,34 @@ class GitHubClient:
             html_url=data.get("html_url"),
         )
 
+    def list_pull_requests(self, repo: str, count: int = 10) -> list[PullRequest]:
+        """List recent PRs for a repository (updated desc)."""
+        response = self._request(
+            f"/repos/{repo}/pulls",
+            params={"state": "all", "per_page": count, "sort": "updated", "direction": "desc"},
+        )
+        data = response.json()
+        if not isinstance(data, list):
+            return []
+        results: list[PullRequest] = []
+        for item in data[:count]:
+            try:
+                head_info = item.get("head") or {}
+                results.append(PullRequest(
+                    repo=repo,
+                    number=item.get("number", 0),
+                    title=item.get("title", ""),
+                    body=item.get("body"),
+                    author=(item.get("user") or {}).get("login"),
+                    base_ref=(item.get("base") or {}).get("ref"),
+                    head_ref=head_info.get("ref"),
+                    head_sha=head_info.get("sha"),
+                    html_url=item.get("html_url"),
+                ))
+            except Exception:
+                continue
+        return results
+
     def get_changed_files(self, repo: str, number: int) -> list[ChangedFile]:
         files: list[ChangedFile] = []
         page = 1

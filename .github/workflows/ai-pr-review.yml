@@ -9,7 +9,7 @@ on:
         description: "PR number to review"
         required: true
       language:
-        description: "Output language (en or zh)"
+        description: "Output language (auto, en, or zh)"
         default: "zh"
 
 permissions:
@@ -82,6 +82,10 @@ jobs:
           PR_NUMBER="${{ github.event.pull_request.number || inputs.pr_number }}"
           REPO="${{ github.repository }}"
           LANGUAGE="${{ inputs.language || 'zh' }}"
+          LANGUAGE_ARGS=()
+          if [ -n "${LANGUAGE}" ] && [ "${LANGUAGE}" != "auto" ]; then
+            LANGUAGE_ARGS=(--language "${LANGUAGE}")
+          fi
 
           AI_FLAG="--ai"
           if [ -z "${OPENAI_API_KEY}" ]; then
@@ -108,7 +112,7 @@ jobs:
           )
 
           uv run python -m src.cli.main "${REPO}" "${PR_NUMBER}" \
-            --language "${LANGUAGE}" \
+            "${LANGUAGE_ARGS[@]}" \
             "${REVIEWER_ARGS[@]}" \
             "${REVIEW_META_ARGS[@]}" \
             ${AI_FLAG} \
@@ -125,7 +129,7 @@ jobs:
           fi
 
       - name: Upload report
-        if: success()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ai-pr-review-report
@@ -134,11 +138,12 @@ jobs:
             reports/pr-review.json
             reports/pr-syntax-check.md
             reports/pr-syntax-check.txt
+          if-no-files-found: warn
           retention-days: 30
 
       - name: Post inline review comments (high-confidence only)
         if: >-
-          success() &&
+          always() &&
           (github.event_name == 'pull_request') &&
           github.event.pull_request.head.repo.full_name == github.repository
         continue-on-error: true
@@ -150,12 +155,34 @@ jobs:
             if (!fs.existsSync(path)) return;
 
             const report = JSON.parse(fs.readFileSync(path, "utf8"));
-            const highConfidence = (report.suggestions || []).filter(
-              s => s.confidence >= 0.85 && s.line != null
-            );
+            const aiSuggestions = (report.suggestions || [])
+              .filter(s => s.confidence >= 0.80 && s.line != null)
+              .map(s => ({
+                file_path: s.file_path,
+                line: s.line,
+                severity: s.severity,
+                confidence: s.confidence,
+                title: s.title,
+                reason: s.reason,
+                recommendation: s.recommendation,
+                source: "AI",
+              }));
+            const ruleFindings = (report.rule_findings || [])
+              .filter(r => (r.confidence ?? 0.7) >= 0.65 && r.line != null)
+              .map(r => ({
+                file_path: r.file_path,
+                line: r.line,
+                severity: r.severity,
+                confidence: r.confidence ?? 0.7,
+                title: r.title,
+                reason: r.evidence,
+                recommendation: r.recommendation,
+                source: "Rule",
+              }));
+            const inlineComments = [...aiSuggestions, ...ruleFindings].slice(0, 10);
 
-            if (highConfidence.length === 0) {
-              core.info("No high-confidence suggestions to post.");
+            if (inlineComments.length === 0) {
+              core.info("No line-level suggestions or rule findings to post.");
               return;
             }
 
@@ -166,8 +193,8 @@ jobs:
               return;
             }
 
-            core.info(`Posting ${highConfidence.length} inline review comment(s)...`);
-            for (const s of highConfidence) {
+            core.info(`Posting ${inlineComments.length} inline review comment(s)...`);
+            for (const s of inlineComments) {
               try {
                 const body = `**${s.severity}** (${Math.round(s.confidence * 100)}%): ${s.title}\n\n${s.reason}\n\n> ${s.recommendation}`;
                 await github.rest.pulls.createReviewComment({
@@ -188,7 +215,7 @@ jobs:
 
       - name: Post summary comment
         if: >-
-          success() &&
+          always() &&
           (github.event_name != 'pull_request' ||
            github.event.pull_request.head.repo.full_name == github.repository)
         continue-on-error: true
@@ -198,19 +225,20 @@ jobs:
         with:
           script: |
             const fs = require("fs");
-            const report = fs.readFileSync("reports/pr-review.md", "utf8");
-            const lines = report.split("\n");
-
-            let commentBody = "";
-            const maxLines = 80;
-            for (let i = 0; i < Math.min(lines.length, maxLines); i++) {
-              commentBody += lines[i] + "\n";
+            const path = "reports/pr-review.md";
+            if (!fs.existsSync(path)) {
+              core.warning("No pr-review.md found; skipping summary comment.");
+              return;
             }
+            let body = "<!-- ai-pr-review-bot -->\n\n";
+            const report = fs.readFileSync(path, "utf8");
+            const lines = report.split("\n");
+            const maxLines = 220;
+            body += lines.slice(0, maxLines).join("\n");
             if (lines.length > maxLines) {
-              commentBody += "\n\n...\n\n> 完整报告请查看 [GitHub Actions Artifact](";
-              commentBody += `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}`;
-              commentBody += `/actions/runs/${process.env.GITHUB_RUN_ID}) 或下载 `;
-              commentBody += "`ai-pr-review-report` artifact。\n";
+              const artifactUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+              body += "\n\n...\n\n";
+              body += `> 完整报告请查看 [GitHub Actions Artifact](${artifactUrl}) 或下载 \`ai-pr-review-report\` artifact。\n`;
             }
 
             const prNumber =
@@ -219,16 +247,13 @@ jobs:
 
             if (!prNumber) return;
 
-            // Look for an existing bot comment to update
-            const botMarker = "<!-- ai-pr-review-bot -->";
-            commentBody = botMarker + "\n" + commentBody;
-
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: prNumber,
             });
 
+            const botMarker = "<!-- ai-pr-review-bot -->";
             const botLogin = "github-actions[bot]";
             const existing = comments.find(
               c => c.user?.login === botLogin && c.body?.includes(botMarker)
@@ -240,15 +265,17 @@ jobs:
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   comment_id: existing.id,
-                  body: commentBody,
+                  body: body,
                 });
+                core.info("Updated existing bot summary comment.");
               } else {
                 await github.rest.issues.createComment({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   issue_number: prNumber,
-                  body: commentBody,
+                  body: body,
                 });
+                core.info("Created new bot summary comment.");
               }
             } catch (error) {
               core.warning(`Failed to post PR comment: ${error.message}`);

@@ -43,6 +43,12 @@ let diagnosticCollection;
 let statusBar;
 let reviewPanel;
 function getWorkspaceRoot() {
+    const activeUri = vscode.window.activeTextEditor?.document.uri;
+    if (activeUri) {
+        const folder = vscode.workspace.getWorkspaceFolder(activeUri);
+        if (folder)
+            return folder.uri.fsPath;
+    }
     return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 }
 // ── Status bar ──────────────────────────────────────────

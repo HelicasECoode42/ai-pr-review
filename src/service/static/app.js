@@ -13,28 +13,59 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   ["repo", "pr-number", "pr-url"].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.addEventListener("keydown", e => {
-      if (e.key === "Enter") runAnalysis();
-    });
+    if (el) {
+      el.addEventListener("keydown", e => {
+        if (e.key === "Enter") runAnalysis();
+      });
+      // Bidirectional sync: fields → URL
+      if (id === "repo" || id === "pr-number") {
+        el.addEventListener("input", syncFieldsToURL);
+      }
+    }
   });
 });
 
 // ── URL Parser ──
+function normalizeRepoInput(raw) {
+  const value = (raw || "").trim();
+  if (!value) return "";
+
+  const githubMatch = value.match(/github\.com\/([^\/\s]+)\/([^\/\s?#]+)(?:[\/?#].*)?$/i);
+  if (githubMatch) {
+    return `${githubMatch[1]}/${githubMatch[2].replace(/\.git$/, "")}`;
+  }
+
+  const repoMatch = value.match(/^([^\/\s]+)\/([^\/\s?#]+)$/);
+  if (repoMatch) {
+    return `${repoMatch[1]}/${repoMatch[2].replace(/\.git$/, "")}`;
+  }
+
+  return value;
+}
+
+function syncFieldsToURL() {
+  const repo = normalizeRepoInput(document.getElementById("repo").value);
+  const num = document.getElementById("pr-number").value;
+  if (repo && num) {
+    document.getElementById("repo").value = repo;
+    document.getElementById("pr-url").value = `https://github.com/${repo}/pull/${num}`;
+  }
+}
+
 function parseURL() {
   const raw = document.getElementById("pr-url").value.trim();
   if (!raw) return;
-  // Match: https://github.com/owner/repo/pull/123 (optional trailing path/query)
   const m = raw.match(/github\.com\/([^\/]+)\/([^\/]+)\/pull\/(\d+)/);
   if (m) {
-    document.getElementById("repo").value = `${m[1]}/${m[2]}`;
+    document.getElementById("repo").value = normalizeRepoInput(`${m[1]}/${m[2]}`);
     document.getElementById("pr-number").value = m[3];
   }
 }
 
 function fillDemo() {
-  document.getElementById("repo").value = "HelicasECoode42/ai-pr-review";
-  document.getElementById("pr-number").value = "1";
-  document.getElementById("pr-url").value = "";
+  document.getElementById("repo").value = "openclaw/openclaw";
+  document.getElementById("pr-number").value = "80419";
+  document.getElementById("pr-url").value = "https://github.com/openclaw/openclaw/pull/80419";
   document.getElementById("language").value = "zh";
   document.getElementById("use-ai").value = "0";
   hideError();
@@ -43,7 +74,7 @@ function fillDemo() {
 
 // ── API ──
 async function runAnalysis() {
-  const repo = document.getElementById("repo").value.trim();
+  const repo = normalizeRepoInput(document.getElementById("repo").value);
   const prNumber = parseInt(document.getElementById("pr-number").value, 10);
   const language = document.getElementById("language").value;
   const useAi = document.getElementById("use-ai").value === "1";
@@ -52,6 +83,8 @@ async function runAnalysis() {
     showStatus("Please fill in repository and PR number.", "error");
     return;
   }
+  document.getElementById("repo").value = repo;
+  syncFieldsToURL();
 
   setLoading(true, "Fetching PR data…");
   hideError();
@@ -68,10 +101,13 @@ async function runAnalysis() {
     }, 1200);
 
     const t0 = performance.now();
+    const payload = { repo, pr_number: prNumber, use_ai: useAi };
+    if (language) payload.language = language;
+
     const resp = await fetch("/api/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ repo, pr_number: prNumber, language, use_ai: useAi }),
+      body: JSON.stringify(payload),
     });
 
     clearInterval(stepTimer);
@@ -320,3 +356,240 @@ function hideError() {
 function hideResults() {
   document.getElementById("results-section").classList.add("hidden");
 }
+
+// ── History ──
+let _historyCache = [];
+
+async function loadHistory() {
+  const list = document.getElementById("history-list");
+  const summary = document.getElementById("history-summary");
+  const noop = document.getElementById("no-history");
+  list.innerHTML = '<p class="muted">Loading history…</p>';
+  summary.innerHTML = "";
+
+  try {
+    const resp = await fetch("/api/history");
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    _historyCache = await resp.json();
+
+    if (!_historyCache.length) {
+      list.innerHTML = "";
+      noop.classList.remove("hidden");
+      return;
+    }
+    noop.classList.add("hidden");
+
+    // Trend summary
+    const levels = _historyCache.map(e => e.risk_level);
+    const recent = levels.slice(0, 5);
+    const totalReviews = _historyCache.length;
+    const totalSuggestions = _historyCache.reduce((s, e) => s + e.suggestions_count, 0);
+    const avgSuggestions = totalReviews ? (totalSuggestions / totalReviews).toFixed(1) : 0;
+
+    // Risk trend: count risk levels
+    const riskCounts = {};
+    levels.forEach(l => { riskCounts[l] = (riskCounts[l] || 0) + 1; });
+    const riskEmoji = { low: "🟢", medium: "🟡", high: "🟠", critical: "🔴" };
+    const riskLabel = { low: "低", medium: "中", high: "高", critical: "严重" };
+
+    let trendHtml = `<div class="history-summary-grid">`;
+    trendHtml += `<div class="hs-item"><span class="hs-value">${totalReviews}</span><span class="hs-label">总审查次数</span></div>`;
+    trendHtml += `<div class="hs-item"><span class="hs-value">${totalSuggestions}</span><span class="hs-label">总建议数</span></div>`;
+    trendHtml += `<div class="hs-item"><span class="hs-value">${avgSuggestions}</span><span class="hs-label">平均建议/次</span></div>`;
+    trendHtml += `<div class="hs-item"><span class="hs-value">`;
+    for (const [lev, cnt] of Object.entries(riskCounts).sort()) {
+      trendHtml += `${riskEmoji[lev] || ""}${cnt} `;
+    }
+    trendHtml += `</span><span class="hs-label">风险分布</span></div>`;
+    trendHtml += `</div>`;
+    summary.innerHTML = trendHtml;
+
+    // Table
+    const rows = _historyCache.map((e, i) => {
+      const date = (e.analyzed_at || "").replace(/(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/, "$1-$2-$3 $4:$5");
+      return `
+        <tr class="history-row" onclick="loadHistoryEntry(${i})" style="cursor:pointer">
+          <td><a href="${escHtml(e.html_url || '#')}" onclick="event.stopPropagation()" target="_blank" rel="noopener">#${e.pr_number}</a></td>
+          <td>${escHtml(e.title || "")}</td>
+          <td>${date}</td>
+          <td><span class="sev-badge sev-${e.risk_level}">${riskLabel[e.risk_level] || e.risk_level}</span></td>
+          <td>${e.files_count} files</td>
+          <td>+${e.additions}/-${e.deletions}</td>
+          <td>${e.suggestions_count} suggestions</td>
+          <td>${e.used_ai ? "✅" : "⏭️"}</td>
+        </tr>`;
+    }).join("");
+
+    list.innerHTML = `
+      <div class="table-scroll">
+        <table class="history-table">
+          <thead>
+            <tr>
+              <th>PR</th>
+              <th>Title</th>
+              <th>Date</th>
+              <th>Risk</th>
+              <th>Files</th>
+              <th>Changes</th>
+              <th>Issues</th>
+              <th>AI</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  } catch (err) {
+    list.innerHTML = `<p class="error">Failed to load history: ${escHtml(err.message)}</p>`;
+  }
+}
+
+async function loadHistoryEntry(idx) {
+  const entry = _historyCache[idx];
+  if (!entry) return;
+
+  setLoading(true, "Loading historical report…");
+  hideError();
+
+  try {
+    const resp = await fetch(`/api/history/${entry.id}`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const payload = await resp.json();
+    const report = payload.report || payload;
+
+    _report = report;
+    _markdown = payload.markdown || "";
+    _duration = payload.duration_seconds || 0;
+
+    renderResults();
+    setLoading(false);
+    showStatus(`Loaded review for PR #${entry.pr_number}`, "ok");
+    // Scroll to results
+    document.getElementById("results-section").scrollIntoView({ behavior: "smooth" });
+  } catch (err) {
+    setLoading(false);
+    showError("Failed to load historical report: " + err.message);
+  }
+}
+
+// ── Repo Timeline ──
+async function loadTimeline() {
+  const repo = normalizeRepoInput(document.getElementById("tl-repo").value);
+  const count = parseInt(document.getElementById("tl-count").value, 10) || 10;
+  const loading = document.getElementById("timeline-loading");
+  const error = document.getElementById("timeline-error");
+  const results = document.getElementById("timeline-results");
+  const summary = document.getElementById("timeline-summary");
+  const list = document.getElementById("timeline-list");
+  const btn = document.getElementById("tl-btn");
+
+  if (!repo) {
+    error.innerHTML = `<p class="error">Enter a repository as owner/repo or a GitHub repository URL.</p>`;
+    error.classList.remove("hidden");
+    return;
+  }
+  document.getElementById("tl-repo").value = repo;
+  loading.classList.remove("hidden");
+  error.classList.add("hidden");
+  results.classList.add("hidden");
+  btn.disabled = true;
+
+  try {
+    const resp = await fetch("/api/repo-trend", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ repo, count }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.detail || `HTTP ${resp.status}`);
+    }
+    const data = await resp.json();
+    const prs = data.prs || [];
+
+    if (!prs.length) {
+      error.innerHTML = `<p class="muted">No PRs found for ${escHtml(repo)}</p>`;
+      error.classList.remove("hidden");
+      return;
+    }
+
+    // Summary stats
+    const riskEmoji = { low: "🟢", medium: "🟡", high: "🟠", critical: "🔴" };
+    const riskLabel = { low: "低", medium: "中", high: "高", critical: "严重" };
+    const totals = { low: 0, medium: 0, high: 0, critical: 0 };
+    let totalFiles = 0, totalAdds = 0, totalDels = 0, totalFindings = 0;
+    prs.forEach(p => {
+      totals[p.risk_level] = (totals[p.risk_level] || 0) + 1;
+      totalFiles += p.files_count;
+      totalAdds += p.additions;
+      totalDels += p.deletions;
+      totalFindings += p.findings_count;
+    });
+    summary.innerHTML = `
+      <div class="history-summary-grid">
+        <div class="hs-item"><span class="hs-value">${prs.length}</span><span class="hs-label">PRs analyzed</span></div>
+        <div class="hs-item"><span class="hs-value">${totalFindings}</span><span class="hs-label">Total findings</span></div>
+        <div class="hs-item"><span class="hs-value">+${totalAdds}/-${totalDels}</span><span class="hs-label">Code churn</span></div>
+        <div class="hs-item"><span class="hs-value">${totalFiles}</span><span class="hs-label">Files changed</span></div>
+      </div>
+      <div class="risk-bar">
+        ${Object.entries(totals).filter(([,c]) => c > 0).map(([lev, cnt]) =>
+          `<span class="risk-seg risk-${lev}" style="flex:${cnt}">${riskEmoji[lev]} ${cnt}</span>`
+        ).join("")}
+      </div>`;
+
+    // Timeline
+    const rows = prs.map((p, i) => {
+      const findingsHtml = (p.top_findings || []).map(f =>
+        `<span class="finding-tag sev-${f.severity}">${f.title}</span>`
+      ).join(" ");
+      return `
+        <div class="timeline-item">
+          <div class="tl-dot sev-${p.risk_level}"></div>
+          <div class="tl-content">
+            <div class="tl-header">
+              <a href="${escHtml(p.html_url || '#')}" target="_blank" rel="noopener">
+                <strong>#${p.pr_number}</strong> ${escHtml(p.title)}
+              </a>
+              <span class="sev-badge sev-${p.risk_level}">${riskLabel[p.risk_level]}</span>
+            </div>
+            <div class="tl-meta">
+              ${p.author ? escHtml(p.author) + " · " : ""}${p.files_count} files · +${p.additions}/-${p.deletions} · ${p.findings_count} findings
+            </div>
+            ${findingsHtml ? `<div class="tl-findings">${findingsHtml}</div>` : ""}
+          </div>
+        </div>`;
+    }).join("");
+
+    list.innerHTML = rows;
+    results.classList.remove("hidden");
+  } catch (err) {
+    error.innerHTML = `<p class="error">${escHtml(err.message)}</p>`;
+    error.classList.remove("hidden");
+  } finally {
+    loading.classList.add("hidden");
+    btn.disabled = false;
+  }
+}
+
+function fillTimelineDemo() {
+  document.getElementById("tl-repo").value = "openclaw/openclaw";
+  document.getElementById("tl-count").value = "10";
+  document.getElementById("timeline-error").classList.add("hidden");
+  document.getElementById("timeline-results").classList.add("hidden");
+}
+
+// Auto-fill tl-repo from main repo field
+document.getElementById("repo")?.addEventListener("input", function() {
+  const tlRepo = document.getElementById("tl-repo");
+  const repo = normalizeRepoInput(this.value);
+  if (tlRepo && repo) tlRepo.value = repo;
+});
+
+// Override switchTab to auto-load history
+const _originalSwitchTab = switchTab;
+switchTab = function(name) {
+  _originalSwitchTab(name);
+  if (name === "history") {
+    loadHistory();
+  }
+};

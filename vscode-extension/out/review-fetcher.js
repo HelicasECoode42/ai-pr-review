@@ -121,6 +121,35 @@ function parseRiskLevel(summaryMd) {
     const en = summaryMd.match(/Risk[|* ]+`?\*{0,2}(\w+)\*{0,2}`?/i);
     return en ? en[1].toUpperCase() : null;
 }
+function buildResultFromReport(report, pr, runUrl, workflowStatus) {
+    const reportPr = report.pr;
+    return {
+        pr: {
+            ...pr,
+            number: reportPr?.number ?? pr.number,
+            title: reportPr?.title ?? pr.title,
+            url: reportPr?.html_url ?? pr.url,
+            headRefName: reportPr?.head_ref ?? pr.headRefName,
+        },
+        suggestions: report.suggestions ?? [],
+        summary: report.summary ?? null,
+        workflowRunUrl: report.review_meta?.workflow_run_url ?? runUrl,
+        workflowStatus,
+        reviewMeta: report.review_meta ?? null,
+        riskLevel: report.risk_level ?? null,
+    };
+}
+function parseArtifactReport(json) {
+    if (!json)
+        return null;
+    try {
+        const report = JSON.parse(json);
+        return report?.pr && Array.isArray(report.suggestions) ? report : null;
+    }
+    catch {
+        return null;
+    }
+}
 // ── Main fetcher ───────────────────────────────────────
 /**
  * Full pipeline: detect branch → find PR → fetch review comments → parse.
@@ -130,20 +159,41 @@ async function fetchReview(cwd) {
     const branch = await (0, git_1.getCurrentBranch)(cwd);
     if (!branch)
         return null;
-    const pr = await (0, git_1.getPRForBranch)(branch, cwd);
+    const commit = await (0, git_1.getCurrentCommit)(cwd);
+    const pr = await (0, git_1.getPRForBranch)(branch, cwd) ??
+        (commit ? await (0, git_1.getPRForCommit)(commit, cwd) : null);
     if (!pr || pr.state !== "OPEN")
         return null;
-    // Fetch bot summary comment & inline comments in parallel
-    const [comments, summary, run] = await Promise.all([
-        (0, git_1.getBotReviewComments)(pr.owner, pr.repo, pr.number, cwd),
+    const workflowBranch = pr.headRefName || branch;
+    const [summary, run, artifactJson] = await Promise.all([
         (0, git_1.getBotSummaryComment)(pr.owner, pr.repo, pr.number, cwd),
-        (0, git_1.getLatestWorkflowRun)(branch, cwd),
+        (0, git_1.getLatestWorkflowRun)(workflowBranch, cwd),
+        (0, git_1.getLatestReportArtifactJson)(workflowBranch, cwd),
     ]);
+    const artifactReport = parseArtifactReport(artifactJson);
+    if (artifactReport) {
+        return buildResultFromReport(artifactReport, pr, run?.url ?? null, run ? (run.conclusion ?? run.status) : null);
+    }
+    // Fall back to bot inline comments when artifact is unavailable.
+    const comments = await (0, git_1.getBotReviewComments)(pr.owner, pr.repo, pr.number, cwd);
     const suggestions = [];
     for (const c of comments) {
         const parsed = parseSuggestion(c);
         if (parsed)
             suggestions.push(parsed);
+    }
+    if (suggestions.length === 0 && summary) {
+        return {
+            pr,
+            suggestions,
+            summary,
+            workflowRunUrl: run?.url ?? null,
+            workflowStatus: run
+                ? (run.conclusion ?? run.status)
+                : null,
+            reviewMeta: parseReviewMeta(summary),
+            riskLevel: parseRiskLevel(summary),
+        };
     }
     return {
         pr,

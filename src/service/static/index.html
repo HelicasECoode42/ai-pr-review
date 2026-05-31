@@ -39,6 +39,7 @@
           <label for="language">Language</label>
           <select id="language">
             <option value="zh" selected>中文</option>
+            <option value="">Auto</option>
             <option value="en">English</option>
           </select>
         </div>
@@ -54,6 +55,34 @@
         <button id="analyze-btn" onclick="runAnalysis()">🔍 Analyze</button>
         <button class="btn-outline" onclick="fillDemo()">✨ Try Demo</button>
         <span id="status-msg" class="status-msg hidden"></span>
+      </div>
+    </section>
+
+    <!-- Repo Timeline -->
+    <section class="card" id="timeline-section">
+      <h2>📈 Repo Timeline</h2>
+      <p class="subtitle">See how a repository evolved through its PRs</p>
+      <div class="form-row">
+        <div class="field" style="flex:3">
+          <label for="tl-repo">Repository</label>
+          <input type="text" id="tl-repo" placeholder="owner/repo" value="HelicasECoode42/ai-pr-review">
+        </div>
+        <div class="field" style="flex:1">
+          <label for="tl-count">PRs</label>
+          <input type="number" id="tl-count" value="10" min="1" max="20">
+        </div>
+        <div class="field timeline-action">
+          <button id="tl-btn" class="timeline-btn" onclick="loadTimeline()">Load timeline</button>
+        </div>
+      </div>
+      <div class="timeline-actions">
+        <button class="btn-outline" onclick="fillTimelineDemo()">OpenClaw demo</button>
+      </div>
+      <div id="timeline-loading" class="hidden"><p class="muted">Fetching PR history…</p></div>
+      <div id="timeline-error" class="hidden"></div>
+      <div id="timeline-results" class="hidden">
+        <div id="timeline-summary"></div>
+        <div id="timeline-list"></div>
       </div>
     </section>
 
@@ -92,6 +121,7 @@
         <button class="tab active" data-tab="suggestions">💡 Suggestions</button>
         <button class="tab" data-tab="completeness">📊 Completeness</button>
         <button class="tab" data-tab="report">📄 Report</button>
+        <button class="tab" data-tab="history">📈 History</button>
       </nav>
 
       <!-- Suggestions panel -->
@@ -115,6 +145,17 @@
       <!-- Report panel -->
       <div class="tab-panel" id="panel-report">
         <div id="report-html" class="markdown-body"></div>
+      </div>
+
+      <!-- History panel -->
+      <div class="tab-panel" id="panel-history">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <h3 style="margin:0">📈 Review History</h3>
+          <button class="btn-outline" onclick="loadHistory()" style="font-size: 0.85rem;">🔄 Refresh</button>
+        </div>
+        <div id="history-summary" class="history-summary"></div>
+        <div id="history-list"></div>
+        <p id="no-history" class="muted hidden">No review history yet. Run an analysis to start building your history.</p>
       </div>
     </section>
   </main>

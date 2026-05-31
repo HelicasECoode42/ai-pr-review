@@ -59,6 +59,7 @@ main {
   border-color: #58a6ff;
   outline: none;
 }
+.field input::placeholder { color: #6e7681; }
 .full-width { grid-column: 1 / -1; }
 .url-row { margin-bottom: 0.25rem; }
 .form-actions {
@@ -313,3 +314,190 @@ footer a { color: #58a6ff; text-decoration: none; }
 
 /* ── Muted ── */
 .muted { color: #8b949e; text-align: center; padding: 2rem; }
+
+
+/* ── History ── */
+.history-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+.hs-item {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.hs-value {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #e6edf3;
+}
+.hs-label {
+  font-size: 0.75rem;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+.history-table th {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  color: #8b949e;
+  font-weight: 600;
+  border-bottom: 1px solid #30363d;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.history-table td {
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid #21262d;
+  color: #c9d1d9;
+}
+.history-row:hover {
+  background: #1c2129;
+}
+.history-row td:first-child a {
+  color: #58a6ff;
+  text-decoration: none;
+  font-weight: 600;
+}
+.history-row td:first-child a:hover {
+  text-decoration: underline;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+
+/* ── Repo Timeline ── */
+#timeline-section .subtitle {
+  margin-bottom: 1rem;
+}
+.timeline-action {
+  align-self: end;
+}
+.timeline-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -0.35rem;
+  margin-bottom: 1rem;
+}
+.timeline-btn {
+  width: 100%;
+  min-width: 132px;
+  height: 40px;
+  padding: 0 1rem;
+  border: 1px solid #2f81f7;
+  border-radius: 6px;
+  background: #1f6feb;
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.timeline-btn:hover {
+  background: #388bfd;
+  border-color: #58a6ff;
+}
+.timeline-btn:disabled {
+  background: #30363d;
+  border-color: #30363d;
+  color: #8b949e;
+  cursor: default;
+}
+.risk-bar {
+  display: flex;
+  border-radius: 6px;
+  overflow: hidden;
+  height: 24px;
+  margin-bottom: 1.25rem;
+}
+.risk-seg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #fff;
+  min-width: 40px;
+}
+.risk-seg.risk-low { background: #238636; }
+.risk-seg.risk-medium { background: #9e6a03; }
+.risk-seg.risk-high { background: #da3633; }
+.risk-seg.risk-critical { background: #a40e26; }
+
+.timeline-item {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.6rem 0;
+  position: relative;
+}
+.timeline-item + .timeline-item {
+  border-top: 1px solid #21262d;
+}
+.tl-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-top: 0.45rem;
+  flex-shrink: 0;
+}
+.tl-dot.sev-low { background: #238636; }
+.tl-dot.sev-medium { background: #d29922; }
+.tl-dot.sev-high { background: #da3633; }
+.tl-dot.sev-critical { background: #a40e26; }
+
+.tl-content { flex: 1; min-width: 0; }
+.tl-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.tl-header a {
+  color: #58a6ff;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tl-header a:hover { text-decoration: underline; }
+.tl-meta {
+  font-size: 0.78rem;
+  color: #8b949e;
+  margin-top: 0.15rem;
+}
+.tl-findings {
+  margin-top: 0.35rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.finding-tag {
+  font-size: 0.72rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  font-weight: 500;
+}
+.finding-tag.sev-low { background: #1a3a2a; color: #3fb950; }
+.finding-tag.sev-medium { background: #3d2e00; color: #d29922; }
+.finding-tag.sev-high { background: #3d1f1f; color: #f85149; }
+.finding-tag.sev-critical { background: #3d1119; color: #ff7b72; }
+
+#timeline-section { margin-top: 0; }
+#timeline-section h2 { margin-bottom: 0.25rem; }
