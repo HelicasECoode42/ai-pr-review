@@ -7,7 +7,7 @@ import typer
 from rich.console import Console
 
 from src.github.client import GitHubApiError, GitHubClient
-from src.utils.config import get_settings
+from src.utils.config import detect_language, get_settings
 
 app = typer.Typer(help="AI assisted GitHub Pull Request review tool.")
 console = Console()
@@ -65,10 +65,10 @@ def analyze(
         "--workflow-run-url",
         help="URL to the GitHub Actions workflow run.",
     ),
-    language: OutputLanguage = typer.Option(
-        OutputLanguage.EN,
+    language: OutputLanguage | None = typer.Option(
+        None,
         "--language",
-        help="Output language.",
+        help="Output language (auto-detected from PR if not set).",
     ),
 ) -> None:
     settings = get_settings()
@@ -81,6 +81,10 @@ def analyze(
         with GitHubClient(settings.github_token, timeout=settings.request_timeout_seconds) as github:
             pr = github.get_pull_request(repo, pr_number)
             files = github.get_changed_files(repo, pr_number)
+            if language is None:
+                detected = detect_language(pr.title or "", pr.body or "")
+                language = OutputLanguage(detected)
+                console.print(f"[dim]Language auto-detected: {detected}[/dim]")
     except GitHubApiError as exc:
         # Don't fail the whole process for CI: emit a minimal failure report
         console.print(f"[red]GitHub API error: {exc}[/red]")

@@ -171,26 +171,37 @@ def _get_relevant_function_index(changed_files: list[str]) -> str:
 def _build_context_pack(
     changed_files: list[str],
     budget: int = _CONTEXT_PACK_BUDGET,
+    small_pr: bool = False,
 ) -> str:
-    """Build Context Pack string from review guide and function index."""
+    """Build Context Pack string from review guide and function index.
+
+    For small PRs (≤5 files), the full review guide is injected instead of
+    a condensed summary, giving the model complete project conventions context.
+    """
     parts: list[str] = []
     remaining = budget
 
     # 1. Review Guide (prioritised: project conventions)
     guide = _load_context_pack_text()
     if guide and remaining > 0:
-        # Only inject sections relevant to the review
-        guide_lines = guide.split("\n")
-        condensed: list[str] = []
-        for line in guide_lines:
-            if line.startswith("#") or line.startswith("- **") or line.startswith("|"):
-                condensed.append(line)
-        guide_condensed = "\n".join(condensed)
-        if len(guide_condensed) > remaining:
-            guide_condensed = guide_condensed[:remaining]
+        if small_pr:
+            # Small PR — inject full guide for richer context
+            guide_text = guide
+            if len(guide_text) > remaining:
+                guide_text = guide_text[:remaining]
+        else:
+            # Large PR — condensed version (headers + key rules only)
+            guide_lines = guide.split("\n")
+            condensed: list[str] = []
+            for line in guide_lines:
+                if line.startswith("#") or line.startswith("- **") or line.startswith("|"):
+                    condensed.append(line)
+            guide_text = "\n".join(condensed)
+            if len(guide_text) > remaining:
+                guide_text = guide_text[:remaining]
         parts.append("## Project Review Conventions")
-        parts.append(guide_condensed)
-        remaining -= len(guide_condensed)
+        parts.append(guide_text)
+        remaining -= len(guide_text)
 
     # 2. Function index for changed files
     if remaining > 0:
@@ -292,7 +303,7 @@ def build_review_context(
             continue
 
     # ── Context Pack injection ──
-    context_pack = _build_context_pack([f.filename for f in files])
+    context_pack = _build_context_pack([f.filename for f in files], small_pr=len(files) <= 5)
     if context_pack:
         parts.append(context_pack)
 
