@@ -32,7 +32,6 @@
       }
     },
     "commands": [
-    "commands": [
       {
         "command": "ai-pr-review.refresh",
         "title": "AI PR Review: Refresh"
