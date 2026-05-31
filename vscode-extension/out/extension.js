@@ -110,12 +110,25 @@ function updateStatusBar(result, error, loading) {
 }
 // ── Core logic ─────────────────────────────────────────
 let lastReviewResult = null;
+let isManualReportLoaded = false;
 async function loadReview() {
     if (!statusBar)
         return;
+    // Don't overwrite a manually loaded report with PR auto-fetch;
+    // keep the existing status bar & diagnostics intact.
+    if (isManualReportLoaded) {
+        return;
+    }
     updateStatusBar(null, undefined, true);
     try {
         const result = await (0, review_fetcher_1.fetchReview)(getWorkspaceRoot());
+        // If the fetch completely failed (no PR, network error), keep existing data.
+        if (!result && lastReviewResult) {
+            updateStatusBar(null);
+            return;
+        }
+        // Refresh succeeded — overwrite with current state.
+        // An empty result (0 suggestions) IS valid: clear old diagnostics.
         lastReviewResult = result;
         if (!diagnosticCollection)
             return;
@@ -158,17 +171,48 @@ async function loadReportFile() {
             return;
         const raw = await vscode.workspace.fs.readFile(uris[0]);
         const json = new TextDecoder("utf-8").decode(raw);
-        const result = (0, diagnostics_1.parseAndCreateDiagnostics)(json);
-        if (result instanceof Error) {
-            vscode.window.showErrorMessage(`AI PR Review: ${result.message}`);
+        // Parse once and reuse for both diagnostics and panel data
+        let report;
+        try {
+            report = JSON.parse(json);
+        }
+        catch (e) {
+            vscode.window.showErrorMessage(`AI PR Review: Failed to parse report JSON: ${e instanceof Error ? e.message : String(e)}`);
             return;
         }
-        if (!diagnosticCollection)
+        if (!report.suggestions || !Array.isArray(report.suggestions)) {
+            vscode.window.showErrorMessage("AI PR Review: Invalid report format: missing suggestions array.");
             return;
-        (0, diagnostics_1.applyDiagnostics)(diagnosticCollection, result);
-        let total = 0;
-        for (const diags of result.values())
-            total += diags.length;
+        }
+        // Diagnostics (Problems panel)
+        if (diagnosticCollection) {
+            const byFile = (0, diagnostics_1.buildDiagnostics)(report.suggestions);
+            (0, diagnostics_1.applyDiagnostics)(diagnosticCollection, byFile);
+        }
+        const total = report.suggestions.length;
+        // Also update the Panel with the loaded report
+        lastReviewResult = {
+            pr: {
+                number: report.pr?.number ?? 0,
+                title: report.pr?.title ?? "Loaded Report",
+                url: report.pr?.html_url ?? "",
+                headRefName: report.pr?.head_ref ?? "",
+                owner: report.pr?.repo?.split("/")?.[0] ?? "",
+                repo: report.pr?.repo?.split("/")?.[1] ?? "",
+                state: "OPEN",
+            },
+            suggestions: report.suggestions ?? [],
+            summary: report.summary ?? null,
+            workflowRunUrl: null,
+            workflowStatus: null,
+            reviewMeta: report.review_meta ?? null,
+            riskLevel: report.risk_level ?? null,
+        };
+        if (reviewPanel && lastReviewResult) {
+            await reviewPanel.show(lastReviewResult);
+        }
+        // Mark as manual load to prevent auto-refresh from overwriting
+        isManualReportLoaded = true;
         vscode.window.showInformationMessage(total === 0
             ? `AI PR Review: No suggestions found in ${vscode.workspace.asRelativePath(uris[0])}`
             : `AI PR Review: Loaded ${total} suggestion(s) from ${vscode.workspace.asRelativePath(uris[0])}`);
@@ -180,6 +224,7 @@ async function loadReportFile() {
 function clearDiagnostics() {
     diagnosticCollection?.clear();
     lastReviewResult = null;
+    isManualReportLoaded = false;
     if (statusBar) {
         statusBar.text = "$(circle-slash) AI Review";
         statusBar.tooltip = "Diagnostics cleared. Click to refresh.";
@@ -196,10 +241,8 @@ async function openPanel() {
     else {
         await reviewPanel.showLoading();
         await loadReview();
-        // After loading, show results in the panel if they arrived
-        if (lastReviewResult && reviewPanel) {
-            await reviewPanel.show(lastReviewResult);
-        }
+        // loadReview() already calls reviewPanel.show() on success,
+        // so no redundant second show here.
     }
 }
 // ── Extension lifecycle ─────────────────────────────────
@@ -211,15 +254,28 @@ function activate(context) {
     statusBar = createStatusBar();
     statusBar.show();
     context.subscriptions.push(statusBar);
-    // Review panel provider
-    reviewPanel = new panel_1.ReviewPanelProvider(context.extensionUri, () => (0, review_fetcher_1.fetchReview)(getWorkspaceRoot()));
+    // Review panel provider — syncs result changes back to extension state
+    reviewPanel = new panel_1.ReviewPanelProvider(context.extensionUri, async () => {
+        if (isManualReportLoaded)
+            return lastReviewResult;
+        return (0, review_fetcher_1.fetchReview)(getWorkspaceRoot());
+    }, (result) => {
+        lastReviewResult = result;
+        if (diagnosticCollection && result.suggestions.length > 0) {
+            diagnosticCollection.clear();
+            const byFile = (0, diagnostics_1.buildDiagnostics)(result.suggestions);
+            (0, diagnostics_1.applyDiagnostics)(diagnosticCollection, byFile);
+        }
+        updateStatusBar(result);
+    });
     context.subscriptions.push(reviewPanel);
     // Commands
     context.subscriptions.push(vscode.commands.registerCommand("ai-pr-review.refresh", loadReview), vscode.commands.registerCommand("ai-pr-review.loadReport", loadReportFile), vscode.commands.registerCommand("ai-pr-review.clearDiagnostics", clearDiagnostics), vscode.commands.registerCommand("ai-pr-review.openPanel", () => openPanel()));
     // Auto-load on activation (after a short delay to let workspace settle)
-    setTimeout(() => loadReview(), 500);
+    setTimeout(() => loadReview().catch(err => console.error('AI PR Review auto-load failed:', err)), 500);
 }
 function deactivate() {
+    reviewPanel?.dispose();
     diagnosticCollection?.clear();
     diagnosticCollection?.dispose();
     statusBar?.dispose();

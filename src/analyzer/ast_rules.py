@@ -13,6 +13,7 @@ from collections.abc import Callable
 
 from src.analyzer.diff_parser import parse_file_hunks
 from src.models import ChangedFile, DiffHunk, RiskFinding, Severity
+from src.utils import detect_programming_language
 
 logger = logging.getLogger(__name__)
 
@@ -200,14 +201,6 @@ def _attr_name(node: ast.Attribute) -> str:
     return ".".join(reversed(parts))
 
 
-def _detect_language(filename: str) -> str:
-    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    lang_map = {
-        "py": "python", "pyw": "python",
-        "js": "javascript", "jsx": "javascript", "mjs": "javascript",
-        "ts": "typescript", "tsx": "typescript",
-    }
-    return lang_map.get(ext, "other")
 
 
 # ── Source reconstruction with line mapping ──────────────
@@ -381,7 +374,7 @@ def scan_ast_risks(files: list[ChangedFile] | None) -> list[RiskFinding]:
     findings: list[RiskFinding] = []
 
     for file in files:
-        if _detect_language(file.filename) != "python":
+        if detect_programming_language(file.filename) != "python":
             continue
 
         try:

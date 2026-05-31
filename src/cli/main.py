@@ -8,7 +8,7 @@ import typer
 from rich.console import Console
 
 from src.github.client import GitHubApiError, GitHubClient
-from src.utils.config import detect_language, get_settings
+from src.utils.config import detect_output_language, get_settings
 
 app = typer.Typer(help="AI assisted GitHub Pull Request review tool.")
 console = Console()
@@ -182,7 +182,7 @@ def analyze(
                     raise typer.Exit(code=0)
 
             if language is None:
-                detected = detect_language(pr.title or "", pr.body or "")
+                detected = detect_output_language(pr.title or "", pr.body or "")
                 language = OutputLanguage(detected)
                 console.print(f"[dim]Language auto-detected: {detected}[/dim]")
     except GitHubApiError as exc:
@@ -445,3 +445,4 @@ def analyze(
 
 if __name__ == "__main__":
     app()
+

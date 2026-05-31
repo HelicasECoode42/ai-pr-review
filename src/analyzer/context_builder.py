@@ -3,10 +3,9 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
 
 from src.analyzer.diff_parser import parse_file_hunks
-from src.models import ChangedFile, PullRequest, RiskFinding, FileStatus
+from src.models import ChangedFile, PullRequest, RiskFinding, FileStatus, StepStatus
 from src.github.client import GitHubClient, GitHubApiError
 from src.utils.config import get_settings
 from pathlib import Path
@@ -14,11 +13,6 @@ from pathlib import Path
 import os
 logger = logging.getLogger(__name__)
 
-
-class AnalysisStatus(str, Enum):
-    SUCCESS = "success"
-    PARTIAL = "partial"
-    FAILED = "failed"
 
 
 LOCKFILE_NAMES = {
@@ -48,7 +42,7 @@ SKIP_PATCH_REASONS: dict[str, str] = {
 class ReviewContext:
     text: str
     truncated: bool
-    status: AnalysisStatus = AnalysisStatus.SUCCESS
+    status: StepStatus = StepStatus.SUCCESS
     skipped_files: list[tuple[str, str]] = field(default_factory=list)
 
 
@@ -123,7 +117,7 @@ _CONTEXT_PACK_BUDGET = 4000  # max chars for context pack injection
 
 def _load_context_pack_text() -> str:
     """Load the project Review Guide as context pack text."""
-    guide_path = Path(__file__).resolve().parent.parent / "docs" / "review-guide.md"
+    guide_path = Path(__file__).resolve().parent.parent.parent / "docs" / "review-guide.md"
     try:
         with open(guide_path, "r", encoding="utf-8") as f:
             return f.read()
@@ -134,7 +128,7 @@ def _load_context_pack_text() -> str:
 
 def _get_relevant_function_index(changed_files: list[str]) -> str:
     """Load functions-index.md and extract entries for changed files."""
-    index_path = Path(__file__).resolve().parent.parent / "docs" / "functions-index.md"
+    index_path = Path(__file__).resolve().parent.parent.parent / "docs" / "functions-index.md"
     try:
         with open(index_path, "r", encoding="utf-8") as f:
             content = f.read()
@@ -266,7 +260,7 @@ def build_review_context(
             "Possible reasons: invalid token, network issue, or the PR does not exist.\n"
             "No analysis was performed."
         )
-        return ReviewContext(text=error_text, truncated=False, status=AnalysisStatus.FAILED)
+        return ReviewContext(text=error_text, truncated=False, status=StepStatus.FAILED)
 
     def safe_attr(obj, attr, default):
         try:
@@ -403,8 +397,11 @@ def build_review_context(
             total_added = sum(len(h.added_lines) for h in hunks)
             total_hunk_lines = sum(h.new_count for h in hunks)
             if total_hunk_lines > 0 and total_added < total_hunk_lines // 2:
-                # Hunk likely truncated; fetch full file from base/main
-                file_contents = _fetch_repo_file_text(pr.repo, file.filename, pr.base_ref)
+                # Hunk likely truncated; fetch full file — prefer head_ref (current PR code)
+                file_contents = (
+                    _fetch_repo_file_text(pr.repo, file.filename, getattr(pr, "head_ref", None))
+                    or _fetch_repo_file_text(pr.repo, file.filename, pr.base_ref)
+                )
                 if file_contents:
                     file_text = file_contents
 
@@ -438,13 +435,13 @@ def build_review_context(
 
     # Determine final status
     if partial_flag:
-        status = AnalysisStatus.PARTIAL
+        status = StepStatus.PARTIAL
     else:
-        status = AnalysisStatus.SUCCESS
+        status = StepStatus.SUCCESS
 
     # Additional check: if there are no files, it's partial
     if not files:
-        status = AnalysisStatus.PARTIAL
+        status = StepStatus.PARTIAL
 
     return ReviewContext(
         text="\n".join(parts),

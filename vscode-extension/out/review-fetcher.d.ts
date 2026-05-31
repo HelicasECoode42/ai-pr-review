@@ -1,17 +1,8 @@
 import { type PRInfo } from "./git";
-import type { ReviewMeta } from "./report";
-export interface ParsedSuggestion {
-    file_path: string;
-    line: number | null;
-    severity: "critical" | "high" | "medium" | "low";
-    confidence: number;
-    title: string;
-    reason: string;
-    recommendation: string;
-}
+import type { ReviewMeta, ReviewSuggestion } from "./report";
 export interface ReviewResult {
     pr: PRInfo;
-    suggestions: ParsedSuggestion[];
+    suggestions: ReviewSuggestion[];
     summary: string | null;
     workflowRunUrl: string | null;
     workflowStatus: string | null;

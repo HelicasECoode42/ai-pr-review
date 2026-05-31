@@ -46,6 +46,10 @@ htmlcov/
 *.log
 reports/
 
+# Demo video / Manim render outputs
+demo-animation/media/
+demo-video-script.md
+
 # OS
 .DS_Store
 Thumbs.db.vs/

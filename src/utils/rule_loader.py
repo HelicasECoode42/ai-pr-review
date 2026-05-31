@@ -57,7 +57,12 @@ def _get_user_rules_path() -> str | None:
 def _load_yaml(path: str) -> dict[str, Any]:
     """Load a YAML rules file."""
     with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+        data = yaml.safe_load(f) or {}
+    if not isinstance(data, dict):
+        raise ValueError(
+            f"Expected dict in rules file, got {type(data).__name__}: {path}"
+        )
+    return data
 
 
 def _parse_path_rules(data: list[dict]) -> list[PathRuleDef]:

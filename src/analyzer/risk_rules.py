@@ -5,6 +5,7 @@ import logging
 
 from src.analyzer.diff_parser import parse_file_hunks
 from src.models import ChangedFile, RiskFinding, Severity
+from src.utils import detect_programming_language
 from src.utils.rule_loader import load_rules
 
 logger = logging.getLogger(__name__)
@@ -20,22 +21,6 @@ def _should_skip_scan(filename: str) -> bool:
     return filename.startswith(_SKIP_SCAN_PREFIXES)
 
 
-def _detect_language(filename: str) -> str:
-    """Detect programming language from file extension."""
-    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    _LANG_MAP = {
-        "py": "python",
-        "pyw": "python",
-        "js": "javascript",
-        "jsx": "javascript",
-        "mjs": "javascript",
-        "cjs": "javascript",
-        "ts": "typescript",
-        "tsx": "typescript",
-        "mts": "typescript",
-        "cts": "typescript",
-    }
-    return _LANG_MAP.get(ext, "other")
 
 
 # Rule IDs whose application requires a matching detected language
@@ -70,8 +55,6 @@ def reload_rules(user_rules_path: str | None = None) -> None:
     _DISABLED_RULES.clear()
     _DISABLED_RULES.update(disabled)
 
-
-LINE_RULES = _LINE_RULES_RUNTIME  # alias for backward compat
 
 
 def scan_risks(files: list[ChangedFile] | None) -> list[RiskFinding]:
@@ -144,7 +127,7 @@ def _scan_line_rules(file: ChangedFile) -> list[RiskFinding]:
         logger.warning(f"Failed to parse hunks for {file.filename}: {e}")
         return []
 
-    lang = _detect_language(file.filename)
+    lang = detect_programming_language(file.filename)
     for hunk in hunks:
         for changed in hunk.added_lines:
             for rule_id, pattern, severity, title, recommendation in _LINE_RULES_RUNTIME:

@@ -144,13 +144,13 @@ def generate_index(src_dir: str, output_path: str | None = None) -> str:
 
         if doc:
             # Take only first line for compactness
-            first_line = doc.split("\\n")[0].strip()
+            first_line = doc.split("\n")[0].strip()
             if first_line:
                 lines.append(f"  - {first_line}")
 
         lines.append("")
 
-    result = "\\n".join(lines)
+    result = "\n".join(lines)
 
     if output_path:
         os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)

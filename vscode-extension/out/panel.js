@@ -35,6 +35,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ReviewPanelProvider = void 0;
 const vscode = __importStar(require("vscode"));
+const diagnostics_1 = require("./diagnostics");
 // ── HTML template ──────────────────────────────────────
 function getWebviewHtml(result, webview) {
     const nonce = getNonce();
@@ -93,9 +94,11 @@ function getWebviewHtml(result, webview) {
           </div>
           <div class="suggestion-location">
             📁 <code>${esc(s.file_path)}</code>${s.line ? ` : <code>L${s.line}</code>` : ""}
-            <button class="open-code-btn" onclick="
-              vscode.postMessage({cmd:'openCode', filePath:'${esc(s.file_path)}', line:${s.line ?? 0}})
-            ">📍 Open Code</button>
+            <button class="open-code-btn"
+              data-file="${esc(s.file_path)}" data-line="${s.line ?? 0}"
+              data-severity="${esc(s.severity)}" data-title="${esc(s.title)}"
+              data-reason="${esc(s.reason)}" data-recommendation="${esc(s.recommendation)}"
+            >📍 Open Code</button>
           </div>
           ${s.reason ? `<div class="suggestion-reason">${esc(s.reason)}</div>` : ""}
           ${s.recommendation ? `<div class="suggestion-rec">💡 ${esc(s.recommendation)}</div>` : ""}
@@ -202,6 +205,20 @@ function getWebviewHtml(result, webview) {
     const vscode = acquireVsCodeApi();
     document.getElementById('refresh-btn').addEventListener('click', () => vscode.postMessage({cmd:'refresh'}));
     document.getElementById('open-pr-btn').addEventListener('click', () => vscode.postMessage({cmd:'openPr'}));
+    // Open Code buttons — use data attributes instead of inline onclick (CSP-safe)
+    document.querySelectorAll('.open-code-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const filePath = btn.getAttribute('data-file');
+        const line = parseInt(btn.getAttribute('data-line') || '0', 10);
+        vscode.postMessage({cmd:'openCode', filePath, line,
+          // Pass risk info so the extension can show it as a diagnostic at the jumped line
+          severity: btn.getAttribute('data-severity'),
+          title: btn.getAttribute('data-title'),
+          reason: btn.getAttribute('data-reason'),
+          recommendation: btn.getAttribute('data-recommendation'),
+        });
+      });
+    });
   </script>
 </body>
 </html>`;
@@ -220,13 +237,17 @@ class ReviewPanelProvider {
     _panel;
     _extensionUri;
     _onRefresh;
+    _onResultChanged;
     _lastResult = null;
-    constructor(extensionUri, onRefresh) {
+    _currentDecoration;
+    _decorationDisposable;
+    constructor(extensionUri, onRefresh, onResultChanged) {
         this._extensionUri = extensionUri;
         this._onRefresh = onRefresh;
+        this._onResultChanged = onResultChanged;
     }
-    async show(result) {
-        this._lastResult = result;
+    /** Ensure the webview panel is created, with message handler bound exactly once. */
+    _ensurePanel() {
         if (!this._panel) {
             this._panel = vscode.window.createWebviewPanel(ReviewPanelProvider.viewType, "AI PR Review", vscode.ViewColumn.Beside, {
                 enableScripts: true,
@@ -234,11 +255,14 @@ class ReviewPanelProvider {
                 localResourceRoots: [this._extensionUri],
             });
             this._panel.onDidDispose(() => { this._panel = undefined; });
+            // Message handler registered ONCE — always available regardless of
+            // whether the panel was created via show() or showLoading() first.
             this._panel.webview.onDidReceiveMessage(async (msg) => {
                 switch (msg.cmd) {
                     case "refresh": {
                         const r = await this._onRefresh();
                         if (r) {
+                            this._onResultChanged(r);
                             this._lastResult = r;
                         }
                         if (r && this._panel) {
@@ -254,39 +278,93 @@ class ReviewPanelProvider {
                         break;
                     }
                     case "openCode": {
-                        const { filePath, line } = msg;
-                        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
-                        if (workspaceRoot && filePath) {
-                            const fileUri = vscode.Uri.joinPath(workspaceRoot, filePath);
+                        const { filePath, line, severity, title, reason, recommendation } = msg;
+                        if (!filePath) {
+                            vscode.window.showWarningMessage("AI PR Review: No file path in this suggestion.");
+                            break;
+                        }
+                        try {
+                            const fileUri = (0, diagnostics_1.resolveFileUri)(filePath);
                             const doc = await vscode.workspace.openTextDocument(fileUri);
                             const editor = await vscode.window.showTextDocument(doc, { preserveFocus: false });
                             if (line > 0) {
                                 const pos = new vscode.Position(line - 1, 0);
+                                const lineEnd = doc.lineAt(pos).range.end;
+                                const range = new vscode.Range(pos, lineEnd);
                                 editor.selection = new vscode.Selection(pos, pos);
-                                editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+                                editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+                                // Build hover message with full problem context
+                                const sevIcon = severity === 'critical' || severity === 'high'
+                                    ? '🔴' : severity === 'medium' ? '🟡' : '🟢';
+                                const hoverMarkdown = new vscode.MarkdownString();
+                                hoverMarkdown.isTrusted = true;
+                                hoverMarkdown.supportHtml = true;
+                                hoverMarkdown.appendMarkdown(`### ${sevIcon} [${(severity || '?').toUpperCase()}] ${title || '(no title)'}\n\n`);
+                                if (reason) {
+                                    hoverMarkdown.appendMarkdown(`---\n\n**📋 Reason:** ${reason}\n\n`);
+                                }
+                                if (recommendation) {
+                                    hoverMarkdown.appendMarkdown(`---\n\n**💡 Recommendation:** ${recommendation}\n\n`);
+                                }
+                                hoverMarkdown.appendMarkdown(`---\n\n📁 *${filePath}:${line}*`);
+                                // Show decoration at the target line with hover message
+                                this._cleanupDecoration();
+                                this._currentDecoration = vscode.window.createTextEditorDecorationType({
+                                    backgroundColor: new vscode.ThemeColor('editor.findMatchHighlightBackground'),
+                                    borderColor: new vscode.ThemeColor('editorInfo.foreground'),
+                                    borderStyle: 'solid',
+                                    borderWidth: '0 0 0 2px',
+                                    isWholeLine: true,
+                                    overviewRulerColor: new vscode.ThemeColor('editorInfo.foreground'),
+                                    overviewRulerLane: vscode.OverviewRulerLane.Right,
+                                });
+                                editor.setDecorations(this._currentDecoration, [
+                                    { range, hoverMessage: hoverMarkdown },
+                                ]);
+                                // Auto-clear decoration when user moves cursor away
+                                const targetLine = line;
+                                this._decorationDisposable?.dispose();
+                                this._decorationDisposable = vscode.window.onDidChangeTextEditorSelection((e) => {
+                                    if (e.textEditor === editor && e.selections[0]?.active.line !== targetLine - 1) {
+                                        this._cleanupDecoration();
+                                        this._decorationDisposable?.dispose();
+                                        this._decorationDisposable = undefined;
+                                    }
+                                });
                             }
+                            else {
+                                vscode.window.showInformationMessage(`AI PR Review: Opened ${filePath} (no line number specified).`);
+                            }
+                        }
+                        catch (err) {
+                            const msg = err instanceof Error ? err.message : String(err);
+                            vscode.window.showErrorMessage(`AI PR Review: Cannot open ${filePath} — ${msg}`);
                         }
                         break;
                     }
                 }
             });
         }
-        this._panel.webview.html = getWebviewHtml(result, this._panel.webview);
-        this._panel.reveal();
+        return this._panel;
+    }
+    async show(result) {
+        this._lastResult = result;
+        const panel = this._ensurePanel();
+        panel.webview.html = getWebviewHtml(result, panel.webview);
+        panel.reveal();
     }
     async showLoading() {
-        if (!this._panel) {
-            this._panel = vscode.window.createWebviewPanel(ReviewPanelProvider.viewType, "AI PR Review", vscode.ViewColumn.Beside, {
-                enableScripts: true,
-                retainContextWhenHidden: true,
-                localResourceRoots: [this._extensionUri],
-            });
-            this._panel.onDidDispose(() => { this._panel = undefined; });
-        }
-        this._panel.webview.html = `<html><body style="font-family:var(--vscode-font-family);color:var(--vscode-foreground);background:var(--vscode-sideBar-background);display:flex;align-items:center;justify-content:center;height:100vh;"><p>⏳ Loading review results...</p></body></html>`;
-        this._panel.reveal();
+        const panel = this._ensurePanel();
+        panel.webview.html = `<html><body style="font-family:var(--vscode-font-family);color:var(--vscode-foreground);background:var(--vscode-sideBar-background);display:flex;align-items:center;justify-content:center;height:100vh;"><p>⏳ Loading review results...</p></body></html>`;
+        panel.reveal();
+    }
+    _cleanupDecoration() {
+        this._currentDecoration?.dispose();
+        this._currentDecoration = undefined;
     }
     dispose() {
+        this._cleanupDecoration();
+        this._decorationDisposable?.dispose();
         this._panel?.dispose();
     }
 }

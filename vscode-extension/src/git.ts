@@ -236,21 +236,26 @@ export async function getLatestReportArtifactJson(
   for (const workflowRun of runs) {
     if (workflowRun.status !== "completed") continue;
 
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ai-pr-review-"));
+    let tempDir: string | undefined;
     try {
+      tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ai-pr-review-"));
       await run(
         `gh run download ${workflowRun.databaseId} --name ai-pr-review-report --dir "${tempDir}"`,
         cwd,
       );
 
       const reportPath = path.join(tempDir, "pr-review.json");
-      if (fs.existsSync(reportPath)) {
-        return fs.readFileSync(reportPath, "utf8");
+      try {
+        return await fs.promises.readFile(reportPath, "utf8");
+      } catch {
+        // File doesn't exist or can't be read; try next run.
       }
     } catch {
       // Try the next run; artifact upload may have been skipped on failure.
     } finally {
-      fs.rmSync(tempDir, { recursive: true, force: true });
+      if (tempDir) {
+        await fs.promises.rm(tempDir, { recursive: true, force: true });
+      }
     }
   }
 

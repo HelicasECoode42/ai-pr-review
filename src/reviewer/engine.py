@@ -8,7 +8,11 @@ from pydantic import BaseModel, ValidationError
 
 from src.analyzer.context_builder import build_review_context
 from src.analyzer.diff_parser import changed_line_map
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.github.client import GitHubClient
+
 from src.models import (
     ReviewMeta,
     ChangedFile,
@@ -264,7 +268,7 @@ def build_rule_only_report(
     report_confidence: str = "normal",
     pr_syntax_ok: bool = True,
     review_meta: ReviewMeta | None = None,
-    gh_client: Any | None = None,
+    gh_client: "GitHubClient | None" = None,
 ) -> ReviewReport:
     additions = sum(f.additions for f in files)
     deletions = sum(f.deletions for f in files)
@@ -345,7 +349,7 @@ def review_with_ai(
     pr_syntax_ok: bool = True,
     review_meta: ReviewMeta | None = None,
     two_stage: bool = False,
-    gh_client: Any | None = None,
+    gh_client: "GitHubClient | None" = None,
 ) -> ReviewReport:
     try:
         ctx = build_review_context(pr, files, findings)
@@ -370,7 +374,6 @@ def review_with_ai(
             )
             payload = _parse_model_payload(raw)
             total_from_model = len(payload.suggestions)
-        total_from_model = len(payload.suggestions)
         suggestions = _filter_suggestions(
             payload.suggestions, files, max_suggestions, min_confidence,
             max_suggestions_per_file,
@@ -396,7 +399,6 @@ def review_with_ai(
             warnings.append(
                 f"{len(skipped_ctx)} file(s) excluded from AI patch context: {skipped_names}"
             )
-        # Build fix tracking from previous review comments
         # Build fix tracking from previous review comments
         fix_tracking = _build_fix_tracking(
             repo=pr.repo,

@@ -56,3 +56,4 @@ npm run compile
 npm run package
 # → ai-pr-review-0.2.0.vsix
 ```
+

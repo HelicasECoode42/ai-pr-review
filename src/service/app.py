@@ -17,7 +17,7 @@ from src.github.client import GitHubApiError, GitHubClient
 from src.output.markdown import render_markdown
 from src.reviewer.engine import build_rule_only_report, review_with_ai
 from src.reviewer.provider import OpenAICompatibleProvider
-from src.utils.config import detect_language, get_settings
+from src.utils.config import detect_output_language, get_settings
 
 app = FastAPI(title="AI PR Review Console")
 
@@ -35,10 +35,6 @@ def _history_timestamp(stem: str) -> str:
     match = _HISTORY_TS_RE.search(stem)
     return match.group(1) if match else "unknown"
 
-
-class TrendRequest(BaseModel):
-    repo: str
-    count: int = 10
 
 class AnalyzeRequest(BaseModel):
     repo: str
@@ -85,7 +81,7 @@ def analyze(req: AnalyzeRequest) -> AnalyzeResponse | dict:
 
     # Auto-detect language if not specified
     if not req.language:
-        req.language = detect_language(pr.title or "", pr.body or "")
+        req.language = detect_output_language(pr.title or "", pr.body or "")
 
     # 2. Rule scan
     findings = scan_risks(files)

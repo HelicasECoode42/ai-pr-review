@@ -1,7 +1,6 @@
 import * as path from "path";
 import * as vscode from "vscode";
 import type { ReviewReport, ReviewSuggestion } from "./report";
-import type { ParsedSuggestion } from "./review-fetcher";
 
 const DIAGNOSTIC_COLLECTION = "ai-pr-review";
 
@@ -22,7 +21,7 @@ function mapSeverity(
 }
 
 /** Build a human-readable diagnostic message. */
-function buildMessage(s: ParsedSuggestion | ReviewSuggestion): string {
+function buildMessage(s: ReviewSuggestion): string {
   const confidence = Math.round(s.confidence * 100);
   const parts = [
     `[${s.severity.toUpperCase()}] ${confidence}% — ${s.title}`,
@@ -43,7 +42,7 @@ function lineToRange(line: number | null): vscode.Range {
 
 /** Convert a single suggestion to a vscode.Diagnostic. */
 export function suggestionToDiagnostic(
-  s: ParsedSuggestion,
+  s: ReviewSuggestion,
   fileUri: vscode.Uri,
 ): vscode.Diagnostic {
   const diag = new vscode.Diagnostic(
@@ -69,9 +68,9 @@ export function resolveFileUri(filePath: string): vscode.Uri {
 
 // ── From parsed suggestions (GitHub inline comments) ───
 
-/** Build per-file Diagnostic map from ParsedSuggestion[]. */
+/** Build per-file Diagnostic map from ReviewSuggestion[]. */
 export function buildDiagnostics(
-  suggestions: ParsedSuggestion[],
+  suggestions: ReviewSuggestion[],
 ): Map<string, vscode.Diagnostic[]> {
   const byFile = new Map<string, vscode.Diagnostic[]>();
 
@@ -105,18 +104,7 @@ export function parseAndCreateDiagnostics(
     return new Error("Invalid report format: missing suggestions array.");
   }
 
-  const byFile = new Map<string, vscode.Diagnostic[]>();
-
-  for (const s of report.suggestions) {
-    const uri = resolveFileUri(s.file_path);
-    const diag = suggestionToDiagnostic(s, uri);
-    const key = uri.fsPath;
-
-    if (!byFile.has(key)) byFile.set(key, []);
-    byFile.get(key)!.push(diag);
-  }
-
-  return byFile;
+  return buildDiagnostics(report.suggestions);
 }
 
 /** Clear and set diagnostics on the collection. */

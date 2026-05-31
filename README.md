@@ -37,7 +37,7 @@ GitHub PR
 - **GitHub Actions**：PR 创建/更新后自动审查，发布 summary comment 和 inline review
 - **VS Code 插件**：Problems 面板跳转本地代码，Review Panel 展示完整报告
 
-> Demo 视频：[]（即将添加 GIF / BiliBili / YouTube 链接）
+> Demo 视频：即将添加 GIF / BiliBili / YouTube 链接。
 
 最短体验路径（无需克隆仓库、不配环境）：打开 Web Console，粘贴任意公开仓库的 PR URL，点击 Analyze。
 
@@ -186,7 +186,7 @@ REVIEW_MODEL=deepseek-chat
 
 | 模型 | 推荐场景 | 优势 |
 |------|----------|------|
-| `gpt-4.1-mini` | 默认推荐，英文/通用项目 | OpenAI 最新 mini 模型，代码理解和结构化输出优秀；速度快（~100 tok/s）；原生支持 `response_format: json_object` 保证输出 schema；成本低，适合高频自动审查 |
+| `gpt-4.1-mini` | 默认推荐，英文/通用项目 | mini 级模型，代码理解和结构化输出表现稳定；速度快；原生支持 `response_format: json_object`，便于约束输出 schema；成本低，适合高频自动审查 |
 | `deepseek-chat` | 中文项目、成本敏感场景 | 中文审查质量好；成本极低（约 ¥1/1M tokens）；OpenAI-compatible API 无缝接入；旗舰模型代码能力强 |
 
 两种模型通过相同的 OpenAI-compatible 接口调用。你可以通过修改 `OPENAI_BASE_URL` 接入任何兼容服务（Azure OpenAI、Ollama 本地模型、其他第三方代理）。
@@ -385,4 +385,3 @@ OpenAI-compatible 接口允许用户指向自托管模型（如通过 Ollama 或
 - [未来扩展](docs/future-extensions.md)：VS Code 扩展、服务化、Context Pack、Web UI 等路线图。
 - [协作与提交规范](docs/contribution-guide.md)：分支、commit、PR 和合并前检查规范。
 - [阶段性总结](docs/2026-05-29-summary.md)：早期开发进度和历史背景。
-

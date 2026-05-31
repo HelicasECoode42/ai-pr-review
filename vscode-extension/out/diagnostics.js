@@ -93,7 +93,7 @@ function resolveFileUri(filePath) {
     return vscode.Uri.file(filePath);
 }
 // ── From parsed suggestions (GitHub inline comments) ───
-/** Build per-file Diagnostic map from ParsedSuggestion[]. */
+/** Build per-file Diagnostic map from ReviewSuggestion[]. */
 function buildDiagnostics(suggestions) {
     const byFile = new Map();
     for (const s of suggestions) {
@@ -119,16 +119,7 @@ function parseAndCreateDiagnostics(json) {
     if (!report.suggestions || !Array.isArray(report.suggestions)) {
         return new Error("Invalid report format: missing suggestions array.");
     }
-    const byFile = new Map();
-    for (const s of report.suggestions) {
-        const uri = resolveFileUri(s.file_path);
-        const diag = suggestionToDiagnostic(s, uri);
-        const key = uri.fsPath;
-        if (!byFile.has(key))
-            byFile.set(key, []);
-        byFile.get(key).push(diag);
-    }
-    return byFile;
+    return buildDiagnostics(report.suggestions);
 }
 /** Clear and set diagnostics on the collection. */
 function applyDiagnostics(collection, byFile) {
