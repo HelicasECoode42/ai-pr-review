@@ -1,0 +1,81 @@
+# Default rule definitions for AI PR Review
+# Users can override by creating a .ai-pr-review-rules.yml in their repo root.
+# Format:
+#   path_rules: list of path-matching rules (applied to filename)
+#   line_rules: list of line-matching rules (applied to added line content)
+#   disabled_rules: list of rule IDs to disable
+#   severity_overrides: dict of rule_id -> new severity
+
+path_rules:
+  - id: risk-path-auth
+    severity: MEDIUM
+    pattern: auth|permission|rbac|acl|login|session|jwt
+    title: Auth/permission code changed
+    recommendation: "Review authorization, data integrity, and rollback behavior carefully."
+    confidence: 0.6
+
+  - id: risk-path-payment
+    severity: MEDIUM
+    pattern: payment|billing|invoice|migration
+    title: Payment/migration code changed
+    recommendation: "Review financial logic, rollback behavior, and data integrity carefully."
+    confidence: 0.6
+
+  - id: risk-path-infra-workflow
+    severity: HIGH
+    pattern: "^\\.github/workflows/"
+    title: CI/CD workflow changed
+    recommendation: "Workflow changes affect review pipeline stability. Verify fallback and gate logic."
+    confidence: 0.7
+
+  - id: risk-path-infra-reviewer
+    severity: HIGH
+    pattern: "^src/cli/|^src/reviewer/|^src/github/"
+    title: Review tool infrastructure changed
+    recommendation: "Changes to reviewer code may affect review stability, fallback behavior, or workflow gating. Request a second reviewer."
+    confidence: 0.7
+
+line_rules:
+  - id: sql-string-concat
+    severity: HIGH
+    pattern: (SELECT|INSERT|UPDATE|DELETE).*(\+|f\"|format\()
+    title: Possible SQL injection risk
+    recommendation: "Use parameterized queries or the ORM query builder instead of string interpolation."
+
+  - id: shell-execution
+    severity: HIGH
+    pattern: (subprocess|os\.system|child_process\.exec|Runtime\.getRuntime)
+    title: Shell command execution changed
+    recommendation: "Validate user-controlled input and avoid shell=True or string-built commands."
+
+  - id: dynamic-execution
+    severity: CRITICAL
+    pattern: \b(eval|exec)\s*\(
+    title: Dynamic code execution introduced
+    recommendation: "Avoid dynamic execution or strictly sandbox and validate the input."
+
+  - id: secret-logging
+    severity: HIGH
+    pattern: (log|print|console\.).*(token|password|passwd|secret|api[_-]?key)
+    title: Potential secret logging
+    recommendation: "Do not write credentials or secrets to logs. Mask sensitive values before logging."
+
+  - id: swallowed-exception-python
+    severity: MEDIUM
+    pattern: except\s+\w*\s*:\s*pass\s*$
+    title: Exception handling may hide failures (Python)
+    recommendation: "Log enough context, rethrow when appropriate, or return an explicit error."
+    language: python
+
+  - id: swallowed-exception-js
+    severity: MEDIUM
+    pattern: catch\s*\(.*?\)\s*\{\s*\}
+    title: Exception handling may hide failures (JS/TS)
+    recommendation: "Log enough context, rethrow when appropriate, or return an explicit error."
+    language: javascript
+
+  - id: test-skip
+    severity: MEDIUM
+    pattern: (pytest\.mark\.skip|describe\.skip|it\.skip|test\.skip|@Disabled)
+    title: Test skip introduced
+    recommendation: "Avoid skipping tests in production branches unless the reason and follow-up are explicit."
