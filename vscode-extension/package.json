@@ -21,6 +21,17 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "configuration": {
+      "title": "AI PR Review",
+      "properties": {
+        "ai-pr-review.backendUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Web Console backend URL (e.g. http://localhost:8000). When set, the extension will call the backend API instead of using gh CLI."
+        }
+      }
+    },
+    "commands": [
     "commands": [
       {
         "command": "ai-pr-review.refresh",
@@ -37,6 +48,10 @@
       {
         "command": "ai-pr-review.openPanel",
         "title": "AI PR Review: Open Review Panel"
+      },
+      {
+        "command": "ai-pr-review.analyzeViaBackend",
+        "title": "AI PR Review: Analyze via Backend"
       }
     ]
   },
