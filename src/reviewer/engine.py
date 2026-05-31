@@ -8,6 +8,7 @@ from pydantic import BaseModel, ValidationError
 
 from src.analyzer.context_builder import build_review_context
 from src.analyzer.diff_parser import changed_line_map
+from typing import Any
 from src.models import (
     ReviewMeta,
     ChangedFile,
@@ -132,6 +133,126 @@ def _build_completeness(
     return items
 
 
+def build_diagnostic_report(
+    pr: PullRequest,
+    files: list[ChangedFile] | None = None,
+    error: str = "Unknown error during review",
+    reviewer_version: str = "pr-branch",
+    execution_status: str = "failed",
+    language: str = "en",
+) -> ReviewReport:
+    """Build a minimal diagnostic report when all other paths fail (Level 3 fallback).
+
+    This is the last resort — it always produces something readable.
+    """
+    if files is None:
+        files = []
+    if language == "zh":
+        summary = (
+            f"## 审查失败\n\n"
+            f"审查过程遇到未预期的错误，无法生成完整报告。\n"
+            f"**错误信息**：{error}"
+        )
+    else:
+        summary = (
+            f"## Review Failed\n\n"
+            f"The review process encountered an unexpected error.\n"
+            f"**Error**: {error}"
+        )
+    completeness = _build_completeness(
+        pr=pr, files=files,
+        skipped_ctx=[], ctx_truncated=False,
+        used_ai=False, ai_failed=False,
+        pr_syntax_ok=True,
+    )
+    report = ReviewReport(
+        pr=pr,
+        files=files,
+        summary=summary,
+        risk_level=Severity.LOW,
+        used_ai=False,
+        analysis_warnings=[f"Diagnostic report generated due to: {error}"],
+        reviewer_version=reviewer_version,
+        execution_status=execution_status,
+        degradation_reason=error,
+        report_confidence="failed",
+        completeness=completeness,
+    )
+    validation_issues = validate_report(report)
+    if validation_issues:
+        report.analysis_warnings.extend(validation_issues)
+    return report
+
+
+def validate_report(report: ReviewReport) -> list[str]:
+    """Run post-generation validation checks on a ReviewReport.
+
+    Returns a list of issues found. Each issue is a human-readable string
+    that should be appended to analysis_warnings.
+    """
+    issues: list[str] = []
+
+    # 1. PR metadata must be present
+    # Skip PR metadata check for diagnostic reports
+    if report.report_confidence != "failed":
+        if not report.pr or not report.pr.repo or report.pr.number == 0:
+            issues.append("PR metadata missing — report may be incomplete")
+
+    # 2. AI flag consistency
+    if report.used_ai and report.ai_failure_reason:
+        issues.append(
+            "Inconsistency: report.used_ai=True but ai_failure_reason is set"
+        )
+    if not report.used_ai and report.ai_failure_reason:
+        issues.append(
+            "Inconsistency: report.used_ai=False but ai_failure_reason is set"
+        )
+
+    # 3. If suggestions exist, summary must be non-empty
+    if report.suggestions and not report.summary.strip():
+        issues.append(
+            "Suggestions present but summary is empty — possible parse error"
+        )
+
+    # 4. report_confidence must be one of the known values
+    valid_confidence = {"normal", "fallback", "partial", "failed"}
+    if report.report_confidence not in valid_confidence:
+        issues.append(
+            f"Unknown report_confidence '{report.report_confidence}'"
+        )
+
+    # 5. execution_status consistency
+    # Skip execution_status check for diagnostic reports
+    if report.report_confidence != "failed":
+        if report.execution_status == "success" and report.degradation_reason:
+            issues.append(
+                "Inconsistency: execution_status=success but degradation_reason is set"
+            )
+        if report.execution_status == "degraded" and not report.degradation_reason:
+            issues.append(
+                "execution_status=degraded but degradation_reason is missing"
+            )
+
+    # 6. ReviewMeta basic checks
+    if report.review_meta:
+        if report.review_meta.reviewed_commit and len(report.review_meta.reviewed_commit) < 6:
+            issues.append(
+                f"reviewed_commit looks truncated: '{report.review_meta.reviewed_commit}'"
+            )
+
+    # 7. Completeness table: should not be empty
+    if not report.completeness:
+        issues.append("Completeness table is empty — analysis status unknown")
+
+    # 8. Pr_syntax_check_ok vs report_confidence
+    if not report.pr_syntax_check_ok and report.report_confidence == "normal":
+        issues.append(
+            "pr_syntax_check failed but report_confidence=normal — should be partial or failed"
+        )
+
+    return issues
+
+
 def build_rule_only_report(
     pr: PullRequest,
     files: list[ChangedFile],
@@ -143,6 +264,7 @@ def build_rule_only_report(
     report_confidence: str = "normal",
     pr_syntax_ok: bool = True,
     review_meta: ReviewMeta | None = None,
+    gh_client: Any | None = None,
 ) -> ReviewReport:
     additions = sum(f.additions for f in files)
     deletions = sum(f.deletions for f in files)
@@ -169,13 +291,21 @@ def build_rule_only_report(
         )
         for finding in findings
     ]
+    # Build fix tracking from previous review comments
+    fix_tracking = _build_fix_tracking(
+        repo=pr.repo,
+        pr_number=pr.number,
+        current_suggestions=suggestions,
+        gh_client=gh_client,
+    )
+
     completeness = _build_completeness(
         pr=pr, files=files,
         skipped_ctx=[], ctx_truncated=False,
         used_ai=False, ai_failed=False,
         pr_syntax_ok=pr_syntax_ok,
     )
-    return ReviewReport(
+    report = ReviewReport(
         pr=pr,
         files=files,
         summary=summary,
@@ -189,7 +319,14 @@ def build_rule_only_report(
         report_confidence=report_confidence,
         completeness=completeness,
         review_meta=review_meta or ReviewMeta(),
+        fix_tracking=fix_tracking,
     )
+    # Post-generation validation
+    validation_issues = validate_report(report)
+    if validation_issues:
+        report.analysis_warnings.extend(validation_issues)
+        logger.warning(f"Report validation issues: {validation_issues}")
+    return report
 
 
 def review_with_ai(
@@ -208,6 +345,7 @@ def review_with_ai(
     pr_syntax_ok: bool = True,
     review_meta: ReviewMeta | None = None,
     two_stage: bool = False,
+    gh_client: Any | None = None,
 ) -> ReviewReport:
     try:
         ctx = build_review_context(pr, files, findings)
@@ -258,13 +396,22 @@ def review_with_ai(
             warnings.append(
                 f"{len(skipped_ctx)} file(s) excluded from AI patch context: {skipped_names}"
             )
+        # Build fix tracking from previous review comments
+        # Build fix tracking from previous review comments
+        fix_tracking = _build_fix_tracking(
+            repo=pr.repo,
+            pr_number=pr.number,
+            current_suggestions=suggestions,
+            gh_client=gh_client,
+        )
+
         completeness = _build_completeness(
             pr=pr, files=files,
             skipped_ctx=skipped_ctx, ctx_truncated=ctx.truncated,
             used_ai=True, ai_failed=False,
             pr_syntax_ok=pr_syntax_ok,
         )
-        return ReviewReport(
+        report = ReviewReport(
             pr=pr,
             files=files,
             summary=payload.summary,
@@ -282,15 +429,35 @@ def review_with_ai(
             report_confidence=report_confidence,
             completeness=completeness,
             review_meta=review_meta or ReviewMeta(),
+            fix_tracking=fix_tracking,
         )
+        # Post-generation validation
+        validation_issues = validate_report(report)
+        if validation_issues:
+            report.analysis_warnings.extend(validation_issues)
+            logger.warning(f"Report validation issues: {validation_issues}")
+        return report
     except (ProviderError, ValueError) as exc:
         logger.warning("AI review failed, falling back to rule-only: %s", exc)
-        report = build_rule_only_report(pr, files, findings, language=language,
-                                        execution_status="degraded",
-                                        degradation_reason=f"AI 调用失败: {exc}",
-                                        report_confidence="partial",
-                                        pr_syntax_ok=pr_syntax_ok,
-                                        review_meta=review_meta)
+        # Level 2: rule-only fallback
+        try:
+            report = build_rule_only_report(pr, files, findings, language=language,
+                                            execution_status="degraded",
+                                            degradation_reason=f"AI 调用失败: {exc}",
+                                            report_confidence="partial",
+                                            pr_syntax_ok=pr_syntax_ok,
+                                            review_meta=review_meta,
+                                            gh_client=gh_client)
+        except Exception as rule_exc:
+            # Level 3: diagnostic report — rules also failed
+            logger.warning("Rule-only fallback also failed: %s", rule_exc)
+            return build_diagnostic_report(
+                pr=pr, files=files,
+                error=f"AI failed: {exc}; rules also failed: {rule_exc}",
+                reviewer_version=reviewer_version,
+                execution_status="failed",
+                language=language,
+            )
         report.ai_failure_reason = str(exc)
         # Re-build completeness to reflect AI-attempted-but-failed state
         report.completeness = _build_completeness(
@@ -304,6 +471,84 @@ def review_with_ai(
             f"AI review unavailable: {exc}. Showing rule-based analysis only."
         ]
         return report
+    except Exception as exc:
+        # Catch-all: Level 3 diagnostic for any unexpected error
+        logger.warning("Unexpected error in review_with_ai, generating diagnostic: %s", exc)
+        return build_diagnostic_report(
+            pr=pr, files=files,
+            error=f"Unexpected review error: {exc}",
+            reviewer_version=reviewer_version,
+            execution_status="failed",
+            language=language,
+        )
+
+
+def _build_fix_tracking(
+    repo: str,
+    pr_number: int,
+    current_suggestions: list[ReviewSuggestion],
+    gh_client: GitHubClient | None,
+) -> list[FixTrackingItem]:
+    """Compare current suggestions with previous review comments to build fix tracking.
+
+    Fetches previous review comments from GitHub, matches them against current
+    suggestions. If a previous comment's file+line doesn't appear in current
+    suggestions, it's marked as 'fixed'. If it still appears, 'still_present'.
+    """
+    items: list[FixTrackingItem] = []
+
+    if not gh_client or not current_suggestions:
+        return items
+
+    # Build set of (file_path, line) for current suggestions for fast lookup
+    current_set: set[tuple[str, int | None]] = {
+        (s.file_path, s.line) for s in current_suggestions if s.file_path
+    }
+
+    try:
+        prev_comments = gh_client.get_review_comments(repo, pr_number)
+    except Exception as exc:
+        logger.warning("Failed to fetch previous review comments for fix tracking: %s", exc)
+        return items
+
+    for comment in prev_comments:
+        body = comment.get("body", "") or ""
+        file_path = comment.get("path", "") or ""
+        line = comment.get("line")
+
+        if not file_path:
+            continue
+
+        # Extract title from comment body (format: **severity** (confidence%): title)
+        title = ""
+        header_match = re.search(
+            r"\*\*(\w+)\*\*\s*\(\d+%\):\s*(.+)$", body, re.MULTILINE
+        )
+        if header_match:
+            title = header_match.group(2).strip()
+        else:
+            # Fallback: use first line
+            title = body.split("\n")[0].strip()[:80]
+
+        key = (file_path, line)
+        if key in current_set:
+            items.append(FixTrackingItem(
+                previous_title=title,
+                file_path=file_path,
+                previous_line=line,
+                status="still_present",
+                detail="建议在当前审查结果中仍存在",
+            ))
+        else:
+            items.append(FixTrackingItem(
+                previous_title=title,
+                file_path=file_path,
+                previous_line=line,
+                status="fixed",
+                detail="该行未出现在本次审查结果中，可能已修复",
+            ))
+
+    return items
 
 
 def _parse_model_payload(raw: str) -> ModelReviewPayload:

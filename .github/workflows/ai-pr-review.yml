@@ -1,6 +1,27 @@
 name: AI PR Review
 
 on:
+  workflow_call:
+    inputs:
+      pr_number:
+        description: "PR number to review (optional; auto-detected for pull_request events)"
+        required: false
+        type: number
+      language:
+        description: "Output language (auto, en, or zh)"
+        required: false
+        type: string
+        default: "zh"
+    secrets:
+      OPENAI_API_KEY:
+        description: "OpenAI-compatible API key"
+        required: true
+      OPENAI_BASE_URL:
+        description: "OpenAI-compatible base URL"
+        required: false
+      REVIEW_MODEL:
+        description: "Model name for review"
+        required: false
   pull_request:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
@@ -40,6 +61,15 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --extra dev
+
+      - name: Validate PR number
+        run: |
+          if [ -z "$PR_NUMBER" ]; then
+            echo "Error: PR number is required but not provided."
+            exit 1
+          fi
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
 
       - name: Syntax and encoding check
         run: python -m compileall src tests
@@ -83,7 +113,7 @@ jobs:
           OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
           REVIEW_MODEL: ${{ secrets.REVIEW_MODEL }}
         run: |
-          PR_NUMBER="${{ github.event.pull_request.number || inputs.pr_number }}"
+          PR_NUMBER="${{ github.event.pull_request.number || inputs.pr_number || '' }}"
           REPO="${{ github.repository }}"
           LANGUAGE="${{ inputs.language || 'zh' }}"
           LANGUAGE_ARGS=()

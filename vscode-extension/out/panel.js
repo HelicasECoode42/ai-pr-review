@@ -93,6 +93,9 @@ function getWebviewHtml(result, webview) {
           </div>
           <div class="suggestion-location">
             📁 <code>${esc(s.file_path)}</code>${s.line ? ` : <code>L${s.line}</code>` : ""}
+            <button class="open-code-btn" onclick="
+              vscode.postMessage({cmd:'openCode', filePath:'${esc(s.file_path)}', line:${s.line ?? 0}})
+            ">📍 Open Code</button>
           </div>
           ${s.reason ? `<div class="suggestion-reason">${esc(s.reason)}</div>` : ""}
           ${s.recommendation ? `<div class="suggestion-rec">💡 ${esc(s.recommendation)}</div>` : ""}
@@ -168,6 +171,12 @@ function getWebviewHtml(result, webview) {
     .suggestion-location { font-size: 11px; color: var(--vscode-descriptionForeground); margin-bottom: 4px; }
     .suggestion-reason { font-size: 12px; margin-bottom: 4px; }
     .suggestion-rec { font-size: 12px; color: var(--vscode-textLink-foreground); }
+    .open-code-btn {
+      font-size: 11px; background: var(--vscode-button-secondaryBackground);
+      color: var(--vscode-button-secondaryForeground); border: none;
+      padding: 1px 8px; border-radius: 3px; cursor: pointer; margin-left: 8px;
+    }
+    .open-code-btn:hover { background: var(--vscode-button-secondaryHoverBackground); }
     .summary-text { font-size: 12px; white-space: pre-wrap; }
     .empty { color: var(--vscode-descriptionForeground); font-style: italic; padding: 20px 0; }
   </style>
@@ -241,6 +250,21 @@ class ReviewPanelProvider {
                         const url = this._lastResult?.pr?.url;
                         if (url && /^https?:\/\//i.test(url)) {
                             vscode.env.openExternal(vscode.Uri.parse(url));
+                        }
+                        break;
+                    }
+                    case "openCode": {
+                        const { filePath, line } = msg;
+                        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
+                        if (workspaceRoot && filePath) {
+                            const fileUri = vscode.Uri.joinPath(workspaceRoot, filePath);
+                            const doc = await vscode.workspace.openTextDocument(fileUri);
+                            const editor = await vscode.window.showTextDocument(doc, { preserveFocus: false });
+                            if (line > 0) {
+                                const pos = new vscode.Position(line - 1, 0);
+                                editor.selection = new vscode.Selection(pos, pos);
+                                editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+                            }
                         }
                         break;
                     }

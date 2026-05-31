@@ -290,6 +290,7 @@ def analyze(
                 updated_at=datetime.now(timezone.utc).isoformat(),
                 review_mode=review_mode,
             ),
+            gh_client=github,
         )
 
         if use_ai:
@@ -332,6 +333,7 @@ def analyze(
                             review_mode=review_mode,
                         ),
                         two_stage=two_stage,
+                        gh_client=github,
                     )
                 finally:
                     provider.close()

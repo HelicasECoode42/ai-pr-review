@@ -169,6 +169,31 @@ class GitHubClient:
             page += 1
         return files
 
+    def get_review_comments(self, repo: str, number: int) -> list[dict]:
+        """Fetch PR review comments (for fix tracking comparison).
+
+        Returns a list of comment dicts with keys: id, path, line, body, user.login, created_at.
+        """
+        try:
+            response = self._request(f"/repos/{repo}/pulls/{number}/comments")
+            data = response.json()
+            if not isinstance(data, list):
+                return []
+            return [
+                {
+                    "id": c.get("id"),
+                    "path": c.get("path", ""),
+                    "line": c.get("line"),
+                    "body": c.get("body", ""),
+                    "author": (c.get("user") or {}).get("login", ""),
+                    "created_at": c.get("created_at", ""),
+                }
+                for c in data
+            ]
+        except Exception as exc:
+            logger.warning("Failed to fetch review comments for %s#%d: %s", repo, number, exc)
+            return []
+
     def get_file_contents(self, repo: str, path: str, ref: str | None = None) -> str | None:
         """Fetch file contents from a repository at a given ref (branch or commit).
 
