@@ -38,13 +38,13 @@ path_rules:
 line_rules:
   - id: sql-string-concat
     severity: HIGH
-    pattern: (SELECT|INSERT|UPDATE|DELETE).*(\+|f\"|format\()
+    pattern: (SELECT|INSERT|UPDATE|DELETE)\s+.*\+\s*(user_input|request|param|data\[|get\()|f".*\{.*(SELECT|INSERT|UPDATE|DELETE)
     title: Possible SQL injection risk
     recommendation: "Use parameterized queries or the ORM query builder instead of string interpolation."
 
   - id: shell-execution
     severity: HIGH
-    pattern: (subprocess|os\.system|child_process\.exec|Runtime\.getRuntime)
+    pattern: (subprocess\.(run|Popen|call|check_call|check_output)|os\.(system|popen)|child_process\.exec|Runtime\.getRuntime|ProcessBuilder)
     title: Shell command execution changed
     recommendation: "Validate user-controlled input and avoid shell=True or string-built commands."
 
@@ -56,7 +56,7 @@ line_rules:
 
   - id: secret-logging
     severity: HIGH
-    pattern: (log|print|console\.).*(token|password|passwd|secret|api[_-]?key)
+    pattern: (log|print|console\.|logger\.|logging\.).*(token|password|passwd|secret|api[_-]?key|credential)
     title: Potential secret logging
     recommendation: "Do not write credentials or secrets to logs. Mask sensitive values before logging."
 
