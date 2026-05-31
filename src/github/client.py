@@ -153,7 +153,8 @@ class GitHubClient:
                 }
                 for c in data
             ]
-        except Exception:
+        except Exception as exc:
+            logger.warning("Failed to fetch review comments for %s#%d: %s", repo, number, exc)
             return []
 
     def get_file_contents(self, repo: str, path: str, ref: str | None = None) -> str | None:

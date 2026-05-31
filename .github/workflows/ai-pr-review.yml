@@ -15,7 +15,7 @@ on:
     secrets:
       OPENAI_API_KEY:
         description: "OpenAI-compatible API key"
-        required: false
+        required: true
       OPENAI_BASE_URL:
         description: "OpenAI-compatible base URL"
         required: false
@@ -57,6 +57,15 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --extra dev
+
+      - name: Validate PR number
+        run: |
+          if [ -z "$PR_NUMBER" ]; then
+            echo "Error: PR number is required but not provided."
+            exit 1
+          fi
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
 
       - name: Syntax and encoding check
         run: python -m compileall src tests
