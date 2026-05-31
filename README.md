@@ -1,10 +1,13 @@
 # AI PR Review Assistant
 
 视频演示：
+```
 通过百度网盘分享的文件：ai-pr-re....mov
 链接：https://pan.baidu.com/s/1wkruMjTolEZRQ9H7p3K8rQ 
 提取码：3drW 
 复制这段内容打开「百度网盘APP 即可获取」
+```
+==视频时长约五分钟==
 
 > AI PR Review Assistant 将 PR diff 自动转化为可读、可信、可追溯的审查结果，并通过 GitHub、Web Console 和 VS Code 插件把问题带回开发者的代码上下文。AI 辅助人工 Review，而非替代。
 
