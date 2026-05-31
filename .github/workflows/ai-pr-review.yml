@@ -9,8 +9,8 @@ on:
         description: "PR number to review"
         required: true
       language:
-        description: "Output language (en or zh)"
-        default: "zh"
+        description: "Output language (auto, en, or zh)"
+        default: "auto"
 
 permissions:
   contents: read
@@ -81,7 +81,11 @@ jobs:
         run: |
           PR_NUMBER="${{ github.event.pull_request.number || inputs.pr_number }}"
           REPO="${{ github.repository }}"
-          LANGUAGE="${{ inputs.language || 'zh' }}"
+          LANGUAGE="${{ inputs.language || 'auto' }}"
+          LANGUAGE_ARGS=()
+          if [ -n "${LANGUAGE}" ] && [ "${LANGUAGE}" != "auto" ]; then
+            LANGUAGE_ARGS=(--language "${LANGUAGE}")
+          fi
 
           AI_FLAG="--ai"
           if [ -z "${OPENAI_API_KEY}" ]; then
@@ -113,7 +117,7 @@ jobs:
           fi
 
           uv run python -m src.cli.main "${REPO}" "${PR_NUMBER}" \
-            --language "${LANGUAGE}" \
+            "${LANGUAGE_ARGS[@]}" \
             "${REVIEWER_ARGS[@]}" \
             "${REVIEW_META_ARGS[@]}" \
             ${AI_FLAG} \

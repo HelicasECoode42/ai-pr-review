@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from enum import Enum
 from pathlib import Path
 
@@ -16,6 +17,67 @@ console = Console()
 class OutputLanguage(str, Enum):
     EN = "en"
     ZH = "zh"
+
+
+def _write_failure_report(
+    output: Path | None,
+    *,
+    repo: str,
+    pr_number: int,
+    title: str,
+    detail: str,
+    markdown: str,
+) -> None:
+    if output:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(markdown, encoding="utf-8")
+        payload = {
+            "pr": {
+                "repo": repo,
+                "number": pr_number,
+                "title": title,
+                "body": None,
+                "author": None,
+                "base_ref": None,
+                "head_ref": None,
+                "head_sha": None,
+                "html_url": None,
+            },
+            "files": [],
+            "summary": detail,
+            "risk_level": "low",
+            "rule_findings": [],
+            "suggestions": [],
+            "used_ai": False,
+            "ai_failure_reason": detail,
+            "analysis_warnings": [detail],
+            "context_truncated": False,
+            "hidden_suggestions_count": 0,
+            "skipped_context_files": [],
+            "hidden_rule_findings_count": 0,
+            "reviewer_version": "pr-branch",
+            "execution_status": "degraded",
+            "degradation_reason": detail,
+            "report_confidence": "failed",
+            "completeness": [
+                {
+                    "item": "GitHub PR fetch",
+                    "status": "failed",
+                    "detail": detail,
+                }
+            ],
+            "pr_syntax_check_ok": True,
+            "review_meta": {},
+            "fix_tracking": [],
+        }
+        output.with_suffix(".json").write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        console.print(f"[green]Failure report written to[/green] {output}")
+        console.print(f"[green]Failure JSON sidecar written to[/green] {output.with_suffix('.json')}")
+    else:
+        console.print(markdown)
 
 
 @app.command()
@@ -88,17 +150,20 @@ def analyze(
     except GitHubApiError as exc:
         # Don't fail the whole process for CI: emit a minimal failure report
         console.print(f"[red]GitHub API error: {exc}[/red]")
+        detail = f"Failed to fetch PR {repo}#{pr_number} from GitHub API: {exc}"
         content = (
             f"# Analysis Failed\n\n"
-            f"Failed to fetch PR {repo}#{pr_number} from GitHub API: {exc}\n\n"
+            f"{detail}\n\n"
             "No analysis was performed.\n"
         )
-        if output:
-            output.parent.mkdir(parents=True, exist_ok=True)
-            output.write_text(content, encoding="utf-8")
-            console.print(f"[green]Failure report written to[/green] {output}")
-        else:
-            console.print(content)
+        _write_failure_report(
+            output,
+            repo=repo,
+            pr_number=pr_number,
+            title="Analysis Failed",
+            detail=detail,
+            markdown=content,
+        )
         # Write short failure summary to GitHub Actions UI if available
         try:
             from src.utils.actions import write_step_summary
@@ -126,6 +191,7 @@ def analyze(
         from src.reviewer.provider import OpenAICompatibleProvider
     except Exception as exc:
         console.print(f"[red]Runtime import error in analyzer/reviewer modules: {exc}[/red]")
+        detail = f"Runtime import error in analyzer/reviewer modules: {exc}"
         # Build a minimal diagnostic report including PR metadata to help debugging
         parts = ["# Analysis Failed", "", "The review tool encountered an internal error during startup.", ""]
         parts.append(f"Error: {exc}")
@@ -146,12 +212,14 @@ def analyze(
         parts.append("")
         parts.append("Please check the repository changes that might have modified the review tool code.\n")
         content = "\n".join(parts)
-        if output:
-            output.parent.mkdir(parents=True, exist_ok=True)
-            output.write_text(content, encoding="utf-8")
-            console.print(f"[green]Diagnostic report written to[/green] {output}")
-        else:
-            console.print(content)
+        _write_failure_report(
+            output,
+            repo=repo,
+            pr_number=pr_number if pr is None else pr.number,
+            title=pr.title if pr else "Analysis Failed",
+            detail=detail,
+            markdown=content,
+        )
         # Write import failure summary to Actions step summary
         try:
             from src.utils.actions import write_step_summary
@@ -277,17 +345,20 @@ def analyze(
     except Exception as exc:
         # Catch unexpected runtime errors during analysis and produce a diagnostic report.
         console.print(f"[red]Analysis runtime error: {exc}[/red]")
+        detail = f"Unexpected runtime error during analysis: {exc}"
         parts = ["# Analysis Failed", "", "An unexpected error occurred during analysis.", ""]
         parts.append(f"Error: {exc}")
         parts.append("")
         parts.append("This likely indicates the PR modified the review tool code. Please inspect changes.")
         content = "\n".join(parts)
-        if output:
-            output.parent.mkdir(parents=True, exist_ok=True)
-            output.write_text(content, encoding="utf-8")
-            console.print(f"[green]Diagnostic report written to[/green] {output}")
-        else:
-            console.print(content)
+        _write_failure_report(
+            output,
+            repo=repo,
+            pr_number=pr_number if pr is None else pr.number,
+            title=pr.title if pr else "Analysis Failed",
+            detail=detail,
+            markdown=content,
+        )
         # Write runtime analysis failure to Actions step summary
         try:
             from src.utils.actions import write_step_summary
