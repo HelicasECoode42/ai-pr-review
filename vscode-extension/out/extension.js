@@ -125,6 +125,10 @@ async function loadReview() {
             (0, diagnostics_1.applyDiagnostics)(diagnosticCollection, byFile);
         }
         updateStatusBar(result);
+        // Update panel if open
+        if (result && reviewPanel) {
+            await reviewPanel.show(result);
+        }
         // Notify user
         if (result) {
             const n = result.suggestions.length;
@@ -192,6 +196,10 @@ async function openPanel() {
     else {
         await reviewPanel.showLoading();
         await loadReview();
+        // After loading, show results in the panel if they arrived
+        if (lastReviewResult && reviewPanel) {
+            await reviewPanel.show(lastReviewResult);
+        }
     }
 }
 // ── Extension lifecycle ─────────────────────────────────
