@@ -54,7 +54,7 @@ function getWorkspaceRoot() {
 // ── Status bar ──────────────────────────────────────────
 function createStatusBar() {
     const item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-    item.command = "ai-pr-review.refresh";
+    item.command = "ai-pr-review.openPanel";
     return item;
 }
 function updateStatusBar(result, error, loading) {
