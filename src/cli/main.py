@@ -87,6 +87,14 @@ def analyze(
     output: Path | None = typer.Option(None, "--output", "-o", help="Write report to file."),
     report_format: str = typer.Option("markdown", "--format", help="markdown or json."),
     use_ai: bool = typer.Option(True, "--ai/--no-ai", help="Call AI model for review."),
+    two_stage: bool = typer.Option(
+        False, "--two-stage",
+        help="Use two-stage review: triage then deep-dive on hotspots.",
+    ),
+    review_mode: str = typer.Option(
+        "full_pr", "--review-mode",
+        help="Review mode: full_pr or incremental (only new changes since last review).",
+    ),
     reviewer_version: str = typer.Option(
         "pr-branch",
         "--reviewer-version",
@@ -143,6 +151,36 @@ def analyze(
         with GitHubClient(settings.github_token, timeout=settings.request_timeout_seconds) as github:
             pr = github.get_pull_request(repo, pr_number)
             files = github.get_changed_files(repo, pr_number)
+
+            # Incremental mode: only review changes since last reviewed commit
+            if review_mode == "incremental" and reviewed_commit and pr.head_sha:
+                if reviewed_commit != pr.head_sha:
+                    short_prev = reviewed_commit[:7]
+                    short_head = pr.head_sha[:7]
+                    console.print(
+                        f"[dim]Incremental mode: diff {short_prev}..{short_head}[/dim]"
+                    )
+                    try:
+                        incremental_files = github.get_compare(
+                            repo, reviewed_commit, pr.head_sha,
+                        )
+                        if incremental_files:
+                            files = incremental_files
+                            console.print(
+                                f"[green]Incremental: {len(files)} changed file(s)[/green]"
+                            )
+                        else:
+                            console.print(
+                                "[yellow]Incremental diff empty; reviewing full PR[/yellow]"
+                            )
+                    except GitHubApiError:
+                        console.print(
+                            "[yellow]Compare API failed; falling back to full PR diff[/yellow]"
+                        )
+                else:
+                    console.print("[green]No new changes since last review[/green]")
+                    raise typer.Exit(code=0)
+
             if language is None:
                 detected = detect_language(pr.title or "", pr.body or "")
                 language = OutputLanguage(detected)
@@ -250,6 +288,7 @@ def analyze(
                 trigger_event=trigger_event,
                 workflow_run_url=workflow_run_url,
                 updated_at=datetime.now(timezone.utc).isoformat(),
+                review_mode=review_mode,
             ),
         )
 
@@ -290,10 +329,39 @@ def analyze(
                             trigger_event=trigger_event,
                             workflow_run_url=workflow_run_url,
                             updated_at=datetime.now(timezone.utc).isoformat(),
+                            review_mode=review_mode,
                         ),
+                        two_stage=two_stage,
                     )
                 finally:
                     provider.close()
+
+        # ── FixTracking: compare against previous review ─────────
+        try:
+            with GitHubClient(
+                settings.github_token, timeout=settings.request_timeout_seconds,
+            ) as gh:
+                comments = gh.get_issue_comments(repo, pr_number)
+                prev_summary = None
+                for c in comments:
+                    if (
+                        c.get("user", {}).get("login") == "github-actions[bot]"
+                        and "<!-- ai-pr-review-bot -->" in (c.get("body") or "")
+                    ):
+                        prev_summary = c["body"]
+                        break
+
+                if prev_summary:
+                    from src.reviewer.fix_tracker import build_fix_tracking
+                    report.fix_tracking = build_fix_tracking(
+                        report.suggestions, prev_summary,
+                    )
+                    console.print(
+                        f"[dim]FixTracking: {len(report.fix_tracking)} "
+                        f"previous suggestion(s) tracked[/dim]"
+                    )
+        except Exception as exc:
+            console.print(f"[dim]FixTracking skipped: {exc}[/dim]")
 
         # After report generation, write an Actions step summary with any notable failures/warnings
         try:
