@@ -445,3 +445,12 @@ def analyze(
 
 if __name__ == "__main__":
     app()
+    # TODO: remove this test line before merge
+
+def _unused_helper():
+    try:
+        pass
+    except Exception:
+        pass  # swallowed exception
+    print('token = test123')
+
