@@ -133,6 +133,57 @@ def _build_completeness(
     return items
 
 
+def build_diagnostic_report(
+    pr: PullRequest,
+    files: list[ChangedFile] | None = None,
+    error: str = "Unknown error during review",
+    reviewer_version: str = "pr-branch",
+    execution_status: str = "failed",
+    language: str = "en",
+) -> ReviewReport:
+    """Build a minimal diagnostic report when all other paths fail (Level 3 fallback).
+
+    This is the last resort — it always produces something readable.
+    """
+    if files is None:
+        files = []
+    if language == "zh":
+        summary = (
+            f"## 审查失败\n\n"
+            f"审查过程遇到未预期的错误，无法生成完整报告。\n"
+            f"**错误信息**：{error}"
+        )
+    else:
+        summary = (
+            f"## Review Failed\n\n"
+            f"The review process encountered an unexpected error.\n"
+            f"**Error**: {error}"
+        )
+    completeness = _build_completeness(
+        pr=pr, files=files,
+        skipped_ctx=[], ctx_truncated=False,
+        used_ai=False, ai_failed=False,
+        pr_syntax_ok=True,
+    )
+    report = ReviewReport(
+        pr=pr,
+        files=files,
+        summary=summary,
+        risk_level=Severity.LOW,
+        used_ai=False,
+        analysis_warnings=[f"Diagnostic report generated due to: {error}"],
+        reviewer_version=reviewer_version,
+        execution_status=execution_status,
+        degradation_reason=error,
+        report_confidence="failed",
+        completeness=completeness,
+    )
+    validation_issues = validate_report(report)
+    if validation_issues:
+        report.analysis_warnings.extend(validation_issues)
+    return report
+
+
 def validate_report(report: ReviewReport) -> list[str]:
     """Run post-generation validation checks on a ReviewReport.
 
@@ -362,13 +413,25 @@ def review_with_ai(
         return report
     except (ProviderError, ValueError) as exc:
         logger.warning("AI review failed, falling back to rule-only: %s", exc)
-        report = build_rule_only_report(pr, files, findings, language=language,
-                                        execution_status="degraded",
-                                        degradation_reason=f"AI 调用失败: {exc}",
-                                        report_confidence="partial",
-                                        pr_syntax_ok=pr_syntax_ok,
-                                        review_meta=review_meta,
-                                        gh_client=gh_client)
+        # Level 2: rule-only fallback
+        try:
+            report = build_rule_only_report(pr, files, findings, language=language,
+                                            execution_status="degraded",
+                                            degradation_reason=f"AI 调用失败: {exc}",
+                                            report_confidence="partial",
+                                            pr_syntax_ok=pr_syntax_ok,
+                                            review_meta=review_meta,
+                                            gh_client=gh_client)
+        except Exception as rule_exc:
+            # Level 3: diagnostic report — rules also failed
+            logger.warning("Rule-only fallback also failed: %s", rule_exc)
+            return build_diagnostic_report(
+                pr=pr, files=files,
+                error=f"AI failed: {exc}; rules also failed: {rule_exc}",
+                reviewer_version=reviewer_version,
+                execution_status="failed",
+                language=language,
+            )
         report.ai_failure_reason = str(exc)
         # Re-build completeness to reflect AI-attempted-but-failed state
         report.completeness = _build_completeness(
@@ -382,6 +445,16 @@ def review_with_ai(
             f"AI review unavailable: {exc}. Showing rule-based analysis only."
         ]
         return report
+    except Exception as exc:
+        # Catch-all: Level 3 diagnostic for any unexpected error
+        logger.warning("Unexpected error in review_with_ai, generating diagnostic: %s", exc)
+        return build_diagnostic_report(
+            pr=pr, files=files,
+            error=f"Unexpected review error: {exc}",
+            reviewer_version=reviewer_version,
+            execution_status="failed",
+            language=language,
+        )
 
 
 def _build_fix_tracking(
