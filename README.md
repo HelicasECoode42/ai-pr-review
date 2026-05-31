@@ -7,6 +7,11 @@
 提取码：3drW 
 复制这段内容打开「百度网盘APP 即可获取」
 ```
+
+```
+https://www.bilibili.com/video/BV1YKVQ6TE6M/?vd_source=2d2e5574c167e4ae93d225908e32da1b
+```
+
 ==视频时长约五分钟==
 
 > AI PR Review Assistant 将 PR diff 自动转化为可读、可信、可追溯的审查结果，并通过 GitHub、Web Console 和 VS Code 插件把问题带回开发者的代码上下文。AI 辅助人工 Review，而非替代。
