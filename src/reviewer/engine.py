@@ -193,13 +193,19 @@ def validate_report(report: ReviewReport) -> list[str]:
     issues: list[str] = []
 
     # 1. PR metadata must be present
-    if not report.pr or not report.pr.repo or report.pr.number == 0:
-        issues.append("PR metadata missing — report may be incomplete")
+    # Skip PR metadata check for diagnostic reports
+    if report.report_confidence != "failed":
+        if not report.pr or not report.pr.repo or report.pr.number == 0:
+            issues.append("PR metadata missing — report may be incomplete")
 
     # 2. AI flag consistency
     if report.used_ai and report.ai_failure_reason:
         issues.append(
             "Inconsistency: report.used_ai=True but ai_failure_reason is set"
+        )
+    if not report.used_ai and report.ai_failure_reason:
+        issues.append(
+            "Inconsistency: report.used_ai=False but ai_failure_reason is set"
         )
 
     # 3. If suggestions exist, summary must be non-empty
@@ -216,14 +222,16 @@ def validate_report(report: ReviewReport) -> list[str]:
         )
 
     # 5. execution_status consistency
-    if report.execution_status == "success" and report.degradation_reason:
-        issues.append(
-            "Inconsistency: execution_status=success but degradation_reason is set"
-        )
-    if report.execution_status == "degraded" and not report.degradation_reason:
-        issues.append(
-            "execution_status=degraded but degradation_reason is missing"
-        )
+    # Skip execution_status check for diagnostic reports
+    if report.report_confidence != "failed":
+        if report.execution_status == "success" and report.degradation_reason:
+            issues.append(
+                "Inconsistency: execution_status=success but degradation_reason is set"
+            )
+        if report.execution_status == "degraded" and not report.degradation_reason:
+            issues.append(
+                "execution_status=degraded but degradation_reason is missing"
+            )
 
     # 6. ReviewMeta basic checks
     if report.review_meta:
@@ -481,8 +489,8 @@ def _build_fix_tracking(
 
     try:
         prev_comments = gh_client.get_review_comments(repo, pr_number)
-    except Exception:
-        logger.debug("Failed to fetch previous review comments for fix tracking")
+    except Exception as exc:
+        logger.warning("Failed to fetch previous review comments for fix tracking: %s", exc)
         return items
 
     for comment in prev_comments:
@@ -495,8 +503,8 @@ def _build_fix_tracking(
 
         # Extract title from comment body (format: **severity** (confidence%): title)
         title = ""
-        header_match = __import__("re").search(
-            r"\*\*(\w+)\*\*\s*\(\d+%\):\s*(.+)$", body, __import__("re").MULTILINE
+        header_match = re.search(
+            r"\*\*(\w+)\*\*\s*\(\d+%\):\s*(.+)$", body, re.MULTILINE
         )
         if header_match:
             title = header_match.group(2).strip()
