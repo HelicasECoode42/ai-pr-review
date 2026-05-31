@@ -75,6 +75,7 @@ LINE_RULES = _LINE_RULES_RUNTIME  # alias for backward compat
 
 
 def scan_risks(files: list[ChangedFile] | None) -> list[RiskFinding]:
+    """Run all risk scans: path rules, line regex rules, test deletions, and AST analysis."""
     _ensure_rules_loaded()
     if not files:
         return []
@@ -89,6 +90,25 @@ def scan_risks(files: list[ChangedFile] | None) -> list[RiskFinding]:
         except Exception as e:
             logger.warning(f"Failed to scan file {file.filename}: {e}")
             continue
+
+    # ── AST rules (imported lazily to avoid circular deps) ──
+    try:
+        from src.analyzer.ast_rules import scan_ast_risks
+        findings.extend(scan_ast_risks(files))
+    except ImportError:
+        logger.debug("AST rules module not available; skipping.")
+    except Exception as e:
+        logger.warning(f"AST rules scan failed: {e}")
+
+    # ── Cross-file impact analysis ──
+    try:
+        from src.analyzer.cross_file import analyze_cross_file_impact
+        findings.extend(analyze_cross_file_impact(files))
+    except ImportError:
+        logger.debug("Cross-file analysis module not available; skipping.")
+    except Exception as e:
+        logger.warning(f"Cross-file analysis failed: {e}")
+
     return findings
 
 

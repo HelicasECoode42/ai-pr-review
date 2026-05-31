@@ -1,7 +1,6 @@
 import * as vscode from "vscode";
 import {
   fetchReview,
-  fetchReviewViaHttp,
   type ReviewResult,
 } from "./review-fetcher";
 import {
@@ -33,7 +32,7 @@ function createStatusBar(): vscode.StatusBarItem {
     vscode.StatusBarAlignment.Left,
     100,
   );
-  item.command = "ai-pr-review.refresh";
+  item.command = "ai-pr-review.openPanel";
   return item;
 }
 
@@ -123,6 +122,11 @@ async function loadReview(): Promise<void> {
 
     updateStatusBar(result);
 
+    // Update panel if open
+    if (result && reviewPanel) {
+      await reviewPanel.show(result);
+    }
+
     // Notify user
     if (result) {
       const n = result.suggestions.length;
@@ -199,6 +203,10 @@ async function openPanel(): Promise<void> {
   } else {
     await reviewPanel.showLoading();
     await loadReview();
+    // After loading, show results in the panel if they arrived
+    if (lastReviewResult && reviewPanel) {
+      await reviewPanel.show(lastReviewResult);
+    }
   }
 }
 

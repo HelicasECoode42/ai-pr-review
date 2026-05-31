@@ -344,14 +344,32 @@ def review_with_ai(
     report_confidence: str = "normal",
     pr_syntax_ok: bool = True,
     review_meta: ReviewMeta | None = None,
+    two_stage: bool = False,
     gh_client: Any | None = None,
 ) -> ReviewReport:
     try:
         ctx = build_review_context(pr, files, findings)
-        raw = provider.complete_json(
-            SYSTEM_PROMPT, build_user_prompt(ctx.text, max_suggestions, language)
-        )
-        payload = _parse_model_payload(raw)
+        if two_stage:
+            from src.reviewer.two_stage import two_stage_review
+            summary, risk_level, suggestions = two_stage_review(
+                pr, files, findings, provider,
+                max_suggestions=max_suggestions,
+                min_confidence=min_confidence,
+                max_suggestions_per_file=max_suggestions_per_file,
+                language=language,
+            )
+            payload = ModelReviewPayload(
+                summary=summary,
+                risk_level=risk_level,
+                suggestions=suggestions,
+            )
+            total_from_model = len(suggestions)
+        else:
+            raw = provider.complete_json(
+                SYSTEM_PROMPT, build_user_prompt(ctx.text, max_suggestions, language)
+            )
+            payload = _parse_model_payload(raw)
+            total_from_model = len(payload.suggestions)
         total_from_model = len(payload.suggestions)
         suggestions = _filter_suggestions(
             payload.suggestions, files, max_suggestions, min_confidence,

@@ -101,6 +101,43 @@ class GitHubClient:
                 continue
         return results
 
+    def get_compare(self, repo: str, base: str, head: str) -> list[ChangedFile]:
+        """Get diff between two commits via the GitHub Compare API.
+
+        Returns ChangedFile list like get_changed_files, for incremental review.
+        base/head can be branch names or commit SHAs.
+        """
+        from src.models import ChangedFile, FileStatus
+        response = self._request(
+            f"/repos/{repo}/compare/{base}...{head}",
+            params={"per_page": 300},
+        )
+        data = response.json()
+        raw_files = data.get("files") or []
+        result: list[ChangedFile] = []
+        for item in raw_files:
+            try:
+                status_str = item.get("status", "unknown")
+                status = (
+                    FileStatus(status_str)
+                    if status_str in FileStatus._value2member_map_
+                    else FileStatus.UNKNOWN
+                )
+                result.append(
+                    ChangedFile(
+                        filename=item.get("filename", ""),
+                        status=status,
+                        additions=item.get("additions", 0),
+                        deletions=item.get("deletions", 0),
+                        changes=item.get("changes", 0),
+                        patch=item.get("patch"),
+                        previous_filename=item.get("previous_filename"),
+                    )
+                )
+            except Exception:
+                continue
+        return result
+
     def get_changed_files(self, repo: str, number: int) -> list[ChangedFile]:
         files: list[ChangedFile] = []
         page = 1
@@ -186,6 +223,18 @@ class GitHubClient:
             raise
         except Exception as e:
             raise GitHubApiError(f"Failed to fetch file contents for {repo}/{path}@{ref}: {e}") from e
+
+    def get_issue_comments(self, repo: str, issue_number: int) -> list[dict]:
+        """Fetch issue comments for a PR (issue_number = PR number).
+
+        Returns list of comment objects with keys: id, body, user.login, created_at.
+        """
+        response = self._request(
+            f"/repos/{repo}/issues/{issue_number}/comments",
+            params={"per_page": 50, "sort": "created", "direction": "desc"},
+        )
+        data = response.json()
+        return data if isinstance(data, list) else []
 
     def __enter__(self) -> GitHubClient:
         return self
