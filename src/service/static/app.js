@@ -66,7 +66,7 @@ function fillDemo() {
   document.getElementById("repo").value = "openclaw/openclaw";
   document.getElementById("pr-number").value = "80419";
   document.getElementById("pr-url").value = "https://github.com/openclaw/openclaw/pull/80419";
-  document.getElementById("language").value = "";
+  document.getElementById("language").value = "zh";
   document.getElementById("use-ai").value = "0";
   hideError();
   hideResults();
