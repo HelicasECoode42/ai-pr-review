@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-import json
 import logging
-import re
 
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
 from src.analyzer.context_builder import build_review_context
-from src.analyzer.diff_parser import changed_line_map
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -25,16 +22,12 @@ from src.models import (
     SkippedContextFile,
     StepStatus,
 )
+from src.reviewer.model_payload import ModelReviewPayload, parse_model_payload
 from src.reviewer.prompt import SYSTEM_PROMPT, build_user_prompt
 from src.reviewer.provider import ProviderError, ReviewModelProvider
+from src.reviewer.suggestion_filter import filter_suggestions
 
 logger = logging.getLogger(__name__)
-
-
-class ModelReviewPayload(BaseModel):
-    summary: str
-    risk_level: Severity
-    suggestions: list[ReviewSuggestion]
 
 
 def _build_completeness(
@@ -324,6 +317,7 @@ def build_rule_only_report(
         completeness=completeness,
         review_meta=review_meta or ReviewMeta(),
         fix_tracking=fix_tracking,
+        dismissed_signals=[],
     )
     # Post-generation validation
     validation_issues = validate_report(report)
@@ -372,9 +366,9 @@ def review_with_ai(
             raw = provider.complete_json(
                 SYSTEM_PROMPT, build_user_prompt(ctx.text, max_suggestions, language)
             )
-            payload = _parse_model_payload(raw)
+            payload = parse_model_payload(raw)
             total_from_model = len(payload.suggestions)
-        suggestions = _filter_suggestions(
+        suggestions = filter_suggestions(
             payload.suggestions, files, max_suggestions, min_confidence,
             max_suggestions_per_file,
         )
@@ -399,6 +393,14 @@ def review_with_ai(
             warnings.append(
                 f"{len(skipped_ctx)} file(s) excluded from AI patch context: {skipped_names}"
             )
+
+        # Track dismissed rule alerts
+        dismissed = getattr(payload, "dismissed_rule_alerts", []) or []
+        if dismissed:
+            warnings.append(
+                f"{len(dismissed)} rule alert(s) dismissed by AI as false positives"
+            )
+
         # Build fix tracking from previous review comments
         fix_tracking = _build_fix_tracking(
             repo=pr.repo,
@@ -432,6 +434,7 @@ def review_with_ai(
             completeness=completeness,
             review_meta=review_meta or ReviewMeta(),
             fix_tracking=fix_tracking,
+            dismissed_signals=dismissed,
         )
         # Post-generation validation
         validation_issues = validate_report(report)
@@ -551,97 +554,6 @@ def _build_fix_tracking(
             ))
 
     return items
-
-
-def _parse_model_payload(raw: str) -> ModelReviewPayload:
-    # Strategy 1: direct JSON parse
-    try:
-        data = json.loads(raw)
-        return ModelReviewPayload.model_validate(data)
-    except (json.JSONDecodeError, ValidationError):
-        logger.warning("JSON fallback: direct parse failed, trying fenced code block")
-
-    # Strategy 2: extract from ```json fenced code block
-    match = re.search(r"```json\s*([\s\S]*?)\s*```", raw)
-    if match:
-        try:
-            data = json.loads(match.group(1))
-            return ModelReviewPayload.model_validate(data)
-        except (json.JSONDecodeError, ValidationError):
-            logger.warning("JSON fallback: fenced code block parse failed, trying brace extraction")
-
-    # Strategy 3: extract from first { to last }
-    match = re.search(r"\{[\s\S]*\}", raw)
-    if match:
-        try:
-            data = json.loads(match.group(0))
-            return ModelReviewPayload.model_validate(data)
-        except (json.JSONDecodeError, ValidationError):
-            logger.warning("JSON fallback: brace extraction also failed")
-
-    raise ValueError(
-        f"Model returned invalid review JSON. Raw output prefix: {raw[:300]}"
-    )
-
-
-def _filter_suggestions(
-    suggestions: list[ReviewSuggestion],
-    files: list[ChangedFile],
-    max_suggestions: int,
-    min_confidence: float = 0.0,
-    max_suggestions_per_file: int = 5,
-) -> list[ReviewSuggestion]:
-    changed_lines = changed_line_map(files)
-    filtered: list[ReviewSuggestion] = []
-    seen_exact: set[tuple[str, int | None, str]] = set()
-    seen_reason_prefix: set[tuple[str, int | None, str]] = set()
-    per_file_count: dict[str, int] = {}
-
-    for suggestion in suggestions:
-        if suggestion.confidence < min_confidence:
-            continue
-        # Drop suggestions with empty reason or recommendation
-        if not suggestion.reason.strip() or not suggestion.recommendation.strip():
-            continue
-        if suggestion.line is not None:
-            if suggestion.line not in changed_lines.get(suggestion.file_path, set()):
-                continue
-        # Exact dedup: same file + line + title
-        exact_key = (suggestion.file_path, suggestion.line, suggestion.title.lower())
-        if exact_key in seen_exact:
-            continue
-        # Fuzzy dedup: same file + line + similar reason prefix (>20 chars)
-        reason_prefix = suggestion.reason.strip().lower()[:40]
-        if suggestion.line is not None and len(reason_prefix) >= 15:
-            reason_key = (suggestion.file_path, suggestion.line, reason_prefix)
-            if reason_key in seen_reason_prefix:
-                continue
-            seen_reason_prefix.add(reason_key)
-        # Enforce per-file cap
-        if per_file_count.get(suggestion.file_path, 0) >= max_suggestions_per_file:
-            continue
-        seen_exact.add(exact_key)
-        try:
-            Severity(suggestion.severity)
-        except ValueError:
-            continue
-        if not (0.0 <= suggestion.confidence <= 1.0):
-            continue
-        filtered.append(suggestion)
-        per_file_count[suggestion.file_path] = (
-            per_file_count.get(suggestion.file_path, 0) + 1
-        )
-
-    severity_rank = {
-        Severity.CRITICAL: 4,
-        Severity.HIGH: 3,
-        Severity.MEDIUM: 2,
-        Severity.LOW: 1,
-    }
-    filtered.sort(
-        key=lambda item: (severity_rank[item.severity], item.confidence), reverse=True
-    )
-    return filtered[:max_suggestions]
 
 
 def _max_severity(values: list[Severity]) -> Severity:

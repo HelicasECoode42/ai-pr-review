@@ -41,12 +41,14 @@ class AnalyzeRequest(BaseModel):
     pr_number: int
     language: str | None = None  # auto-detect if not set
     use_ai: bool = True
+    agent_mode: str = "off"     # "off" (legacy), "auto", "rule_only", "one_shot_ai", "two_stage"
 
 
 class AnalyzeResponse(BaseModel):
     report: dict
     markdown: str
     duration_seconds: float
+    agent: dict | None = None   # populated when agent_mode != "off"
 
 
 @app.get("/api/health")
@@ -63,10 +65,71 @@ def list_rules() -> list[dict]:
     return rules_to_dict(list(_RISK_PATH_RULES), list(_LINE_RULES_RUNTIME))
 
 
+# ── Demo-first endpoints ──────────────────────────────────
+
+_DEMO_DIR = Path(__file__).resolve().parent / "demo"
+_DEMO_FILE = _DEMO_DIR / "openclaw_80419_full.json"
+
+
+@app.get("/api/config")
+def get_config() -> dict:
+    """Return environment status — no secrets, only booleans."""
+    settings = get_settings()
+    return {
+        "github_token_configured": bool(settings.github_token),
+        "openai_api_key_configured": bool(settings.openai_api_key),
+        "demo_available": _DEMO_FILE.exists(),
+        "default_agent_mode": "rule_only",
+    }
+
+
+@app.get("/api/demo-report")
+def get_demo_report() -> dict:
+    """Return a pre-generated demo report — no GitHub, no LLM."""
+    if not _DEMO_FILE.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="Demo report not found. The demo data file is missing from src/service/demo/.",
+        )
+    try:
+        with open(_DEMO_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError) as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to read demo report: {exc}",
+        )
+
+
+# ── Analysis endpoint ─────────────────────────────────────
+
 @app.post("/api/analyze")
 def analyze(req: AnalyzeRequest) -> AnalyzeResponse | dict:
     settings = get_settings()
     t0 = time.monotonic()
+
+    # ── Agent Runner path ──────────────────────────────────
+    if req.agent_mode != "off":
+        from src.agent.runner import ReviewAgentRequest, ReviewAgentRunner
+
+        runner = ReviewAgentRunner(settings)
+        result = runner.run(ReviewAgentRequest(
+            repo=req.repo,
+            pr_number=req.pr_number,
+            language=req.language,
+            use_ai=req.use_ai,
+            agent_mode=req.agent_mode,
+        ))
+        elapsed = time.monotonic() - t0
+
+        return AnalyzeResponse(
+            report=result.json_report,
+            markdown=result.markdown,
+            duration_seconds=round(elapsed, 2),
+            agent=result.agent_sidecar,
+        )
+
+    # ── Legacy path (agent_mode == "off") ──────────────────
 
     # 1. Fetch PR data
     try:
@@ -74,7 +137,14 @@ def analyze(req: AnalyzeRequest) -> AnalyzeResponse | dict:
             pr = gh.get_pull_request(req.repo, req.pr_number)
             files = gh.get_changed_files(req.repo, req.pr_number)
     except GitHubApiError as exc:
-        raise HTTPException(status_code=502, detail=f"GitHub API error: {exc}")
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"GitHub API request failed: {exc}. "
+                "For demo, click 'Try Demo' on the web console. "
+                "For real PR analysis, set GITHUB_TOKEN in .env or use a public repository."
+            ),
+        )
 
     if pr is None or not pr.repo:
         raise HTTPException(status_code=502, detail="Failed to fetch PR information")
@@ -232,7 +302,14 @@ def repo_trend(req: TrendRequest) -> dict:
         with GitHubClient(settings.github_token, timeout=settings.request_timeout_seconds) as gh:
             pr_list = gh.list_pull_requests(req.repo, count=count)
     except GitHubApiError as exc:
-        raise HTTPException(status_code=502, detail=f"GitHub API error: {exc}")
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"GitHub API request failed: {exc}. "
+                "For demo, click 'Try Demo' on the web console. "
+                "For real PR analysis, set GITHUB_TOKEN in .env or use a public repository."
+            ),
+        )
 
     if not pr_list:
         return {"repo": req.repo, "prs": [], "note": "No open PRs found"}

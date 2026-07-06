@@ -1,13 +1,5 @@
 # AI PR Review Assistant
 
-视频演示：
-```
-通过百度网盘分享的文件：ai-pr-re....mov
-链接：https://pan.baidu.com/s/1wkruMjTolEZRQ9H7p3K8rQ 
-提取码：3drW 
-复制这段内容打开「百度网盘APP 即可获取」
-```
-
 ```
 https://www.bilibili.com/video/BV1YKVQ6TE6M/?vd_source=2d2e5574c167e4ae93d225908e32da1b
 ```
@@ -26,10 +18,11 @@ AI PR Review Assistant 是一个面向 GitHub Pull Request 的 AI 代码审查�
 GitHub PR
   -> GitHub API 获取元信息、文件变更和 patch
   -> Risk Rules 扫描高风险路径和代码模式
-  -> Context Builder 构造受控上下文
-  -> LLM Reviewer 生成结构化建议
+  -> Cross-File Analyzer 检测跨文件调用链
+  -> Agent Runner 选择策略（rule_only / one_shot / two_stage）
+  -> LLM Reviewer 生成结构化建议 + 验证规则信号
   -> 本地过滤置信度、重复项和非变更行噪音
-  -> Markdown / JSON ReviewReport
+  -> Markdown / JSON ReviewReport + Agent Trace Sidecar
   -> GitHub Comment / Web Console / VS Code Problems & Panel
 ```
 
@@ -51,9 +44,17 @@ GitHub PR
 - **GitHub Actions**：PR 创建/更新后自动审查，发布 summary comment 和 inline review
 - **VS Code 插件**：Problems 面板跳转本地代码，Review Panel 展示完整报告
 
-> Demo 视频：即将添加 GIF / BiliBili / YouTube 链接。
+> Demo 视频：见上方百度网盘 / B 站链接（约五分钟）。如外链不便访问，推荐使用下方 Web Console 的 ✨ Try Demo 功能 — 加载预生成离线报告，无需 GitHub Token、模型 Key 和网络。
 
-最短体验路径（无需克隆仓库、不配环境）：打开 Web Console，粘贴任意公开仓库的 PR URL，点击 Analyze。
+最短体验路径（零配置、不需要 GitHub Token、不需要模型 Key）：
+
+```bash
+git clone https://github.com/HelicasECoode42/ai-pr-review.git
+cd ai-pr-review
+uv sync --extra dev
+uv run uvicorn src.service.app:app --reload
+# 打开 http://127.0.0.1:8000，点击 ✨ Try Demo
+```
 
 ## 解决的问题
 
@@ -71,11 +72,14 @@ GitHub PR
 - 通过 GitHub REST API 获取 PR 元数据、变更文件和 patch。
 - 解析 diff，提取 changed lines 和 patch hunk 上下文。
 - 本地规则扫描高风险路径和高风险代码模式。
+- **跨文件分析**：AST 级检测 PR 内的函数签名变更和跨文件调用关系。
+- **Agent 编排**：自研 Runner，每次审查记录完整 trace（工具步骤、耗时、策略、降级路径）。
+- **规则信号验证**：AI 对每条规则命中做确认/驳回/调整严重度，降低误报。
 - 注入轻量 Context Pack，包括项目 Review Guide、函数索引、README 和架构说明。
 - 使用 OpenAI-compatible provider 调用模型，支持 OpenAI、DeepSeek、Azure OpenAI 等兼容服务。
-- 使用 Pydantic schema 约束模型输出，生成结构化 `ReviewReport`。
+- 使用 Pydantic schema + **4 层 JSON fallback**（含截断修复）约束模型输出。
 - 通过 changed-line、confidence、重复项和每文件数量限制控制噪音。
-- AI 失败时自动降级为 rule-only 报告。
+- AI 失败时自动降级为 rule-only 报告，显式降级链可追踪。
 
 ### GitHub Actions 自动审查
 
@@ -90,11 +94,13 @@ GitHub PR
 ### Web Console
 
 - 提供 FastAPI 后端和静态前端页面。
+- **Demo-first**：点击 ✨ Try Demo 直接加载离线报告，不需要 GitHub Token、不需要模型 Key、不访问网络。
 - 支持粘贴 GitHub PR URL，自动解析 repo 和 PR number。
-- 支持中文/英文、AI Review/rule-only 两种模式。
+- 支持中文/英文、Rule-only / AI Review、Legacy / Agent 引擎切换。
 - 展示整体风险、文件数、增删行、AI 使用状态、报告可信度和耗时。
-- 提供 Suggestions、Completeness、Report 三个视图。
+- 提供 Suggestions、Completeness、Report、History 四个视图。
 - 支持按严重程度过滤建议、复制评论、下载 JSON、打开 GitHub PR。
+- `/api/config` 返回环境状态（token 是否配置、demo 是否可用），不泄露密钥。
 
 启动方式：
 
@@ -204,16 +210,14 @@ REVIEW_MODEL=deepseek-chat
 | `deepseek-chat` | 中文项目、成本敏感场景 | 中文审查质量好；成本极低（约 ¥1/1M tokens）；OpenAI-compatible API 无缝接入；旗舰模型代码能力强 |
 
 两种模型通过相同的 OpenAI-compatible 接口调用。你可以通过修改 `OPENAI_BASE_URL` 接入任何兼容服务（Azure OpenAI、Ollama 本地模型、其他第三方代理）。
-
-> 为什么不用 GPT-4o 或 Claude？这些大模型在代码审查场景的边际收益有限——对 diff hunk 的局部分析，mini 级别模型已经足够。大模型增加的延迟和成本（5-10x），换来的只是更华丽的措辞，而非更准确的发现。
-
 ## CLI 用法
 
-AI + 规则分析：
+AI + 规则分析（Agent 模式）：
 
 ```bash
 uv run python -m src.cli.main owner/repo 123 \
   --language zh \
+  --agent-mode one_shot_ai \
   --output reports/pr-123.md
 ```
 
@@ -241,6 +245,7 @@ uv run python -m src.cli.main owner/repo 123 \
 | `--output` / `-o` | 报告输出路径 |
 | `--format` | `markdown`，默认，或 `json` |
 | `--ai` / `--no-ai` | 是否调用 AI 模型 |
+| `--agent-mode` | 审查引擎：`off`（默认，旧路径）、`auto`、`rule_only`、`one_shot_ai`、`two_stage` |
 | `--language` | `en`，默认，或 `zh` |
 | `--reviewer-version` | 报告中的 reviewer 来源标记，例如 `pr-branch` / `main-fallback` |
 | `--execution-status` | 报告中的执行状态标记，例如 `success` / `degraded` |
@@ -301,32 +306,36 @@ JSON 报告用于自动评论、Web Console、VS Code 插件和未来服务化�
 
 ```text
 src/
-  cli/           Typer CLI 入口
-  github/        GitHub REST API 客户端
-  analyzer/      diff 解析、上下文构建、风险规则扫描
-  reviewer/      LLM provider、prompt、结构化 Review 引擎
-  output/        Markdown / JSON 渲染
-  service/       FastAPI Web Console
-  utils/         配置管理和 GitHub Actions 辅助工具
-tests/           单元测试
-docs/            架构、质量控制、路线图和视频说明
+  agent/          Agent 编排层（state, trace, policy, registry, runner）
+  cli/            Typer CLI 入口
+  github/         GitHub REST API 客户端
+  analyzer/       diff 解析、上下文构建、风险规则扫描、跨文件分析
+  reviewer/       LLM provider、prompt、结构化 Review 引擎、payload 解析、filter
+  output/         Markdown / JSON 渲染
+  service/        FastAPI Web Console（含 demo 数据 + 静态前端）
+  utils/          配置管理和 GitHub Actions 辅助工具
+tests/            单元测试（87 tests）
+docs/             架构、Agent 改造方案、Demo-first 方案、质量控制、路线图
 vscode-extension/ VS Code 插件源码、编译产物和 VSIX
 ```
 
 ## 质量保障
 
-- 核心模型使用 Pydantic schema，避免模型自由文本难以解析。
-- 规则扫描和 AI 输出分层，规则结果可在 AI 失败时独立生成报告。
+- 核心模型使用 Pydantic schema，搭配 4 层 JSON fallback（含截断修复）避免模型输出不可解析。
+- 规则扫描输出作为信号，AI 对每条信号做验证（确认/驳回/调整严重度），降低误报。
+- 跨文件分析（AST 级）检测 PR 内的函数签名变更和调用链影响。
+- Agent Runner 记录每一步 trace（工具、耗时、输入输出摘要、策略原因、降级路径），审查过程可追溯。
 - 建议经过 changed-line、confidence、去重、每文件数量限制过滤，减少刷屏。
 - 大 diff 会触发上下文截断并在报告中明确标注。
 - CI 使用 base branch reviewer fallback，避免 PR 修改审查工具后完全无报告。
 - Workflow 会单独检查 PR head 语法，报告生成和合并门禁解耦。
-- 项目使用自身 AI Review 工具 dogfooding，多轮修复安全、CSP、协议校验和 IDE 交互问题。
+
+测试：
 
 测试：
 
 ```bash
-uv run --extra dev pytest
+uv run pytest
 ```
 
 语法检查：
@@ -335,12 +344,12 @@ uv run --extra dev pytest
 python -m compileall src tests
 ```
 
-当前单元测试覆盖：
+当前单元测试覆盖（87 tests）：
 
-- context builder
-- diff parser
-- reviewer engine
-- risk rules
+- agent policy / trace / runner (rule-only)
+- context builder / diff parser
+- reviewer engine / suggestion filter
+- risk rules / report reliability
 
 ## 安全性
 
@@ -370,10 +379,11 @@ OpenAI-compatible 接口允许用户指向自托管模型（如通过 Ollama 或
 阶段 2：GitHub Actions 自动审查与报告发布
 阶段 3：报告可信度、运行完整性和降级策略
 阶段 4：规则扫描增强、误报控制和 Context Pack
-阶段 5：Web Console 可视化审查入口
+阶段 5：Web Console 可视化审查入口 + Demo-first
 阶段 6：ReviewMeta / FixTracking 生命周期管理
 阶段 7：VS Code 插件、Review Panel、Problems、CodeLens 和 VSIX
-阶段 8：使用本工具审查自身 PR，持续修复安全与交互问题
+阶段 8：Agent 编排层（state/trace/policy/registry/runner）
+阶段 9：规则信号验证 + 跨文件分析 + Two-Stage 正式化
 ```
 
 ## 未来方向
@@ -395,7 +405,8 @@ OpenAI-compatible 接口允许用户指向自托管模型（如通过 Ollama 或
 ## 文档导航
 
 - [架构设计](docs/architecture.md)：核心流程、模块边界、CI 运行模型和降级策略。
-- [当前开发计划与分工](docs/current-development-plan.md)：开发目标、分工和验收方式。
+- [Agent 改造计划](docs/agent-refactor-execution-plan.md)：Agent 编排层设计、Stage 划分、验收标准。
+- [Rules & Agent 协同方案](docs/rules-agent-synergy-plan.md)：规则降级为信号层、AI 验证的改进方案。
+- [Web Console Demo-First 方案](docs/web-console-demo-first-plan.md)：离线演示、零配置开箱体验。
 - [未来扩展](docs/future-extensions.md)：VS Code 扩展、服务化、Context Pack、Web UI 等路线图。
 - [协作与提交规范](docs/contribution-guide.md)：分支、commit、PR 和合并前检查规范。
-- [阶段性总结](docs/2026-05-29-summary.md)：早期开发进度和历史背景。

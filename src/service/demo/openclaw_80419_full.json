@@ -1,0 +1,137 @@
+{
+  "report": {
+    "pr": {
+      "repo": "openclaw/openclaw",
+      "number": 80419,
+      "title": "fix(gateway): accept text field for OpenAI SDK 6.x parity",
+      "body": "## Summary\n\n- Add `text` field to `CreateResponseBodySchema` to accept OpenAI SDK 6.x's `text` parameter\n- Previously, requests with the `text` key were rejected with `Unrecognized key: text` due to `.strict()` schema validation\n\n## Test plan\n\n- [ ] Verify schema accepts `text` field with format type `text`\n- [ ] Verify schema accepts `text` field with format type `json_object`\n- [ ] Verify schema accepts `text` field with format type `json_schema`\n- [ ] Verify schema still rejects unknown keys",
+      "author": "dlrik",
+      "base_ref": "main",
+      "head_ref": "fix/responses-text-field-parity",
+      "head_sha": "fb74af00cd8a2becc4515e25584f34972d851452",
+      "html_url": "https://github.com/openclaw/openclaw/pull/80419"
+    },
+    "files": [
+      {
+        "filename": "src/agents/pi-embedded-runner/run.ts",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 1,
+        "changes": 3,
+        "patch": "@@ -1310,7 +1310,8 @@ export async function runEmbeddedPiAgent(\n                 )\n               : bootstrapPromptWarningSignaturesSeen);\n           const lastAssistantUsage = normalizeUsage(sessionLastAssistant?.usage as UsageLike);\n-          const attemptUsage = attempt.attemptUsage ?? lastAssistantUsage;\n+          const attemptUsage =\n+            attempt.attemptUsage !== undefined ? attempt.attemptUsage : lastAssistantUsage;\n           mergeUsageIntoAccumulator(usageAccumulator, attemptUsage);\n           // Keep prompt size from the latest model call so session totalTokens\n           // reflects current context usage, not accumulated tool-loop usage.",
+        "previous_filename": null
+      },
+      {
+        "filename": "src/agents/pi-embedded-runner/run/payloads.ts",
+        "status": "modified",
+        "additions": 11,
+        "deletions": 0,
+        "changes": 11,
+        "patch": "@@ -152,6 +152,17 @@ function resolveToolErrorWarningPolicy(params: {\n   if (normalizedToolName === \"sessions_send\") {\n     return { showWarning: false, includeDetails };\n   }\n+  // Read-only gateway config.schema.lookup misses are expected query failures,\n+  // not destructive actions. Suppress noisy user-facing warnings (#42856).\n+  if (\n+    normalizedToolName === \"gateway\" &&\n+    !params.lastToolError.mutatingAction &&\n+    (normalizeOptionalLowercaseString(params.lastToolError.error) ?? \"\").includes(\n+      \"config schema path not found\",\n+    )\n+  ) {\n+    return { showWarning: false, includeDetails };\n+  }\n   const isMutatingToolError =\n     params.lastToolError.mutatingAction ?? isLikelyMutatingToolName(params.lastToolError.toolName);\n   if (isMutatingToolError) {",
+        "previous_filename": null
+      },
+      {
+        "filename": "src/gateway/open-responses.schema.ts",
+        "status": "modified",
+        "additions": 15,
+        "deletions": 0,
+        "changes": 15,
+        "patch": "@@ -214,6 +214,21 @@ export const CreateResponseBodySchema = z\n       })\n       .optional(),\n     truncation: z.enum([\"auto\", \"disabled\"]).optional(),\n+    text: z\n+      .object({\n+        format: z.discriminatedUnion(\"type\", [\n+          z.object({ type: z.literal(\"text\") }),\n+          z.object({\n+            type: z.literal(\"json_schema\"),\n+            json_schema: z\n+              .object({ name: z.string(), description: z.string().optional() })\n+              .strict(),\n+          }),\n+          z.object({ type: z.literal(\"json_object\") }),\n+        ]),\n+        verbosity: z.enum([\"auto\", \"verbose\"]).optional(),\n+      })\n+      .optional(),\n   })\n   .strict();\n ",
+        "previous_filename": null
+      },
+      {
+        "filename": "src/gateway/protocol/schema/logs-chat.ts",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 0,
+        "changes": 2,
+        "patch": "@@ -66,6 +66,8 @@ export const ChatInjectParamsSchema = Type.Object(\n     sessionKey: NonEmptyString,\n     message: NonEmptyString,\n     label: Type.Optional(Type.String({ maxLength: 100 })),\n+    /** Override the provider attribution for the injected assistant entry. */\n+    originAgent: Type.Optional(Type.String({ maxLength: 100 })),\n   },\n   { additionalProperties: false },\n );",
+        "previous_filename": null
+      },
+      {
+        "filename": "src/gateway/server-methods/chat-transcript-inject.ts",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 1,
+        "changes": 4,
+        "patch": "@@ -53,6 +53,8 @@ export async function appendInjectedAssistantMessageToTranscript(params: {\n   abortMeta?: GatewayInjectedAbortMeta;\n   now?: number;\n   config?: SessionWriteLockAcquireTimeoutConfig;\n+  /** Override provider attribution for the injected assistant entry. */\n+  originAgent?: string;\n }): Promise<GatewayInjectedTranscriptAppendResult> {\n   const now = params.now ?? Date.now();\n   const usage = {\n@@ -88,7 +90,7 @@ export async function appendInjectedAssistantMessageToTranscript(params: {\n     usage,\n     // Make these explicit so downstream tooling never treats this as model output.\n     api: \"openai-responses\",\n-    provider: \"openclaw\",\n+    provider: params.originAgent ?? \"openclaw\",\n     model: \"gateway-injected\",\n     ...(params.idempotencyKey ? { idempotencyKey: params.idempotencyKey } : {}),\n     ...(params.abortMeta",
+        "previous_filename": null
+      },
+      {
+        "filename": "src/gateway/server-methods/chat.ts",
+        "status": "modified",
+        "additions": 4,
+        "deletions": 0,
+        "changes": 4,
+        "patch": "@@ -1388,6 +1388,7 @@ async function appendAssistantTranscriptMessage(params: {\n     runId: string;\n   };\n   cfg?: OpenClawConfig;\n+  originAgent?: string;\n }): Promise<TranscriptAppendResult> {\n   const transcriptPath = resolveTranscriptPath({\n     sessionId: params.sessionId,\n@@ -1427,6 +1428,7 @@ async function appendAssistantTranscriptMessage(params: {\n     idempotencyKey: params.idempotencyKey,\n     abortMeta: params.abortMeta,\n     config: params.cfg,\n+    originAgent: params.originAgent,\n   });\n }\n \n@@ -2836,6 +2838,7 @@ export const chatHandlers: GatewayRequestHandlers = {\n       sessionKey: string;\n       message: string;\n       label?: string;\n+      originAgent?: string;\n     };\n \n     // Load session to find transcript file\n@@ -2850,6 +2853,7 @@ export const chatHandlers: GatewayRequestHandlers = {\n     const appended = await appendAssistantTranscriptMessage({\n       message: p.message,\n       label: p.label,\n+      originAgent: p.originAgent,\n       sessionId,\n       storePath,\n       sessionFile: entry?.sessionFile,",
+        "previous_filename": null
+      }
+    ],
+    "summary": "本 PR 共变更 6 个文件，新增 37 行，删除 2 行。规则扫描发现 0 个潜在风险项。",
+    "risk_level": "low",
+    "rule_findings": [],
+    "suggestions": [],
+    "used_ai": false,
+    "ai_failure_reason": null,
+    "analysis_warnings": [
+      "OPENAI_API_KEY not set; falling back to rule-only."
+    ],
+    "context_truncated": false,
+    "hidden_suggestions_count": 0,
+    "skipped_context_files": [],
+    "hidden_rule_findings_count": 0,
+    "reviewer_version": "pr-branch",
+    "execution_status": "success",
+    "degradation_reason": null,
+    "report_confidence": "normal",
+    "completeness": [
+      {
+        "item": "PR 元信息获取",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "变更文件获取",
+        "status": "success",
+        "detail": "6 个文件"
+      },
+      {
+        "item": "AI 上下文文件",
+        "status": "success",
+        "detail": "全部文件进入上下文"
+      },
+      {
+        "item": "AI 分析",
+        "status": "skipped",
+        "detail": "未启用 AI"
+      },
+      {
+        "item": "规则扫描",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "Patch 上下文",
+        "status": "success",
+        "detail": "完整"
+      },
+      {
+        "item": "PR head 语法诊断",
+        "status": "success",
+        "detail": "未检测到语法错误"
+      }
+    ],
+    "pr_syntax_check_ok": true,
+    "review_meta": {
+      "reviewed_commit": null,
+      "trigger_event": null,
+      "workflow_run_url": null,
+      "updated_at": null,
+      "review_mode": "full_pr"
+    },
+    "fix_tracking": []
+  },
+  "markdown": "# AI PR Review 报告: openclaw/openclaw#80419\n\n## 审查元信息\n\n| 字段 | 值 |\n|---|---|\n| 审查目标 Commit | - |\n| 触发事件 | - |\n| Workflow 运行 | - |\n| 更新时间 | - |\n| 审查模式 | 全量 PR 审查 |\n\n## 修复追踪\n\n暂无追踪记录。\n\n## 运行状态\n\n| 字段 | 值 |\n|---|---|\n| 评审执行版本 | PR 分支 |\n| 执行状态 | 成功 |\n| 报告可信度 | 正常评审，报告完整可信 |\n\n## 分析完整性\n\n| 项目 | 状态 | 备注 |\n|---|---|---|\n| PR 元信息获取 | ✅ 成功 | 成功 |\n| 变更文件获取 | ✅ 成功 | 6 个文件 |\n| AI 上下文文件 | ✅ 成功 | 全部文件进入上下文 |\n| AI 分析 | ➖ 跳过 | 未启用 AI |\n| 规则扫描 | ✅ 成功 | 成功 |\n| Patch 上下文 | ✅ 成功 | 完整 |\n| PR head 语法诊断 | ✅ 成功 | 未检测到语法错误 |\n\n## PR 概览\n\n| 字段 | 值 |\n|---|---|\n| 仓库 | `openclaw/openclaw` |\n| PR | [#80419](https://github.com/openclaw/openclaw/pull/80419) |\n| 标题 | fix(gateway): accept text field for OpenAI SDK 6.x parity |\n| 作者 | dlrik |\n| 基准分支 | `main` |\n| 源分支 | `fix/responses-text-field-parity` |\n| 变更文件数 | 6 |\n| 新增 / 删除 | +37 / -2 |\n| 整体风险 | **`LOW`** |\n| 是否使用 AI | no |\n\n### 风险统计\n\n未检测到风险项。\n\n## 变更总结\n\n本 PR 共变更 6 个文件，新增 37 行，删除 2 行。规则扫描发现 0 个潜在风险项。\n\n## 文件变更\n\n| 文件 | 状态 | +/- |\n|---|---|---|\n| `src/agents/pi-embedded-runner/run.ts` | `modified` | +2/-1 |\n| `src/agents/pi-embedded-runner/run/payloads.ts` | `modified` | +11/-0 |\n| `src/gateway/open-responses.schema.ts` | `modified` | +15/-0 |\n| `src/gateway/protocol/schema/logs-chat.ts` | `modified` | +2/-0 |\n| `src/gateway/server-methods/chat-transcript-inject.ts` | `modified` | +3/-1 |\n| `src/gateway/server-methods/chat.ts` | `modified` | +4/-0 |\n| **合计** (6 个文件) | | **+37/-2** |\n\n## 评审建议\n\n未生成高信号建议。\n\n## 规则扫描结果\n\n未命中规则。\n\n## 分析备注\n\n- OPENAI_API_KEY not set; falling back to rule-only.\n",
+  "duration_seconds": 2.32,
+  "analyzed_at": "20260706-010145"
+}

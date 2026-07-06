@@ -45,6 +45,7 @@ htmlcov/
 # Logs
 *.log
 reports/
+!reports/demo/
 
 # Demo video / Manim render outputs
 demo-animation/media/

@@ -46,14 +46,23 @@
         <div class="field">
           <label for="use-ai">AI Review</label>
           <select id="use-ai">
-            <option value="1" selected>On</option>
-            <option value="0">Rule-only</option>
+            <option value="0" selected>Rule-only</option>
+            <option value="1">AI Review</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="agent-mode">Engine</label>
+          <select id="agent-mode">
+            <option value="off" selected>Legacy</option>
+            <option value="rule_only">Agent (Rule-only)</option>
+            <option value="auto">Agent (Auto)</option>
+            <option value="one_shot_ai">Agent (One-shot AI)</option>
           </select>
         </div>
       </div>
       <div class="form-actions">
         <button id="analyze-btn" onclick="runAnalysis()">🔍 Analyze</button>
-        <button class="btn-outline" onclick="fillDemo()">✨ Try Demo</button>
+        <button class="btn-outline" onclick="loadDemoReport()">✨ Try Demo</button>
         <span id="status-msg" class="status-msg hidden"></span>
       </div>
     </section>

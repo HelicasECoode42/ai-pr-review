@@ -11,11 +11,11 @@ from src.models import (
     Severity,
 )
 from src.reviewer.engine import (
-    _filter_suggestions,
-    _parse_model_payload,
     build_rule_only_report,
     review_with_ai,
 )
+from src.reviewer.model_payload import parse_model_payload
+from src.reviewer.suggestion_filter import filter_suggestions
 from src.reviewer.prompt import build_user_prompt
 from src.reviewer.provider import ProviderError
 
@@ -50,33 +50,33 @@ def sample_files() -> list[ChangedFile]:
 
 def test_parse_valid_json() -> None:
     raw = '{"summary": "ok", "risk_level": "low", "suggestions": []}'
-    payload = _parse_model_payload(raw)
+    payload = parse_model_payload(raw)
     assert payload.summary == "ok"
     assert payload.risk_level == Severity.LOW
 
 
 def test_parse_json_in_fenced_block() -> None:
     raw = 'Here is the result:\n\n```json\n{"summary": "s", "risk_level": "medium", "suggestions": []}\n```\n\nHope that helps.'
-    payload = _parse_model_payload(raw)
+    payload = parse_model_payload(raw)
     assert payload.summary == "s"
     assert payload.risk_level == Severity.MEDIUM
 
 
 def test_parse_json_with_surrounding_text() -> None:
     raw = 'Analysis complete.\n{"summary": "x", "risk_level": "high", "suggestions": []}\nLet me know if you need more.'
-    payload = _parse_model_payload(raw)
+    payload = parse_model_payload(raw)
     assert payload.summary == "x"
     assert payload.risk_level == Severity.HIGH
 
 
 def test_parse_invalid_json_raises() -> None:
     with pytest.raises(ValueError, match="invalid review JSON"):
-        _parse_model_payload("not json at all")
+        parse_model_payload("not json at all")
 
 
 def test_parse_malformed_json_in_block_raises() -> None:
     with pytest.raises(ValueError, match="invalid review JSON"):
-        _parse_model_payload("```json\n{broken\n```")
+        parse_model_payload("```json\n{broken\n```")
 
 
 # ── filtering ─────────────────────────────────────────────
@@ -109,7 +109,7 @@ def test_filter_drops_unchanged_line_suggestions() -> None:
             recommendation="...",
         ),
     ]
-    result = _filter_suggestions(suggestions, files, max_suggestions=10)
+    result = filter_suggestions(suggestions, files, max_suggestions=10)
     assert len(result) == 1
     assert result[0].line == 2
 
@@ -142,7 +142,7 @@ def test_filter_drops_low_confidence() -> None:
             recommendation="...",
         ),
     ]
-    result = _filter_suggestions(suggestions, files, max_suggestions=10, min_confidence=0.65)
+    result = filter_suggestions(suggestions, files, max_suggestions=10, min_confidence=0.65)
     assert len(result) == 1
     assert result[0].title == "Strong"
 
@@ -175,7 +175,7 @@ def test_filter_deduplicates_same_line_title() -> None:
             recommendation="y",
         ),
     ]
-    result = _filter_suggestions(suggestions, files, max_suggestions=10)
+    result = filter_suggestions(suggestions, files, max_suggestions=10)
     assert len(result) == 1
 
 
@@ -207,7 +207,7 @@ def test_filter_sorts_by_severity_and_confidence() -> None:
             recommendation="...",
         ),
     ]
-    result = _filter_suggestions(suggestions, files, max_suggestions=10)
+    result = filter_suggestions(suggestions, files, max_suggestions=10)
     assert result[0].severity == Severity.CRITICAL
 
 
@@ -231,7 +231,7 @@ def test_filter_limits_suggestions() -> None:
         )
         for i in range(2, 7)
     ]
-    result = _filter_suggestions(suggestions, files, max_suggestions=3)
+    result = filter_suggestions(suggestions, files, max_suggestions=3)
     assert len(result) <= 3
 
 
@@ -315,7 +315,7 @@ def test_filter_enforces_per_file_cap() -> None:
         )
         for i in range(2, 8)  # 6 suggestions for same file
     ]
-    result = _filter_suggestions(
+    result = filter_suggestions(
         suggestions, files, max_suggestions=20, max_suggestions_per_file=3
     )
     assert len(result) == 3  # capped at 3 per file
@@ -349,7 +349,7 @@ def test_filter_drops_empty_reason() -> None:
             recommendation="real fix",
         ),
     ]
-    result = _filter_suggestions(suggestions, files, max_suggestions=10)
+    result = filter_suggestions(suggestions, files, max_suggestions=10)
     assert len(result) == 1
     assert result[0].title == "Valid"
 
@@ -373,7 +373,7 @@ def test_filter_drops_empty_recommendation() -> None:
             recommendation="",  # empty
         ),
     ]
-    result = _filter_suggestions(suggestions, files, max_suggestions=10)
+    result = filter_suggestions(suggestions, files, max_suggestions=10)
     assert len(result) == 0
 
 

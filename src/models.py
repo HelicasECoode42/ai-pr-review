@@ -143,3 +143,4 @@ class ReviewReport(BaseModel):
     pr_syntax_check_ok: bool = True
     review_meta: ReviewMeta = Field(default_factory=ReviewMeta)
     fix_tracking: list[FixTrackingItem] = Field(default_factory=list)
+    dismissed_signals: list[dict] = Field(default_factory=list)  # rule findings the AI dismissed

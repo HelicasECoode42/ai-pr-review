@@ -140,10 +140,71 @@ def analyze(
         "--language",
         help="Output language (auto-detected from PR if not set).",
     ),
+    agent_mode: str = typer.Option(
+        "off",
+        "--agent-mode",
+        help="Agent mode: off (legacy, default), auto, rule_only, one_shot_ai, two_stage.",
+    ),
 ) -> None:
     settings = get_settings()
     console.print(f"[bold]Fetching PR[/bold] {repo}#{pr_number}")
 
+    # ── Agent Runner path ──────────────────────────────────
+    if agent_mode != "off":
+        from src.agent.runner import ReviewAgentRequest, ReviewAgentRunner
+
+        lang_value = language.value if language else None
+        runner = ReviewAgentRunner(settings)
+        result = runner.run(ReviewAgentRequest(
+            repo=repo,
+            pr_number=pr_number,
+            language=lang_value,
+            use_ai=use_ai,
+            agent_mode=agent_mode,
+            review_mode=review_mode,
+            reviewer_version=reviewer_version,
+            execution_status=execution_status,
+            degradation_reason=degradation_reason,
+            report_confidence=report_confidence,
+            pr_syntax_ok=pr_syntax_ok,
+            reviewed_commit=reviewed_commit,
+            trigger_event=trigger_event,
+            workflow_run_url=workflow_run_url,
+        ))
+
+        report = result.report
+        content = (
+            result.json_report if report_format.lower() == "json"
+            else result.markdown
+        )
+        if report_format.lower() == "json":
+            content = json.dumps(result.json_report, ensure_ascii=False, indent=2)
+
+        if output:
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text(content, encoding="utf-8")
+            console.print(f"[green]Report written to[/green] {output}")
+            # JSON sidecar: write legacy report.json + agent trace sidecar
+            json_path = output.with_suffix(".json")
+            sidecar_payload = {
+                "report": result.json_report,
+                "agent": result.agent_sidecar,
+            }
+            json_path.write_text(
+                json.dumps(sidecar_payload, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            console.print(f"[green]JSON sidecar (report + agent trace) written to[/green] {json_path}")
+        else:
+            console.print(content)
+
+        if result.agent_sidecar.get("warnings"):
+            for w in result.agent_sidecar["warnings"]:
+                console.print(f"[yellow]{w}[/yellow]")
+
+        raise typer.Exit(code=0)
+
+    # ── Legacy path (agent_mode == "off") ──────────────────
     pr = None
     files = []
 

@@ -2,6 +2,7 @@
 let _report = null;
 let _markdown = "";
 let _duration = 0;
+let _agent = null;
 
 // ── Init ──
 document.addEventListener("DOMContentLoaded", () => {
@@ -72,12 +73,43 @@ function fillDemo() {
   hideResults();
 }
 
+async function loadDemoReport() {
+  setLoading(true, "Loading demo report…");
+  hideError();
+  hideResults();
+  showStatus("", "");
+  document.getElementById("analyze-btn").disabled = true;
+
+  try {
+    const resp = await fetch("/api/demo-report");
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.detail || `HTTP ${resp.status}`);
+    }
+    const data = await resp.json();
+    _report = data.report;
+    _markdown = data.markdown || "";
+    _duration = data.duration_seconds || 0;
+
+    renderResults();
+    setLoading(false);
+    showStatus(`✓ Demo loaded in ${_duration}s`, "ok");
+  } catch (err) {
+    setLoading(false);
+    showError(err.message || "Failed to load demo");
+    showStatus("Demo unavailable", "error");
+  } finally {
+    document.getElementById("analyze-btn").disabled = false;
+  }
+}
+
 // ── API ──
 async function runAnalysis() {
   const repo = normalizeRepoInput(document.getElementById("repo").value);
   const prNumber = parseInt(document.getElementById("pr-number").value, 10);
   const language = document.getElementById("language").value;
   const useAi = document.getElementById("use-ai").value === "1";
+  const agentMode = document.getElementById("agent-mode").value;
 
   if (!repo || !prNumber) {
     showStatus("Please fill in repository and PR number.", "error");
@@ -101,7 +133,7 @@ async function runAnalysis() {
     }, 1200);
 
     const t0 = performance.now();
-    const payload = { repo, pr_number: prNumber, use_ai: useAi };
+    const payload = { repo, pr_number: prNumber, use_ai: useAi, agent_mode: agentMode };
     if (language) payload.language = language;
 
     const resp = await fetch("/api/analyze", {
@@ -122,6 +154,7 @@ async function runAnalysis() {
     _report = data.report;
     _markdown = data.markdown;
     _duration = data.duration_seconds || parseFloat(elapsed);
+    _agent = data.agent || null;
 
     renderResults();
     setLoading(false);
