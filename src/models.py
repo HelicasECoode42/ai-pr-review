@@ -130,6 +130,9 @@ class ReviewReport(BaseModel):
     ai_failure_reason: str | None = None
     analysis_warnings: list[str] = Field(default_factory=list)
     context_truncated: bool = False
+    context_token_count: int = 0
+    patch_token_budget: int = 0
+    context_tokenizer: str = "not_used"
     hidden_suggestions_count: int = 0
     skipped_context_files: list[SkippedContextFile] = Field(default_factory=list)
     hidden_rule_findings_count: int = 0

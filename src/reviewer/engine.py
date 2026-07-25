@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import logging
+import re
 
 from pydantic import ValidationError
 
-from src.analyzer.context_builder import build_review_context
+from src.analyzer.context_builder import build_review_context, tokenizer_name
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -14,6 +15,7 @@ from src.models import (
     ReviewMeta,
     ChangedFile,
     CompletenessItem,
+    FixTrackingItem,
     PullRequest,
     ReviewReport,
     ReviewSuggestion,
@@ -426,6 +428,9 @@ def review_with_ai(
             analysis_warnings=warnings,
             hidden_suggestions_count=hidden,
             context_truncated=ctx.truncated,
+            context_token_count=ctx.token_count,
+            patch_token_budget=ctx.patch_token_budget,
+            context_tokenizer=tokenizer_name(),
             skipped_context_files=skipped_ctx,
             reviewer_version=reviewer_version,
             execution_status=execution_status,
