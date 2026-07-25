@@ -73,7 +73,8 @@ uv run uvicorn src.service.app:app --reload
 - 解析 diff，提取 changed lines 和 patch hunk 上下文。
 - 本地规则扫描高风险路径和高风险代码模式。
 - **跨文件分析**：AST 级检测 PR 内的函数签名变更和跨文件调用关系。
-- **Agent 编排**：自研 Runner，每次审查记录完整 trace（工具步骤、耗时、策略、降级路径）。
+- **Agent 编排**：自研 Runner 执行 rule-only、one-shot 或 two-stage 审查，并记录完整 trace（工具步骤、耗时、策略原因、降级路径）。
+- **Token 预算**：使用 cl100k_base 控制 Context Pack 与 patch 上下文；tokenizer 不可用时采用保守 UTF-8 byte 上界，避免离线运行失效。
 - **规则信号验证**：AI 对每条规则命中做确认/驳回/调整严重度，降低误报。
 - 注入轻量 Context Pack，包括项目 Review Guide、函数索引、README 和架构说明。
 - 使用 OpenAI-compatible provider 调用模型，支持 OpenAI、DeepSeek、Azure OpenAI 等兼容服务。
@@ -207,7 +208,7 @@ REVIEW_MODEL=deepseek-chat
 | 模型 | 推荐场景 | 优势 |
 |------|----------|------|
 | `gpt-4.1-mini` | 默认推荐，英文/通用项目 | mini 级模型，代码理解和结构化输出表现稳定；速度快；原生支持 `response_format: json_object`，便于约束输出 schema；成本低，适合高频自动审查 |
-| `deepseek-chat` | 中文项目、成本敏感场景 | 中文审查质量好；成本极低（约 ¥1/1M tokens）；OpenAI-compatible API 无缝接入；旗舰模型代码能力强 |
+| `deepseek-chat` | 中文项目、成本敏感场景 | 中文审查能力较好；OpenAI-compatible API 可直接接入 |
 
 两种模型通过相同的 OpenAI-compatible 接口调用。你可以通过修改 `OPENAI_BASE_URL` 接入任何兼容服务（Azure OpenAI、Ollama 本地模型、其他第三方代理）。
 ## CLI 用法
@@ -314,7 +315,7 @@ src/
   output/         Markdown / JSON 渲染
   service/        FastAPI Web Console（含 demo 数据 + 静态前端）
   utils/          配置管理和 GitHub Actions 辅助工具
-tests/            单元测试（87 tests）
+tests/            自动化测试（90 tests，含离线 Agent AI 全链路）
 docs/             架构、Agent 改造方案、Demo-first 方案、质量控制、路线图
 vscode-extension/ VS Code 插件源码、编译产物和 VSIX
 ```
@@ -329,8 +330,7 @@ vscode-extension/ VS Code 插件源码、编译产物和 VSIX
 - 大 diff 会触发上下文截断并在报告中明确标注。
 - CI 使用 base branch reviewer fallback，避免 PR 修改审查工具后完全无报告。
 - Workflow 会单独检查 PR head 语法，报告生成和合并门禁解耦。
-
-测试：
+- 独立 CI 对 PR head 执行 Python 测试、关键 Ruff 错误检查、VS Code 扩展编译与 npm 高危依赖审计。
 
 测试：
 
@@ -344,12 +344,16 @@ uv run pytest
 python -m compileall src tests
 ```
 
-当前单元测试覆盖（87 tests）：
+当前自动化测试覆盖（90 tests）：
 
-- agent policy / trace / runner (rule-only)
+- agent policy / trace / runner（rule-only 与离线 one-shot AI 全链路）
 - context builder / diff parser
 - reviewer engine / suggestion filter
 - risk rules / report reliability
+
+当前验证边界：离线全链路使用确定性 GitHub/模型替身；真实 GitHub PR + 真实模型 + GitHub Actions 的外部端到端运行仍需单独完成，不能由 90 项测试替代。
+
+当前规则告警会与 diff 一起进入模型上下文，因此规则可能对模型判断产生注意力锚定；后续需要通过独立 LLM 审查、规则并行扫描与后置融合的消融实验验证并降低该偏置。
 
 ## 安全性
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from functools import lru_cache
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -11,7 +12,59 @@ from src.utils.config import get_settings
 from pathlib import Path
 
 import os
+import tiktoken
 logger = logging.getLogger(__name__)
+
+
+@lru_cache(maxsize=1)
+def _token_encoding():
+    """Load tiktoken lazily; offline execution falls back conservatively."""
+    try:
+        return tiktoken.get_encoding("cl100k_base")
+    except Exception as exc:
+        logger.warning(
+            "cl100k_base tokenizer unavailable; using UTF-8 byte upper bound: %s",
+            exc,
+        )
+        return None
+
+
+def count_tokens(text: str) -> int:
+    """Count cl100k tokens, or use a conservative UTF-8 byte upper bound."""
+    encoding = _token_encoding()
+    if encoding is None:
+        return len((text or "").encode("utf-8"))
+    return len(encoding.encode(text or "", disallowed_special=()))
+
+
+def tokenizer_name() -> str:
+    return "cl100k_base" if _token_encoding() is not None else "utf8_byte_upper_bound"
+
+
+def truncate_to_token_budget(text: str, budget: int) -> tuple[str, int, bool]:
+    """Return text fitted to a token budget, consumed tokens and truncation flag."""
+    if budget <= 0:
+        return "", 0, bool(text)
+    encoding = _token_encoding()
+    if encoding is None:
+        tokens = list((text or "").encode("utf-8"))
+    else:
+        tokens = encoding.encode(text or "", disallowed_special=())
+    if len(tokens) <= budget:
+        return text, len(tokens), False
+    marker = "\n...[truncated]"
+    marker_tokens = (
+        list(marker.encode("utf-8"))
+        if encoding is None
+        else encoding.encode(marker, disallowed_special=())
+    )
+    body_budget = max(0, budget - len(marker_tokens))
+    if encoding is None:
+        body = bytes(tokens[:body_budget]).decode("utf-8", errors="ignore")
+    else:
+        body = encoding.decode(tokens[:body_budget])
+    fitted = body + marker
+    return fitted, min(budget, count_tokens(fitted)), True
 
 
 
@@ -44,6 +97,8 @@ class ReviewContext:
     truncated: bool
     status: StepStatus = StepStatus.SUCCESS
     skipped_files: list[tuple[str, str]] = field(default_factory=list)
+    token_count: int = 0
+    patch_token_budget: int = 0
 
 
 
@@ -112,7 +167,7 @@ def _skip_patch_reason(filename: str) -> str | None:
         return None
 
 
-_CONTEXT_PACK_BUDGET = 4000  # max chars for context pack injection
+_CONTEXT_PACK_TOKEN_BUDGET = 1000
 
 
 def _load_context_pack_text() -> str:
@@ -164,7 +219,7 @@ def _get_relevant_function_index(changed_files: list[str]) -> str:
 
 def _build_context_pack(
     changed_files: list[str],
-    budget: int = _CONTEXT_PACK_BUDGET,
+    budget: int = _CONTEXT_PACK_TOKEN_BUDGET,
     small_pr: bool = False,
 ) -> str:
     """Build Context Pack string from review guide and function index.
@@ -181,8 +236,7 @@ def _build_context_pack(
         if small_pr:
             # Small PR — inject full guide for richer context
             guide_text = guide
-            if len(guide_text) > remaining:
-                guide_text = guide_text[:remaining]
+            guide_text, _, _ = truncate_to_token_budget(guide_text, remaining)
         else:
             # Large PR — condensed version (headers + key rules only)
             guide_lines = guide.split("\n")
@@ -191,21 +245,18 @@ def _build_context_pack(
                 if line.startswith("#") or line.startswith("- **") or line.startswith("|"):
                     condensed.append(line)
             guide_text = "\n".join(condensed)
-            if len(guide_text) > remaining:
-                guide_text = guide_text[:remaining]
+            guide_text, _, _ = truncate_to_token_budget(guide_text, remaining)
         parts.append("## Project Review Conventions")
         parts.append(guide_text)
-        remaining -= len(guide_text)
+        remaining -= count_tokens(guide_text)
 
     # 2. Function index for changed files
     if remaining > 0:
         func_index = _get_relevant_function_index(changed_files)
         if func_index:
-            if len(func_index) > remaining:
-                # Truncate from the end to fit budget
-                func_index = func_index[:remaining] + "\n...[truncated]"
+            func_index, _, _ = truncate_to_token_budget(func_index, remaining)
             parts.append(func_index)
-            remaining -= len(func_index)
+            remaining -= count_tokens(func_index)
 
     result = "\n\n".join(parts)
     if result:
@@ -242,7 +293,7 @@ def build_review_context(
     pr: PullRequest,
     files: list[ChangedFile],
     findings: list[RiskFinding],
-    max_patch_chars: int = 24_000,
+    max_patch_tokens: int = 6_000,
 ) -> ReviewContext:
     # Input validation: require a valid PullRequest object
     if not isinstance(pr, PullRequest):
@@ -260,7 +311,13 @@ def build_review_context(
             "Possible reasons: invalid token, network issue, or the PR does not exist.\n"
             "No analysis was performed."
         )
-        return ReviewContext(text=error_text, truncated=False, status=StepStatus.FAILED)
+        return ReviewContext(
+            text=error_text,
+            truncated=False,
+            status=StepStatus.FAILED,
+            token_count=count_tokens(error_text),
+            patch_token_budget=max_patch_tokens,
+        )
 
     def safe_attr(obj, attr, default):
         try:
@@ -315,7 +372,7 @@ def build_review_context(
                 continue
 
     parts.extend(["", "## Patches"])
-    patch_budget = max_patch_chars
+    patch_budget = max_patch_tokens
     truncated = False
     ordered_files = sorted(
         files,
@@ -372,11 +429,13 @@ def build_review_context(
                     logger.debug(f"Fetching file contents fallback failed for {file.filename}: {e}")
 
                 if file_contents:
-                    file_text = file_contents
-                    if len(file_text) > patch_budget:
-                        file_text = file_text[:patch_budget] + "\n...[truncated]"
+                    file_text, consumed, clipped = truncate_to_token_budget(
+                        file_contents, patch_budget
+                    )
+                    truncated = truncated or clipped
+                    partial_flag = partial_flag or clipped
                     parts.extend(["", f"### {file.filename}", "```", file_text, "```"])
-                    patch_budget -= len(file_text)
+                    patch_budget -= consumed
                     if patch_budget <= 0:
                         parts.append("\nPatch budget exhausted. Remaining files omitted.")
                         truncated = True
@@ -405,10 +464,11 @@ def build_review_context(
                 if file_contents:
                     file_text = file_contents
 
-            if len(file_text) > patch_budget:
-                file_text = file_text[:patch_budget] + "\n...[truncated]"
+            file_text, consumed, clipped = truncate_to_token_budget(file_text, patch_budget)
+            truncated = truncated or clipped
+            partial_flag = partial_flag or clipped
             parts.extend(["", f"### {file.filename}", "```diff", file_text, "```"])
-            patch_budget -= len(file_text)
+            patch_budget -= consumed
             if patch_budget <= 0:
                 parts.append("\nPatch budget exhausted. Remaining files omitted.")
                 truncated = True
@@ -443,9 +503,12 @@ def build_review_context(
     if not files:
         status = StepStatus.PARTIAL
 
+    context_text = "\n".join(parts)
     return ReviewContext(
-        text="\n".join(parts),
+        text=context_text,
         truncated=truncated,
         status=status,
         skipped_files=skipped_files,
+        token_count=count_tokens(context_text),
+        patch_token_budget=max_patch_tokens,
     )

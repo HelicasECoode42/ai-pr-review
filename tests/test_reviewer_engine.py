@@ -292,6 +292,9 @@ def test_review_preserves_fallback_runtime_metadata(
     assert report.execution_status == "degraded"
     assert report.degradation_reason == "reviewer ran from PR base branch"
     assert report.report_confidence == "fallback"
+    assert report.context_token_count > 0
+    assert report.patch_token_budget == 6000
+    assert report.context_tokenizer in {"cl100k_base", "utf8_byte_upper_bound"}
 
 
 def test_filter_enforces_per_file_cap() -> None:
@@ -411,4 +414,3 @@ def test_build_prompt_requests_same_root_cause_merging() -> None:
     result = build_user_prompt("ctx", max_suggestions=3, language="en")
     assert "same root cause" in result
     assert "representative file:line" in result
-
