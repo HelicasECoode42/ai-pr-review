@@ -281,7 +281,7 @@ def analyze(
     # catch errors and emit a diagnostics report instead of crashing the workflow.
     try:
         # Local imports to avoid import-time failures when modules are broken
-        from src.analyzer.risk_rules import scan_risks
+        from src.analyzer.risk_rules import collect_signals
         from src.output.json_report import render_json
         from src.output.markdown import render_markdown
         from src.models import ReviewMeta
@@ -333,7 +333,7 @@ def analyze(
 
     # Safe execution path
     try:
-        findings = scan_risks(files)
+        findings = collect_signals(files)
         report = build_rule_only_report(
             pr,
             files,
@@ -506,4 +506,3 @@ def analyze(
 
 if __name__ == "__main__":
     app()
-

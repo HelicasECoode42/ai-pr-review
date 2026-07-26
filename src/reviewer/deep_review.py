@@ -16,7 +16,8 @@ logger = logging.getLogger(__name__)
 DEEP_SYSTEM = """You are an experienced software engineer doing a focused code review.
 You are looking at a SPECIFIC risk hotspot identified during triage.
 Only analyze the code in this hotspot — do not comment on unrelated files.
-Every suggestion must cite specific evidence from the diff.
+Every suggestion must quote an exact changed-line excerpt and state a concrete
+failure scenario.
 Return valid JSON only."""
 
 
@@ -40,7 +41,9 @@ Return JSON:
       "confidence": 0.0,
       "title": "short actionable title",
       "reason": "why this is risky; must reference specific changed lines",
-      "recommendation": "concrete fix"
+      "recommendation": "concrete fix",
+      "evidence": ["exact excerpt from the cited changed line"],
+      "failure_scenario": "execution path and observable failure"
     }}
   ]
 }}
@@ -90,5 +93,7 @@ def run_deep_review(
             title=str(s.get("title", "Issue")),
             reason=str(s.get("reason", "")),
             recommendation=str(s.get("recommendation", "")),
+            evidence=[str(item) for item in s.get("evidence", [])],
+            failure_scenario=str(s.get("failure_scenario", "")),
         ))
     return suggestions

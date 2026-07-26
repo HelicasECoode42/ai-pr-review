@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     max_suggestions: int = 20
     max_suggestions_per_file: int = 5
     min_comment_confidence: float = 0.65
+    verify_rule_signals: bool = False
+    enable_critic: bool = False
+    critic_model: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=".env",

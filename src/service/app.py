@@ -6,13 +6,17 @@ import datetime
 import json
 import re
 import time
+from queue import Queue
+from threading import Thread
+from collections.abc import Iterator
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from src.analyzer.risk_rules import scan_risks
+from src.analyzer.risk_rules import collect_signals
 from src.github.client import GitHubApiError, GitHubClient
 from src.output.markdown import render_markdown
 from src.reviewer.engine import build_rule_only_report, review_with_ai
@@ -49,6 +53,72 @@ class AnalyzeResponse(BaseModel):
     markdown: str
     duration_seconds: float
     agent: dict | None = None   # populated when agent_mode != "off"
+
+
+def _encode_sse(event: str, data: dict) -> str:
+    """Encode one SSE frame; payloads remain JSON so browser clients can parse safely."""
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+@app.post("/api/analyze/stream")
+def analyze_stream(req: AnalyzeRequest) -> StreamingResponse:
+    """Stream Agent progress and the final report as server-sent events.
+
+    The synchronous review work runs in a worker thread. The SSE generator only
+    transports redacted step summaries and the final public report; API keys and
+    raw prompts never leave the server.
+    """
+    from src.agent.runner import ReviewAgentRequest, ReviewAgentRunner
+
+    settings = get_settings()
+    events: Queue[tuple[str, dict] | None] = Queue()
+    started_at = time.monotonic()
+
+    def emit(event: str, payload: dict) -> None:
+        events.put((event, payload))
+
+    def run_review() -> None:
+        try:
+            runner = ReviewAgentRunner(settings, progress_sink=emit)
+            result = runner.run(ReviewAgentRequest(
+                repo=req.repo,
+                pr_number=req.pr_number,
+                language=req.language,
+                use_ai=req.use_ai,
+                # Streaming is an Agent endpoint; preserve explicit modes while
+                # mapping the legacy default to the normal automatic strategy.
+                agent_mode=req.agent_mode if req.agent_mode != "off" else "auto",
+            ))
+            emit("complete", {
+                "report": result.json_report,
+                "markdown": result.markdown,
+                "agent": result.agent_sidecar,
+                "duration_seconds": round(time.monotonic() - started_at, 2),
+            })
+        except Exception as exc:
+            emit("error", {"message": str(exc)})
+        finally:
+            events.put(None)
+
+    def event_stream() -> Iterator[str]:
+        yield _encode_sse("started", {
+            "repo": req.repo,
+            "pr_number": req.pr_number,
+            "transport": "sse",
+        })
+        while True:
+            item = events.get()
+            if item is None:
+                break
+            event, payload = item
+            yield _encode_sse(event, payload)
+
+    Thread(target=run_review, daemon=True).start()
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/api/health")
@@ -154,7 +224,7 @@ def analyze(req: AnalyzeRequest) -> AnalyzeResponse | dict:
         req.language = detect_output_language(pr.title or "", pr.body or "")
 
     # 2. Rule scan
-    findings = scan_risks(files)
+    findings = collect_signals(files)
 
     # 3. Build report
     report = build_rule_only_report(pr, files, findings, language=req.language)
@@ -319,7 +389,7 @@ def repo_trend(req: TrendRequest) -> dict:
         try:
             with GitHubClient(settings.github_token, timeout=settings.request_timeout_seconds) as gh:
                 files = gh.get_changed_files(req.repo, pr.number)
-            findings = scan_risks(files)
+            findings = collect_signals(files)
             additions = sum(f.additions for f in files)
             deletions = sum(f.deletions for f in files)
             risk = "low"

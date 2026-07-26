@@ -292,7 +292,12 @@ def _fetch_repo_file_text(repo: str, path: str, ref: str | None) -> str | None:
 def build_review_context(
     pr: PullRequest,
     files: list[ChangedFile],
-    findings: list[RiskFinding],
+    findings: list[RiskFinding] | None = None,
+    *,
+    include_rule_findings: bool = False,
+    prioritize_rule_files: bool = False,
+    include_context_pack: bool = True,
+    allow_remote_file_fetch: bool = True,
     max_patch_tokens: int = 6_000,
 ) -> ReviewContext:
     # Input validation: require a valid PullRequest object
@@ -354,11 +359,13 @@ def build_review_context(
             continue
 
     # ── Context Pack injection ──
-    context_pack = _build_context_pack([f.filename for f in files], small_pr=len(files) <= 5)
+    context_pack = ""
+    if include_context_pack:
+        context_pack = _build_context_pack([f.filename for f in files], small_pr=len(files) <= 5)
     if context_pack:
         parts.append(context_pack)
 
-    if findings:
+    if include_rule_findings and findings:
         parts.extend(["", "## Rule findings"])
         for finding in findings:
             try:
@@ -374,13 +381,12 @@ def build_review_context(
     parts.extend(["", "## Patches"])
     patch_budget = max_patch_tokens
     truncated = False
-    ordered_files = sorted(
-        files,
-        key=lambda f: (
-            not any(r.file_path == f.filename for r in findings),
-            -(f.additions + f.deletions),
-        ),
-    )
+    ordered_files = sorted(files, key=lambda f: -(f.additions + f.deletions))
+    if prioritize_rule_files:
+        ordered_files = sorted(
+            ordered_files,
+            key=lambda f: not any(r.file_path == f.filename for r in findings),
+        )
     skipped_files: list[tuple[str, str]] = []
     lockfiles_skipped = 0
     partial_flag = False
@@ -423,10 +429,11 @@ def build_review_context(
                     ref_try = pr.head_ref or pr.base_ref
 
                 file_contents = None
-                try:
-                    file_contents = _fetch_repo_file_text(pr.repo, file.filename, ref_try)
-                except Exception as e:
-                    logger.debug(f"Fetching file contents fallback failed for {file.filename}: {e}")
+                if allow_remote_file_fetch:
+                    try:
+                        file_contents = _fetch_repo_file_text(pr.repo, file.filename, ref_try)
+                    except Exception as e:
+                        logger.debug(f"Fetching file contents fallback failed for {file.filename}: {e}")
 
                 if file_contents:
                     file_text, consumed, clipped = truncate_to_token_budget(
@@ -455,7 +462,7 @@ def build_review_context(
             # If hunks seem incomplete (e.g., new_count differs from added lines), attempt to fetch full file
             total_added = sum(len(h.added_lines) for h in hunks)
             total_hunk_lines = sum(h.new_count for h in hunks)
-            if total_hunk_lines > 0 and total_added < total_hunk_lines // 2:
+            if allow_remote_file_fetch and total_hunk_lines > 0 and total_added < total_hunk_lines // 2:
                 # Hunk likely truncated; fetch full file — prefer head_ref (current PR code)
                 file_contents = (
                     _fetch_repo_file_text(pr.repo, file.filename, getattr(pr, "head_ref", None))

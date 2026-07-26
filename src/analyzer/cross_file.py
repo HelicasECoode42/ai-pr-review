@@ -135,7 +135,17 @@ def _detect_changed_signatures(
             for func in collector.definitions:
                 func.file_path = f.filename
                 func.lineno = line_map.get(func.lineno, func.lineno)
-                changed[func.name].append(func)
+                # One function can appear in several overlapping hunks. Keep
+                # one definition per file/name/signature; otherwise the
+                # analyzer reports a fake cross-file refactor inside one file.
+                existing = changed[func.name]
+                if not any(
+                    item.file_path == func.file_path
+                    and item.params == func.params
+                    and item.returns == func.returns
+                    for item in existing
+                ):
+                    existing.append(func)
 
     return changed
 
@@ -205,14 +215,15 @@ def analyze_cross_file_impact(
     # 3. Flag functions with many parameters changed (high risk)
     # Also flag file-level changes that affect core infrastructure
     for func_name, funcs in changed_funcs.items():
-        if len(funcs) >= 2:
+        distinct_files = {fn.file_path for fn in funcs}
+        if len(distinct_files) >= 2:
             # Same function defined in multiple files — might indicate refactoring
             locations = ", ".join(
                 f"{fn.file_path}:{fn.lineno}" for fn in funcs
             )
             findings.append(
                 RiskFinding(
-                    file_path=funcs[0].file_path,
+                    file_path=sorted(distinct_files)[0],
                     line=funcs[0].lineno,
                     severity=Severity.MEDIUM,
                     rule_id="cross-file-refactor",
@@ -270,9 +281,10 @@ def analyze_cross_file_impact(
             for fn in funcs:
                 affected_files.add(fn.file_path)
         if len(affected_files) >= 3:
+            primary_file = sorted(affected_files)[0]
             findings.append(
                 RiskFinding(
-                    file_path="",
+                    file_path=primary_file,
                     line=None,
                     severity=Severity.MEDIUM,
                     rule_id="cross-file-many-funcs",

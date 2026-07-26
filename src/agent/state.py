@@ -12,7 +12,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 AgentStepStatus = Literal["success", "failed", "skipped"]
-AgentStrategy = Literal["rule_only", "one_shot_ai", "two_stage", "incremental"]
+AgentStrategy = Literal["rule_only", "one_shot_ai", "two_stage"]
 
 
 class AgentStep(BaseModel):

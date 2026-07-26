@@ -13,6 +13,7 @@ Auto-selection always picks one_shot_ai for now.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from typing import Any
 
 from pydantic import BaseModel
@@ -64,8 +65,13 @@ class ReviewAgentRunner:
         # result.report, result.markdown, result.json_report, result.agent_sidecar
     """
 
-    def __init__(self, settings: Settings | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings | None = None,
+        progress_sink: Callable[[str, dict[str, Any]], None] | None = None,
+    ) -> None:
         self._settings = settings or get_settings()
+        self._progress_sink = progress_sink
         self._registry = AgentToolRegistry()
         self._register_tools()
 
@@ -147,6 +153,14 @@ class ReviewAgentRunner:
                 base_url=settings.openai_base_url,
                 timeout=settings.request_timeout_seconds,
             )
+            critic_provider = provider
+            if settings.enable_critic and settings.critic_model:
+                critic_provider = OpenAICompatibleProvider(
+                    api_key=settings.openai_api_key,
+                    model=settings.critic_model,
+                    base_url=settings.openai_base_url,
+                    timeout=settings.request_timeout_seconds,
+                )
             try:
                 review_meta = ReviewMeta(
                     reviewed_commit=ctx.get("reviewed_commit"),
@@ -171,8 +185,13 @@ class ReviewAgentRunner:
                     pr_syntax_ok=ctx.get("pr_syntax_ok", True),
                     review_meta=review_meta,
                     two_stage=(ctx.get("strategy") == "two_stage"),
+                    verify_rule_signals=settings.verify_rule_signals,
+                    enable_critic=settings.enable_critic,
+                    critic_provider=critic_provider,
                 )
             finally:
+                if critic_provider is not provider:
+                    critic_provider.close()
                 provider.close()
 
         self._registry.register(AgentTool(name="one_shot_ai_review", execute=_ai_review))
@@ -265,6 +284,17 @@ class ReviewAgentRunner:
             if getattr(f, "severity", None) in (Severity.CRITICAL, Severity.HIGH)
         )
 
+        signal_files = {
+            str(getattr(finding, "file_path", ""))
+            for finding in findings
+            if getattr(finding, "file_path", "")
+        }
+        critical_signal_files = {
+            str(getattr(finding, "file_path", ""))
+            for finding in findings
+            if getattr(finding, "severity", None) == Severity.CRITICAL
+            and getattr(finding, "file_path", "")
+        }
         strategy, strategy_reason = choose_agent_strategy(
             use_ai=request.use_ai,
             has_api_key=has_api_key,
@@ -272,11 +302,18 @@ class ReviewAgentRunner:
             additions=additions,
             findings_count=findings_count,
             high_severity_count=high_severity_count,
+            signal_files=signal_files,
+            critical_signal_files=critical_signal_files,
             requested_mode=request.agent_mode,
         )
         state.strategy = strategy  # type: ignore[assignment]
         state.strategy_reason = strategy_reason
         ctx["strategy"] = strategy
+        self._emit_progress("strategy_selected", {
+            "strategy": strategy,
+            "reason": strategy_reason,
+            "files_count": files_count,
+        })
 
         # ── Degradation path tracking ───────────────────────
         if request.use_ai and strategy == "rule_only" and not has_api_key:
@@ -343,6 +380,7 @@ class ReviewAgentRunner:
         """Invoke a tool by name, recording the step in agent state."""
         tool = self._registry.get(tool_name)
         step_index = len(state.steps)
+        self._emit_progress("step_started", {"index": step_index, "tool": tool_name})
 
         t0 = time.monotonic()
         try:
@@ -358,6 +396,7 @@ class ReviewAgentRunner:
                 status="success",
                 duration_ms=elapsed_ms,
             )
+            self._emit_progress("step_completed", step.model_dump(mode="json"))
         except Exception as exc:
             elapsed_ms = int((time.monotonic() - t0) * 1000)
             step = AgentStep(
@@ -370,9 +409,19 @@ class ReviewAgentRunner:
                 duration_ms=elapsed_ms,
             )
             state.steps.append(step)
+            self._emit_progress("step_failed", step.model_dump(mode="json"))
             raise
 
         state.steps.append(step)
+
+    def _emit_progress(self, event: str, payload: dict[str, Any]) -> None:
+        """Notify an optional transport adapter without coupling the Runner to FastAPI."""
+        if self._progress_sink is not None:
+            try:
+                self._progress_sink(event, payload)
+            except Exception:
+                # Progress transport is observational; it must never break a review.
+                pass
 
     @staticmethod
     def _observation_key(tool_name: str) -> str:

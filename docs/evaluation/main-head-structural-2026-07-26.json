@@ -1,0 +1,39 @@
+{
+  "scope": {
+    "base": "main",
+    "head": "HEAD",
+    "file_count": 12
+  },
+  "provider_used": false,
+  "quality_claim": "structural_only",
+  "next_required_data": [
+    "provider_verification",
+    "human_labels"
+  ],
+  "signals_by_rule": {
+    "cross-file-many-funcs": 1,
+    "cross-file-refactor": 1,
+    "risk-path-infra-reviewer": 1,
+    "risk-path-infra-workflow": 1
+  },
+  "phase_1_comparison": {
+    "raw_signal_count": 4,
+    "legacy_main_prompt_signal_count": 4,
+    "current_main_prompt_signal_count": 0,
+    "legacy_context_token_count": 6498,
+    "current_context_token_count": 6316,
+    "context_token_delta": -182,
+    "legacy_rule_section_present": true,
+    "current_rule_section_present": false
+  },
+  "rule_only_fallback": {
+    "visible_rule_suggestion_count": 1,
+    "unverified_signal_count": 4,
+    "metrics": {
+      "raw_signal_count": 4,
+      "visible_rule_signal_count": 1,
+      "main_review_prompt_signal_count": 0,
+      "signal_verification_request_count": 0
+    }
+  }
+}
