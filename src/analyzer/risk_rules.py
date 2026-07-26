@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 import logging
 
 from src.analyzer.diff_parser import parse_file_hunks
@@ -58,7 +57,7 @@ def reload_rules(user_rules_path: str | None = None) -> None:
 
 
 def scan_risks(files: list[ChangedFile] | None) -> list[RiskFinding]:
-    """Run all risk scans: path rules, line regex rules, test deletions, and AST analysis."""
+    """Run path, line, test and AST scans; cross-file analysis is orchestrated separately."""
     _ensure_rules_loaded()
     if not files:
         return []
@@ -83,15 +82,20 @@ def scan_risks(files: list[ChangedFile] | None) -> list[RiskFinding]:
     except Exception as e:
         logger.warning(f"AST rules scan failed: {e}")
 
-    # ── Cross-file impact analysis ──
+    return findings
+
+
+def collect_signals(files: list[ChangedFile] | None) -> list[RiskFinding]:
+    """Collect all signals at one explicit orchestration boundary."""
+    findings = scan_risks(files)
+    if not files:
+        return findings
     try:
         from src.analyzer.cross_file import analyze_cross_file_impact
-        findings.extend(analyze_cross_file_impact(files))
-    except ImportError:
-        logger.debug("Cross-file analysis module not available; skipping.")
-    except Exception as e:
-        logger.warning(f"Cross-file analysis failed: {e}")
 
+        findings.extend(analyze_cross_file_impact(files))
+    except Exception as exc:
+        logger.warning("Cross-file signal collection failed: %s", exc)
     return findings
 
 
@@ -186,7 +190,10 @@ def _scan_test_deletions(file: ChangedFile) -> list[RiskFinding]:
             rule_id="test-assertion-removed",
             title="Test assertions removed",
             evidence=f"{deleted_assertions} assertion-like deleted lines detected.",
-            recommendation="Confirm coverage is replaced elsewhere or explain why the assertion is obsolete.",
+            recommendation=(
+                "Confirm coverage is replaced elsewhere or explain why the "
+                "assertion is obsolete."
+            ),
             confidence=0.7,
         )
     ]

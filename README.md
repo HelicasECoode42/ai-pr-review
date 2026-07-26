@@ -185,6 +185,14 @@ GITHUB_TOKEN=ghp_xxx
 OPENAI_API_KEY=sk-xxx
 OPENAI_BASE_URL=https://api.openai.com/v1
 REVIEW_MODEL=gpt-4.1-mini
+
+# 默认 false：规则只记录为 telemetry，不影响 AI 审查，也不产生额外模型请求
+VERIFY_RULE_SIGNALS=false
+
+# 默认 false：仅对通过 Evidence Gate 的中高风险建议执行一次批量反驳审查
+ENABLE_CRITIC=false
+# 留空则复用 REVIEW_MODEL；可设为 deepseek-v4-pro
+CRITIC_MODEL=
 ```
 
 公开仓库可以不配置 `GITHUB_TOKEN`，但匿名请求容易触发 GitHub API rate limit。建议配置 fine-grained token，至少需要：
@@ -198,7 +206,7 @@ DeepSeek 示例：
 ```ini
 OPENAI_API_KEY=你的 DeepSeek API Key
 OPENAI_BASE_URL=https://api.deepseek.com/v1
-REVIEW_MODEL=deepseek-chat
+REVIEW_MODEL=deepseek-v4-flash
 ```
 
 ### 模型选择依据
@@ -208,9 +216,11 @@ REVIEW_MODEL=deepseek-chat
 | 模型 | 推荐场景 | 优势 |
 |------|----------|------|
 | `gpt-4.1-mini` | 默认推荐，英文/通用项目 | mini 级模型，代码理解和结构化输出表现稳定；速度快；原生支持 `response_format: json_object`，便于约束输出 schema；成本低，适合高频自动审查 |
-| `deepseek-chat` | 中文项目、成本敏感场景 | 中文审查能力较好；OpenAI-compatible API 可直接接入 |
+| `deepseek-v4-flash` | 中文项目、成本敏感场景 | DeepSeek 当前网关支持的快速模型；OpenAI-compatible API 可直接接入 |
 
 两种模型通过相同的 OpenAI-compatible 接口调用。你可以通过修改 `OPENAI_BASE_URL` 接入任何兼容服务（Azure OpenAI、Ollama 本地模型、其他第三方代理）。
+
+`VERIFY_RULE_SIGNALS` 默认为 `false`。开启后，只有密钥日志、shell 执行、动态执行和 SQL 字符串拼接等高精度机械 signal 才会进入一次批量 AI 验证；路径和跨文件规则始终只保留为 telemetry。
 ## CLI 用法
 
 AI + 规则分析（Agent 模式）：

@@ -125,35 +125,26 @@ async function runAnalysis() {
   document.getElementById("analyze-btn").disabled = true;
 
   try {
-    const steps = ["Fetching PR data…", "Scanning risk rules…", "Running AI review…", "Building report…"];
-    let stepIdx = 0;
-    const stepTimer = setInterval(() => {
-      if (stepIdx < steps.length - 1) stepIdx++;
-      document.getElementById("loading-text").textContent = steps[stepIdx];
-    }, 1200);
-
     const t0 = performance.now();
     const payload = { repo, pr_number: prNumber, use_ai: useAi, agent_mode: agentMode };
     if (language) payload.language = language;
 
-    const resp = await fetch("/api/analyze", {
+    const resp = await fetch("/api/analyze/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-
-    clearInterval(stepTimer);
-    const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
 
     if (!resp.ok) {
       const err = await resp.json();
       throw new Error(err.detail || `HTTP ${resp.status}`);
     }
 
-    const data = await resp.json();
+    const data = await consumeSse(resp, updateStreamingStatus);
+    if (!data) throw new Error("Review stream ended without a final report.");
     _report = data.report;
     _markdown = data.markdown;
-    _duration = data.duration_seconds || parseFloat(elapsed);
+    _duration = data.duration_seconds || ((performance.now() - t0) / 1000).toFixed(1);
     _agent = data.agent || null;
 
     renderResults();
@@ -166,6 +157,43 @@ async function runAnalysis() {
   } finally {
     document.getElementById("analyze-btn").disabled = false;
   }
+}
+
+async function consumeSse(response, onEvent) {
+  if (!response.body) throw new Error("Streaming response body is unavailable.");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let completed = null;
+
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+    const frames = buffer.split("\n\n");
+    buffer = frames.pop() || "";
+    for (const frame of frames) {
+      if (!frame.trim()) continue;
+      const event = frame.match(/^event: (.+)$/m)?.[1] || "message";
+      const dataLine = frame.match(/^data: (.+)$/m)?.[1];
+      if (!dataLine) continue;
+      const payload = JSON.parse(dataLine);
+      onEvent(event, payload);
+      if (event === "error") throw new Error(payload.message || "Analysis failed");
+      if (event === "complete") completed = payload;
+    }
+    if (done) break;
+  }
+  return completed;
+}
+
+function updateStreamingStatus(event, payload) {
+  const loading = document.getElementById("loading-text");
+  if (event === "started") loading.textContent = "SSE connected. Preparing review…";
+  if (event === "strategy_selected") loading.textContent = `Strategy: ${payload.strategy}`;
+  if (event === "step_started") loading.textContent = `Running ${payload.tool}…`;
+  if (event === "step_completed") loading.textContent = `Completed ${payload.tool} (${payload.duration_ms}ms)`;
+  if (event === "step_failed") loading.textContent = `Failed ${payload.tool}`;
+  if (event === "complete") loading.textContent = "Review complete.";
 }
 
 // ── Render ──

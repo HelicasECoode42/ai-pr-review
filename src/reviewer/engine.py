@@ -6,6 +6,7 @@ import re
 from pydantic import ValidationError
 
 from src.analyzer.context_builder import build_review_context, tokenizer_name
+from src.analyzer.signal_selection import select_verifiable_signals
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -25,8 +26,12 @@ from src.models import (
     StepStatus,
 )
 from src.reviewer.model_payload import ModelReviewPayload, parse_model_payload
+from src.reviewer.evidence_validator import validate_ai_evidence
+from src.reviewer.critic import CriticDecision, apply_critic, critique_batch, select_critic_candidates
 from src.reviewer.prompt import SYSTEM_PROMPT, build_user_prompt
 from src.reviewer.provider import ProviderError, ReviewModelProvider
+from src.reviewer.review_merger import merge_review_results
+from src.reviewer.signal_verifier import ProviderSignalVerifier, build_signal_envelopes
 from src.reviewer.suggestion_filter import filter_suggestions
 
 logger = logging.getLogger(__name__)
@@ -277,7 +282,15 @@ def build_rule_only_report(
             f"PR changes {len(files)} file(s) with {additions} additions and {deletions} deletions. "
             f"Rule scan found {len(findings)} potential risk item(s)."
         )
-    risk_level = _max_severity([finding.severity for finding in findings])
+    # Path-level and heuristic findings are deliberately allowed to stay in
+    # rule_findings for auditability, but only sufficiently confident findings
+    # with a concrete file location become user-facing suggestions.
+    visible_findings = [
+        finding
+        for finding in findings
+        if finding.confidence >= 0.65 and finding.file_path
+    ]
+    risk_level = _max_severity([finding.severity for finding in visible_findings])
     suggestions = [
         ReviewSuggestion(
             file_path=finding.file_path,
@@ -287,8 +300,9 @@ def build_rule_only_report(
             title=finding.title,
             reason=finding.evidence,
             recommendation=finding.recommendation,
+            source="rule_unverified",
         )
-        for finding in findings
+        for finding in visible_findings
     ]
     # Build fix tracking from previous review comments
     fix_tracking = _build_fix_tracking(
@@ -319,7 +333,24 @@ def build_rule_only_report(
         completeness=completeness,
         review_meta=review_meta or ReviewMeta(),
         fix_tracking=fix_tracking,
+        confirmed_signals=[],
         dismissed_signals=[],
+        hidden_rule_findings_count=len(findings) - len(visible_findings),
+        unverified_signals=[
+            {
+                "rule_id": finding.rule_id,
+                "file_path": finding.file_path,
+                "line": finding.line,
+                "reason": "AI semantic verification was not available.",
+            }
+            for finding in findings
+        ],
+        metrics={
+            "raw_signal_count": len(findings),
+            "visible_rule_signal_count": len(visible_findings),
+            "main_review_prompt_signal_count": 0,
+            "signal_verification_request_count": 0,
+        },
     )
     # Post-generation validation
     validation_issues = validate_report(report)
@@ -345,14 +376,19 @@ def review_with_ai(
     pr_syntax_ok: bool = True,
     review_meta: ReviewMeta | None = None,
     two_stage: bool = False,
+    verify_rule_signals: bool = False,
+    enable_critic: bool = False,
+    critic_provider: ReviewModelProvider | None = None,
     gh_client: "GitHubClient | None" = None,
 ) -> ReviewReport:
     try:
-        ctx = build_review_context(pr, files, findings)
+        # The main review must start from the PR text and diff alone. Rule
+        # results are retained as audit signals, not injected as conclusions.
+        ctx = build_review_context(pr, files)
         if two_stage:
             from src.reviewer.two_stage import two_stage_review
             summary, risk_level, suggestions = two_stage_review(
-                pr, files, findings, provider,
+                pr, files, [], provider,
                 max_suggestions=max_suggestions,
                 min_confidence=min_confidence,
                 max_suggestions_per_file=max_suggestions_per_file,
@@ -374,6 +410,25 @@ def review_with_ai(
             payload.suggestions, files, max_suggestions, min_confidence,
             max_suggestions_per_file,
         )
+        suggestions, evidence_rejections = validate_ai_evidence(suggestions, files)
+        critic_candidates = select_critic_candidates(suggestions) if enable_critic else []
+        critic_batch = critique_batch(critic_provider or provider, critic_candidates, files)
+        if enable_critic:
+            suggestions, critic_decisions = apply_critic(suggestions, critic_candidates, critic_batch)
+        else:
+            critic_decisions = []
+        independent_suggestion_count = len(suggestions)
+        verifiable_signals = select_verifiable_signals(findings) if verify_rule_signals else []
+        verification = ProviderSignalVerifier(provider).verify_batch(
+            build_signal_envelopes(verifiable_signals, files)
+        )
+        merged = merge_review_results(suggestions, verifiable_signals, verification)
+        suggestions = filter_suggestions(
+            merged.suggestions, files, max_suggestions, min_confidence, max_suggestions_per_file
+        )
+        # The visible risk level must describe the final, evidence-gated
+        # suggestions rather than an unfiltered model draft.
+        risk_level = _max_severity([suggestion.severity for suggestion in suggestions])
         warnings: list[str] = []
         hidden = total_from_model - len(suggestions)
         if hidden > 0:
@@ -397,7 +452,8 @@ def review_with_ai(
             )
 
         # Track dismissed rule alerts
-        dismissed = getattr(payload, "dismissed_rule_alerts", []) or []
+        confirmed = [item.model_dump(mode="json") for item in merged.confirmed]
+        dismissed = [item.model_dump(mode="json") for item in merged.dismissed]
         if dismissed:
             warnings.append(
                 f"{len(dismissed)} rule alert(s) dismissed by AI as false positives"
@@ -421,7 +477,7 @@ def review_with_ai(
             pr=pr,
             files=files,
             summary=payload.summary,
-            risk_level=payload.risk_level,
+            risk_level=risk_level,
             rule_findings=findings,
             suggestions=suggestions,
             used_ai=True,
@@ -439,7 +495,38 @@ def review_with_ai(
             completeness=completeness,
             review_meta=review_meta or ReviewMeta(),
             fix_tracking=fix_tracking,
+            confirmed_signals=confirmed,
             dismissed_signals=dismissed,
+            unresolved_signals=[item.model_dump(mode="json") for item in merged.unresolved],
+            unverified_signals=[item.model_dump(mode="json") for item in merged.unverified],
+            evidence_rejections=evidence_rejections,
+            critic_decisions=critic_decisions,
+            metrics={
+                "raw_signal_count": len(findings),
+                "main_review_prompt_signal_count": 0,
+                "independent_suggestion_count": independent_suggestion_count,
+                "evidence_rejected_suggestion_count": len(evidence_rejections),
+                "critic_request_count": int(bool(critic_candidates)),
+                "critic_confirmed_count": sum(
+                    item["decision"] == CriticDecision.CONFIRMED.value for item in critic_decisions
+                ),
+                "critic_dismissed_count": sum(
+                    item["decision"] == CriticDecision.DISMISSED.value for item in critic_decisions
+                ),
+                "critic_uncertain_count": sum(
+                    item["decision"] == CriticDecision.UNCERTAIN.value for item in critic_decisions
+                ),
+                "critic_unverified_count": sum(
+                    item["decision"] == CriticDecision.UNVERIFIED.value for item in critic_decisions
+                ),
+                "context_token_count": ctx.token_count,
+                "signal_verification_request_count": int(bool(verifiable_signals)),
+                "telemetry_only_signal_count": len(findings) - len(verifiable_signals),
+                "confirmed_signal_count": len(merged.confirmed),
+                "dismissed_signal_count": len(merged.dismissed),
+                "unresolved_signal_count": len(merged.unresolved),
+                "unverified_signal_count": len(merged.unverified),
+            },
         )
         # Post-generation validation
         validation_issues = validate_report(report)

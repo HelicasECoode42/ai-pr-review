@@ -117,6 +117,9 @@ class ReviewSuggestion(BaseModel):
     title: str
     reason: str
     recommendation: str
+    source: str = "ai"
+    evidence: list[str] = Field(default_factory=list)
+    failure_scenario: str = ""
 
 
 class ReviewReport(BaseModel):
@@ -146,4 +149,10 @@ class ReviewReport(BaseModel):
     pr_syntax_check_ok: bool = True
     review_meta: ReviewMeta = Field(default_factory=ReviewMeta)
     fix_tracking: list[FixTrackingItem] = Field(default_factory=list)
+    confirmed_signals: list[dict] = Field(default_factory=list)
     dismissed_signals: list[dict] = Field(default_factory=list)  # rule findings the AI dismissed
+    unresolved_signals: list[dict] = Field(default_factory=list)
+    unverified_signals: list[dict] = Field(default_factory=list)
+    evidence_rejections: list[dict] = Field(default_factory=list)
+    critic_decisions: list[dict] = Field(default_factory=list)
+    metrics: dict[str, int | float] = Field(default_factory=dict)

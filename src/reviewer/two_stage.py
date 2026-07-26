@@ -56,7 +56,7 @@ def two_stage_review(
 
     # ── Stage 2: Deep-dive per hotspot ────────────────────
     all_suggestions: list[ReviewSuggestion] = []
-    ctx = build_review_context(pr, files, findings)
+    ctx = build_review_context(pr, files)
 
     for i, hotspot in enumerate(hotspots[:5]):
         suggestions = run_deep_review(hotspot, ctx.text, provider, language)
@@ -79,7 +79,7 @@ def two_stage_review(
         f"{len(findings)} rule-based finding(s) also present."
     )
 
-    risk = _compute_risk(final, findings)
+    risk = _compute_risk(final, [])
     return summary, risk, final
 
 
@@ -122,7 +122,7 @@ def _fallback_one_shot(
     from src.reviewer.model_payload import parse_model_payload
     from src.reviewer.prompt import SYSTEM_PROMPT, build_user_prompt
 
-    ctx = build_review_context(pr, files, findings)
+    ctx = build_review_context(pr, files)
     raw = provider.complete_json(
         SYSTEM_PROMPT, build_user_prompt(ctx.text, max_suggestions, language)
     )

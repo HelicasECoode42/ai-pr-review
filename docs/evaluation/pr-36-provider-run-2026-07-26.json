@@ -1,0 +1,45 @@
+{
+  "scope": {
+    "pr": "HelicasECoode42/ai-pr-review#36",
+    "commit": "78ae033606158f717da11664a22b27d5b4f9e83b",
+    "mode": "one_shot_ai",
+    "language": "zh"
+  },
+  "provider_used": true,
+  "execution_status": "success",
+  "report_confidence": "normal",
+  "agent_total_duration_ms": 59935,
+  "metrics": {
+    "raw_signal_count": 4,
+    "main_review_prompt_signal_count": 0,
+    "independent_suggestion_count": 1,
+    "context_token_count": 7547,
+    "signal_verification_request_count": 1,
+    "confirmed_signal_count": 2,
+    "dismissed_signal_count": 2,
+    "unresolved_signal_count": 0,
+    "unverified_signal_count": 0
+  },
+  "independent_suggestions": [
+    {
+      "source": "ai",
+      "severity": "medium",
+      "file_path": "src/analyzer/context_builder.py",
+      "line": 63,
+      "title": "离线回退时consumed单位为字节导致预算偏差"
+    }
+  ],
+  "initial_maintainer_assessment": [
+    {
+      "suggestion_key": "src/analyzer/context_builder.py:63:utf8-byte-budget",
+      "label": "false_positive",
+      "reason": "count_tokens 的文档和实现均明确将 UTF-8 字节数作为 tiktoken 不可用时的保守上界；预算偏小是预期降级策略。"
+    }
+  ],
+  "dismissed_rule_ids": [
+    "cross-file-refactor",
+    "cross-file-many-funcs"
+  ],
+  "interpretation": "结构与语义验证均成功；首条独立建议已完成初始人工复核并标为误报，仍不能据此计算总体误报率。",
+  "data_gap": "本次运行发生在 confirmed_signals 字段加入前，确认 signal 的逐条 reason 未持久化；后续运行会写入该字段。"
+}

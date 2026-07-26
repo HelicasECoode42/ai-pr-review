@@ -22,18 +22,18 @@ path_rules:
     confidence: 0.6
 
   - id: risk-path-infra-workflow
-    severity: HIGH
+    severity: MEDIUM
     pattern: "^\\.github/workflows/"
     title: CI/CD workflow changed
     recommendation: "Workflow changes affect review pipeline stability. Verify fallback and gate logic."
-    confidence: 0.7
+    confidence: 0.55
 
   - id: risk-path-infra-reviewer
-    severity: HIGH
+    severity: MEDIUM
     pattern: "^src/cli/|^src/reviewer/|^src/github/"
     title: Review tool infrastructure changed
     recommendation: "Changes to reviewer code may affect review stability, fallback behavior, or workflow gating. Request a second reviewer."
-    confidence: 0.7
+    confidence: 0.55
 
 line_rules:
   - id: sql-string-concat
