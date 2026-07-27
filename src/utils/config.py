@@ -46,9 +46,8 @@ def detect_output_language(title: str = "", body: str = "") -> str:
     text = (title or "") + " " + (body or "")
     # Strip whitespace for ratio calculation
     stripped = text.strip()
-    meaningful = re.sub(r"\s+", "", stripped)
-    if not meaningful:
+    if not stripped:
         return "en"
-    cjk_chars = len(_CJK_RE.findall(meaningful))
-    ratio = cjk_chars / len(meaningful)
+    cjk_chars = len(_CJK_RE.findall(stripped))
+    ratio = cjk_chars / len(stripped)
     return "zh" if ratio > 0.2 else "en"

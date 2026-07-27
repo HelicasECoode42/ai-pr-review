@@ -84,6 +84,4 @@ def run_triage(
         _build_triage_prompt(pr, files, findings),
     )
     triage = json.loads(raw)
-    if not isinstance(triage, dict):
-        raise ValueError(f"Expected JSON object, got {type(triage).__name__}")
     return list(triage.get("hotspots", []))

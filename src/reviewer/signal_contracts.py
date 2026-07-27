@@ -76,11 +76,6 @@ class ReviewMergeResult(BaseModel):
     unresolved: list[SignalVerification] = Field(default_factory=list)
     unverified: list[SignalVerification] = Field(default_factory=list)
 
-    @property
-    def unsure(self) -> list[SignalVerification]:
-        """Compatibility alias matching SignalDecision.UNSURE."""
-        return self.unresolved
-
 
 class SignalVerifier(Protocol):
     """Port implemented by the Phase 2 provider-backed verifier."""

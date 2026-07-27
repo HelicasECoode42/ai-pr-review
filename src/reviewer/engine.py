@@ -430,7 +430,7 @@ def review_with_ai(
         # suggestions rather than an unfiltered model draft.
         risk_level = _max_severity([suggestion.severity for suggestion in suggestions])
         warnings: list[str] = []
-        hidden = total_from_model - independent_suggestion_count
+        hidden = total_from_model - len(suggestions)
         if hidden > 0:
             warnings.append(
                 f"{hidden} suggestion(s) filtered out (low confidence, "

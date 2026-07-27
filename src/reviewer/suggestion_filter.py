@@ -17,8 +17,6 @@ def filter_suggestions(
     min_confidence: float = 0.0,
     max_suggestions_per_file: int = 5,
 ) -> list[ReviewSuggestion]:
-    if not (0.0 <= min_confidence <= 1.0):
-        raise ValueError(f"min_confidence must be in [0, 1], got {min_confidence}")
     changed_lines = changed_line_map(files)
     filtered: list[ReviewSuggestion] = []
     seen_exact: set[tuple[str, int | None, str]] = set()
@@ -63,6 +61,6 @@ def filter_suggestions(
         Severity.LOW: 1,
     }
     filtered.sort(
-        key=lambda item: (severity_rank.get(item.severity, 0), item.confidence), reverse=True
+        key=lambda item: (severity_rank[item.severity], item.confidence), reverse=True
     )
     return filtered[:max_suggestions]

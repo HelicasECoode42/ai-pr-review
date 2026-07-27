@@ -134,9 +134,6 @@ def _render_completeness_detail(detail: str, zh: bool) -> str:
     match = re.match(r"(\d+) 个文件跳过（lockfile / 生成内容）", detail)
     if match:
         return f"{match.group(1)} file(s) skipped (lockfile / generated content)"
-    match = re.match(r"(\d+) 个文件跳过$", detail)
-    if match:
-        return f"{match.group(1)} file(s) skipped"
     match = re.match(r"(\d+) 个文件$", detail)
     if match:
         return f"{match.group(1)} file(s)"
@@ -158,7 +155,7 @@ def _render_review_meta(report: ReviewReport, T: _Translator, zh: bool) -> list[
     if meta.reviewed_commit:
         commit_short = meta.reviewed_commit[:7]
         repo = getattr(report.pr, 'repo', None)
-        if repo:
+        if meta.reviewed_commit and repo:
             commit_url = f"https://github.com/{repo}/commit/{meta.reviewed_commit}"
             lines.append(f"| {T.t('审查目标 Commit')} | [`{commit_short}`]({commit_url}) |")
         else:

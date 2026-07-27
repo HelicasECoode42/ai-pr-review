@@ -79,7 +79,7 @@ def two_stage_review(
         f"{len(findings)} rule-based finding(s) also present."
     )
 
-    risk = _compute_risk(final, findings)
+    risk = _compute_risk(final, [])
     return summary, risk, final
 
 

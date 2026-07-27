@@ -9,7 +9,7 @@ import json
 import logging
 
 from src.models import ReviewSuggestion, Severity
-from src.reviewer.provider import ReviewModelProvider
+from src.reviewer.provider import ProviderError, ReviewModelProvider
 
 logger = logging.getLogger(__name__)
 
@@ -55,10 +55,10 @@ Diff context:
 """
 
 
-def _safe_severity(s: object) -> Severity:
+def _safe_severity(s: str) -> Severity:
     try:
-        return Severity(str(s).lower())
-    except (ValueError, AttributeError):
+        return Severity(s.lower())
+    except ValueError:
         return Severity.MEDIUM
 
 
@@ -73,46 +73,27 @@ def run_deep_review(
     Does NOT raise on failure — returns empty list instead,
     so one failed hotspot doesn't block others.
     """
-    hotspot_path = hotspot.get("file_path", "?") if isinstance(hotspot, dict) else "?"
     try:
         raw = provider.complete_json(
             DEEP_SYSTEM,
             _build_deep_prompt(hotspot, ctx_text, language),
         )
         result = json.loads(raw)
-        if not isinstance(result, dict):
-            raise TypeError(f"Expected JSON object, got {type(result).__name__}")
-    except Exception as exc:
-        logger.warning("Deep-dive on %s failed: %s", hotspot_path, exc)
+    except (ProviderError, json.JSONDecodeError, KeyError, TypeError) as exc:
+        logger.warning("Deep-dive on %s failed: %s", hotspot.get("file_path", "?"), exc)
         return []
 
     suggestions: list[ReviewSuggestion] = []
-    raw_suggestions = result.get("suggestions", [])
-    if not isinstance(raw_suggestions, list):
-        return suggestions
-    for s in raw_suggestions:
-        try:
-            if not isinstance(s, dict):
-                continue
-            confidence = s.get("confidence", 0.5)
-            try:
-                confidence = min(max(float(confidence), 0.0), 1.0)
-            except (TypeError, ValueError):
-                confidence = 0.5
-            evidence = s.get("evidence")
-            if not isinstance(evidence, list):
-                evidence = []
-            suggestions.append(ReviewSuggestion(
-                file_path=str(s.get("file_path", hotspot["file_path"])),
-                line=s.get("line"),
-                severity=_safe_severity(s.get("severity", "medium")),
-                confidence=confidence,
-                title=str(s.get("title", "Issue")),
-                reason=str(s.get("reason", "")),
-                recommendation=str(s.get("recommendation", "")),
-                evidence=[str(item) for item in evidence],
-                failure_scenario=str(s.get("failure_scenario", "")),
-            ))
-        except Exception:
-            logger.warning("Skipping malformed suggestion in %s", hotspot_path)
+    for s in result.get("suggestions", []):
+        suggestions.append(ReviewSuggestion(
+            file_path=s.get("file_path", hotspot["file_path"]),
+            line=s.get("line"),
+            severity=_safe_severity(s.get("severity", "medium")),
+            confidence=min(max(float(s.get("confidence", 0.5)), 0.0), 1.0),
+            title=str(s.get("title", "Issue")),
+            reason=str(s.get("reason", "")),
+            recommendation=str(s.get("recommendation", "")),
+            evidence=[str(item) for item in s.get("evidence", [])],
+            failure_scenario=str(s.get("failure_scenario", "")),
+        ))
     return suggestions
