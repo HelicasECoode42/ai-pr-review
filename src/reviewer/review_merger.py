@@ -33,7 +33,9 @@ def merge_review_results(
             if location not in occupied:
                 result.suggestions.append(ReviewSuggestion(
                     file_path=signal.file_path, line=signal.line,
-                    severity=item.adjusted_severity or signal.severity,
+                    severity=(item.adjusted_severity
+                              if item.adjusted_severity is not None
+                              else signal.severity),
                     confidence=item.confidence, title=signal.title, reason=item.reason,
                     recommendation=signal.recommendation, source="rule_confirmed",
                     evidence=[signal.evidence], failure_scenario=item.reason,

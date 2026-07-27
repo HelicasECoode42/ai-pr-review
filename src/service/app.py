@@ -347,6 +347,8 @@ def list_history() -> list[dict]:
 @app.get("/api/history/{entry_id}")
 def get_history_entry(entry_id: str) -> dict:
     """Retrieve a full historical review report."""
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", entry_id):
+        raise HTTPException(status_code=400, detail="Invalid history entry id")
     history_file = Path(f"reports/history/{entry_id}.json")
     if not history_file.exists():
         raise HTTPException(status_code=404, detail="History entry not found")
