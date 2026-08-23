@@ -19,6 +19,137 @@ class OutputLanguage(str, Enum):
     ZH = "zh"
 
 
+@app.command("local")
+def review_local(
+    staged: bool = typer.Option(False, "--staged", help="Force review of the staged diff."),
+    base: str | None = typer.Option(None, "--base", help="Base branch/ref for branch diff."),
+    output: Path | None = typer.Option(None, "--output", "-o", help="Write the long Markdown report."),
+    use_ai: bool = typer.Option(False, "--ai/--no-ai", help="Call the configured model after rule scanning."),
+    language: OutputLanguage = typer.Option(OutputLanguage.ZH, "--language"),
+) -> None:
+    """Review the current repository without requiring a GitHub PR."""
+    from datetime import datetime, timezone
+
+    from src.analyzer.risk_rules import collect_signals, reload_rules
+    from src.local_review import LocalReviewError, collect_local_diff
+    from src.models import PullRequest, ReviewMeta, Severity
+    from src.output.json_report import render_json
+    from src.output.markdown import render_markdown
+    from src.reviewer.engine import build_rule_only_report, review_with_ai
+    from src.reviewer.provider import OpenAICompatibleProvider
+
+    try:
+        local = collect_local_diff(force_staged=staged, base=base)
+    except LocalReviewError as exc:
+        console.print(f"[red]Local diff error:[/red] {exc}")
+        raise typer.Exit(code=2) from exc
+    if not local.files:
+        console.print("[green]No changes found for the selected local diff.[/green]")
+        raise typer.Exit(code=0)
+
+    yaml_rules = next((path for path in (
+        local.root / ".ai-pr-review-rules.yml",
+        local.root / ".ai-pr-review-rules.yaml",
+    ) if path.is_file()), None)
+    reload_rules(str(yaml_rules) if yaml_rules else None)
+    findings = collect_signals(local.files)
+    pr = PullRequest(
+        repo=f"local/{local.root.name}",
+        number=1,
+        title=f"Local {local.mode} diff",
+        body=f"Local-first review from {local.root}",
+        base_ref=local.base,
+        head_ref="HEAD",
+    )
+    meta = ReviewMeta(
+        reviewed_commit=local.head_sha,
+        trigger_event="local",
+        updated_at=datetime.now(timezone.utc).isoformat(),
+        review_mode=local.mode,
+    )
+    report = build_rule_only_report(
+        pr, local.files, findings,
+        language=language.value,
+        reviewer_version="local",
+        review_meta=meta,
+    )
+    settings = get_settings()
+    if use_ai:
+        if not settings.openai_api_key:
+            console.print("[yellow]OPENAI_API_KEY is not set; keeping rule-only signals.[/yellow]")
+        else:
+            provider = OpenAICompatibleProvider(
+                api_key=settings.openai_api_key,
+                model=settings.review_model,
+                base_url=settings.openai_base_url,
+                timeout=settings.request_timeout_seconds,
+            )
+            try:
+                report = review_with_ai(
+                    pr=pr,
+                    files=local.files,
+                    findings=findings,
+                    provider=provider,
+                    max_suggestions=settings.max_suggestions,
+                    min_confidence=settings.min_comment_confidence,
+                    max_suggestions_per_file=settings.max_suggestions_per_file,
+                    language=language.value,
+                    review_meta=meta,
+                    verify_rule_signals=settings.verify_rule_signals,
+                    enable_critic=settings.enable_critic,
+                    project_root=local.root,
+                )
+            finally:
+                provider.close()
+
+    confirmed = [item for item in report.suggestions if item.source != "rule_unverified"]
+    blocking = any(item.severity in (Severity.CRITICAL, Severity.HIGH) for item in confirmed)
+    additions = sum(item.additions for item in local.files)
+    deletions = sum(item.deletions for item in local.files)
+    console.print("[bold]Local review summary[/bold]")
+    console.print(f"Mode: {local.mode}" + (f" ({local.base}...HEAD)" if local.base else ""))
+    console.print(f"Changed: {len(local.files)} file(s), +{additions}/-{deletions}")
+    console.print(f"Automatic block recommended: {'yes' if blocking else 'no'}")
+    console.print(f"Confirmed issues: {len(confirmed)}")
+    console.print(f"Unverified risk signals: {len(report.rule_findings)}")
+    for finding in report.rule_findings[:5]:
+        location = f"{finding.file_path}:{finding.line}" if finding.line else finding.file_path
+        console.print(f"  [{finding.severity.value}] {location} - {finding.title}")
+
+    if output:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(render_markdown(report, language=language.value), encoding="utf-8")
+        output.with_suffix(".json").write_text(render_json(report), encoding="utf-8")
+        console.print(f"[green]Long report:[/green] {output}")
+    else:
+        console.print("[dim]Use --output report.md to keep the long Markdown/JSON artifacts.[/dim]")
+
+
+@app.command("pr")
+def review_pr_url(
+    ctx: typer.Context,
+    url: str = typer.Argument(..., help="GitHub Pull Request URL."),
+    output: Path | None = typer.Option(None, "--output", "-o"),
+    use_ai: bool = typer.Option(True, "--ai/--no-ai"),
+    agent_mode: str = typer.Option("off", "--agent-mode"),
+) -> None:
+    """Review a PR directly from its GitHub URL."""
+    from src.local_review import LocalReviewError, parse_pr_url
+
+    try:
+        repo, number = parse_pr_url(url)
+    except LocalReviewError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=2) from exc
+    ctx.invoke(
+        analyze,
+        repo=repo,
+        pr_number=number,
+        output=output,
+        use_ai=use_ai,
+        agent_mode=agent_mode,
+    )
+
 def _write_failure_report(
     output: Path | None,
     *,
@@ -147,6 +278,16 @@ def analyze(
     ),
 ) -> None:
     settings = get_settings()
+    # Local CLI usage should recover from a stale .env token by preferring the
+    # authenticated gh CLI token when one is available. CI usually has no gh
+    # login and therefore keeps its injected GITHUB_TOKEN.
+    try:
+        from src.local_review import load_gh_token
+        gh_token = load_gh_token()
+        if gh_token:
+            settings = settings.model_copy(update={"github_token": gh_token})
+    except (FileNotFoundError, OSError, TimeoutError):
+        pass
     console.print(f"[bold]Fetching PR[/bold] {repo}#{pr_number}")
 
     # ── Agent Runner path ──────────────────────────────────
