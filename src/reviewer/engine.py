@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+from pathlib import Path
 
 from pydantic import ValidationError
 
@@ -380,11 +381,12 @@ def review_with_ai(
     enable_critic: bool = False,
     critic_provider: ReviewModelProvider | None = None,
     gh_client: "GitHubClient | None" = None,
+    project_root: Path | None = None,
 ) -> ReviewReport:
     try:
         # The main review must start from the PR text and diff alone. Rule
         # results are retained as audit signals, not injected as conclusions.
-        ctx = build_review_context(pr, files)
+        ctx = build_review_context(pr, files, project_root=project_root)
         if two_stage:
             from src.reviewer.two_stage import two_stage_review
             summary, risk_level, suggestions = two_stage_review(

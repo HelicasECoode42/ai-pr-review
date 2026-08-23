@@ -223,10 +223,26 @@ REVIEW_MODEL=deepseek-v4-flash
 `VERIFY_RULE_SIGNALS` 默认为 `false`。开启后，只有密钥日志、shell 执行、动态执行和 SQL 字符串拼接等高精度机械 signal 才会进入一次批量 AI 验证；路径和跨文件规则始终只保留为 telemetry。
 ## CLI 用法
 
+日常本地审查默认优先 staged diff；没有 staged change 时审当前分支相对 `main/master` 的 diff，若分支无提交差异则回退到 working tree。终端只展示是否建议阻断、最高风险和少量未验证风险信号，长报告按需保存：
+
+```bash
+uv run ai-pr-review local
+uv run ai-pr-review local --staged
+uv run ai-pr-review local --base main --output reports/local.md
+```
+
+规则扫描命中在 rule-only 模式下明确标记为 **unverified risk signals**，不会伪装成已确认 bug，也不会自动建议阻断。目标仓库中的 `.ai-cr/mr-code-review.rules.md`、`.ai-pr-review-rules.yml/.yaml`、`AGENTS.md` 和 `docs/*review*` 会以有界、不可信项目指引的形式进入 AI context；YAML 规则继续用于确定性扫描。
+
+PR URL 可直接作为入口。本机存在 `gh auth` 登录态时，CLI 优先使用 `gh auth token`，可绕开 `.env` 中缺失或过期的 `GITHUB_TOKEN`：
+
+```bash
+uv run ai-pr-review pr https://github.com/OWNER/REPO/pull/123 --no-ai
+```
+
 AI + 规则分析（Agent 模式）：
 
 ```bash
-uv run python -m src.cli.main owner/repo 123 \
+uv run ai-pr-review analyze owner/repo 123 \
   --language zh \
   --agent-mode one_shot_ai \
   --output reports/pr-123.md
@@ -235,7 +251,7 @@ uv run python -m src.cli.main owner/repo 123 \
 仅规则扫描，无需模型 API Key：
 
 ```bash
-uv run python -m src.cli.main owner/repo 123 \
+uv run ai-pr-review analyze owner/repo 123 \
   --no-ai \
   --language zh \
   --output reports/pr-123.md
@@ -244,7 +260,7 @@ uv run python -m src.cli.main owner/repo 123 \
 JSON 输出：
 
 ```bash
-uv run python -m src.cli.main owner/repo 123 \
+uv run ai-pr-review analyze owner/repo 123 \
   --format json \
   --output reports/pr-123.json
 ```
@@ -354,16 +370,16 @@ uv run pytest
 python -m compileall src tests
 ```
 
-当前自动化测试覆盖（90 tests）：
+当前自动化测试覆盖（116 tests）：
 
 - agent policy / trace / runner（rule-only 与离线 one-shot AI 全链路）
 - context builder / diff parser
 - reviewer engine / suggestion filter
 - risk rules / report reliability
 
-当前验证边界：离线全链路使用确定性 GitHub/模型替身；真实 GitHub PR + 真实模型 + GitHub Actions 的外部端到端运行仍需单独完成，不能由 90 项测试替代。
+当前验证边界：离线全链路使用确定性 GitHub/模型替身；真实 GitHub PR + 真实模型 + GitHub Actions 的外部端到端运行仍需单独完成，不能由 116 项测试替代。
 
-当前规则告警会与 diff 一起进入模型上下文，因此规则可能对模型判断产生注意力锚定；后续需要通过独立 LLM 审查、规则并行扫描与后置融合的消融实验验证并降低该偏置。
+当前主审模型只从 PR 文本、项目 review context 与 diff 独立生成建议；规则信号通过并行扫描和可选后置验证保留，避免把机械启发式直接注入主提示词形成注意力锚定。Evidence Gate 只能证明建议绑定了 changed-line 证据，不能证明因果判断正确；审查质量仍需 #40/#41 人工 benchmark 验证。
 
 ## 安全性
 
