@@ -39,6 +39,8 @@ def replay(prepared: dict, baseline: Path, output: Path, provider) -> dict:
             suggestions = [
                 ReviewSuggestion.model_validate(s) for s in old_audit["report"]["suggestions"]
             ]
+            if len(suggestions) != len(old_output["findings"]):
+                raise ValueError("Baseline suggestion/finding counts differ")
             diff = (Path(task["input_dir"]) / "diff.patch").read_text()
             digest = hashlib.sha256(diff.encode()).hexdigest()
             if digest != task["diff_sha256"] or digest != old_audit["diff_sha256"]:
@@ -55,12 +57,8 @@ def replay(prepared: dict, baseline: Path, output: Path, provider) -> dict:
                     observed.errors and observed.errors[-1].status_code in FATAL_HTTP_STATUSES
                 )
             else:
-                # Match original messages by identity, preserving exact wording.
-                keys = {(s.file_path, s.line, s.title) for s in kept}
-                output_findings = []
-                for suggestion, finding in zip(suggestions, old_output["findings"], strict=True):
-                    if (suggestion.file_path, suggestion.line, suggestion.title) in keys:
-                        output_findings.append(finding)
+                # Critic decisions are indexed, including duplicate identities.
+                output_findings = retained_findings(suggestions, old_output["findings"], decisions)
                 write_json(
                     output / "candidates" / (task["case_id"] + ".json"),
                     {**old_output, "findings": output_findings},
@@ -89,6 +87,15 @@ def replay(prepared: dict, baseline: Path, output: Path, provider) -> dict:
         write_json(output / "run.json", result)
         print(task["case_id"] + ": " + record["status"], flush=True)
     return result
+
+
+def retained_findings(suggestions, findings, decisions):
+    """Preserve positional identity and exact original finding text."""
+    if len(suggestions) != len(findings):
+        raise ValueError("Baseline suggestion/finding counts differ")
+    removed = {d["suggestion_index"] for d in decisions
+               if d["decision"] in {"dismissed", "uncertain", "unverified"}}
+    return [finding for index, finding in enumerate(findings) if index not in removed]
 
 
 def main():

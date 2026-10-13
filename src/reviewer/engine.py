@@ -443,7 +443,15 @@ def review_with_ai(
             suggestions, evidence_rejections = validate_ai_evidence(suggestions, files)
         pre_critic_suggestions = list(suggestions)
         critic_candidates = select_critic_candidates(suggestions) if enable_critic else []
-        critic_batch = critique_batch(critic_provider or provider, critic_candidates, files)
+        head_cache = {}
+        def read_frozen_head(path):
+            if path not in head_cache:
+                head_cache[path] = gh_client.get_file_contents(pr.repo, path, pr.head_sha)
+            return head_cache[path]
+        read_head_file = read_frozen_head if gh_client is not None and pr.head_sha else None
+        critic_batch = critique_batch(
+            critic_provider or provider, critic_candidates, files, read_head_file=read_head_file
+        )
         if enable_critic:
             suggestions, critic_decisions = apply_critic(suggestions, critic_candidates, critic_batch)
         else:

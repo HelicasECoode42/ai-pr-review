@@ -128,8 +128,7 @@ jobs:
           fi
 
           REVIEWER_ARGS=()
-          COLUMNS=240 NO_COLOR=1 uv run python -m src.cli.main --help > /tmp/reviewer-help.txt
-          if grep -q -- "--reviewer-version" /tmp/reviewer-help.txt; then
+          if uv run python -c 'import sys; from typer.main import get_command; from src.cli.main import app; command = get_command(app); sys.exit(0 if any("--reviewer-version" in getattr(p, "opts", []) for p in command.params) else 1)'; then
             REVIEWER_ARGS=(
               --reviewer-version "main-fallback"
               --execution-status "degraded"

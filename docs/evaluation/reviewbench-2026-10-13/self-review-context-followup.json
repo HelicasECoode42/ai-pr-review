@@ -1,0 +1,42 @@
+{
+  "target_commit": "e3f0aee4e6fb26740776065a61148d8811f597b3",
+  "reviewer_source": {
+    "reviewer_commit": "e3f0aee4e6fb26740776065a61148d8811f597b3",
+    "working_tree_dirty": true,
+    "reviewer_source_sha256": "baa855257f4120476c5ad9c2e29740a8c02376e5937a1e2c7ab862af64c83b1d"
+  },
+  "protocol": "same fixed candidate, frozen imported module context; no re-generation of findings",
+  "batch": {
+    "items": [
+      {
+        "suggestion_index": 0,
+        "decision": "uncertain",
+        "confidence": 0.6,
+        "reason": "The changed code does use a set of `(file_path, line, title)` identities and would re-emit both findings when duplicate-identity suggestions exist and the Critic removes only one. However, the supplied patch and related modules do not establish that `suggestions` can contain duplicate identity tuples or that `apply_critic`/`select_critic_candidates` can remove exactly one of a duplicate pair; upstream deduplication or index-based handling could prevent the scenario. Therefore the failure scenario is plausible but not confirmed by the available code."
+      }
+    ],
+    "provider_used": true,
+    "degradation_reason": null
+  },
+  "usage": [
+    {
+      "model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 5526,
+        "completion_tokens": 8917,
+        "total_tokens": 14443,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 8779
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 5526
+      },
+      "request_id": "5cb3a25f-7fd4-4687-8958-f6fcd1e71e48",
+      "finish_reason": "stop",
+      "stream_complete": true
+    }
+  ]
+}

@@ -96,6 +96,14 @@ VS Code build、review三项检查通过。Draft PR #45保持未合并，自改�
 
 自审运行 38388354570 成功，并非 HTTP 402。报告却同时声明“全部文件进入上下文”与“上下文被裁剪”，把评测 JSON 引用代码的 7 个匹配呈现为高风险规则命中。该工作流实际 checkout 基准分支，不能用其成功结果证明 PR 新版 reviewer 的效果。
 
-新增修复：评测 JSON 排除代码规则及 patch 上下文（Python 源码仍扫描）；源码优先且单文件预算受限；预算遗漏逐文件记录；截断报告标为 partial；规则明确为未验证线索，不再自动发成 GitHub 行内评论；Critic uncertain/unverified 候选保存在 pending_suggestions 并展示，排除确认问题统计及发布。帮助文本检测不再使用会提前关闭管道的 grep -q，固定输出宽度避免旗标折行。
+新增修复：评测 JSON 排除代码规则及 patch 上下文（Python 源码仍扫描）；源码优先且单文件预算受限；预算遗漏逐文件记录；截断报告标为 partial；规则明确为未验证线索，不再自动发成 GitHub 行内评论；Critic uncertain/unverified 候选保存在 pending_suggestions 并展示，排除确认问题统计及发布。CI 38390731785 进一步证明帮助文本检测仍然失败，最终改为检查 Typer 实际参数定义，不依赖帮助文本格式。
 
 同一 a652820 冻结 diff 的确定性检查见 self-review-reliability-check.json：评测 JSON 命中 7→0；新版上下文包含 9 个补丁段，仍有 29 个文件因预算遗漏。此检查无需模型、不证明 Precision/Recall 提升，也没有把未覆盖文件称为审查成功。真实模型效果需另行运行与独立标注。
+
+### 新版真实自审与候选复核
+
+在 e3f0aee 固定提交执行一次 DeepSeek 真实自审，启用 Critic、流式输出与 32768 输出预算（见 self-review-e3f0aee.json）。执行 success，覆盖 partial，确认建议 0，待补上下文候选 1，无模型错误。模型把已有 MODIFIED 分支看漏，Critic 用完整分支代码驳回；另一条回放身份匹配候选被保留为 uncertain。增加冻结依赖上下文的一次固定候选复核仍 uncertain（self-review-context-followup.json），因此不能宣称上下文策略已经提升正确率。
+
+人工检查发现正常基线生成去重会防止重复身份场景；但外部输入的重复身份会触发回放按身份集合复制的错误。已按候选索引保留原文、提前验证数量，并用重复候选测试覆盖。此项是回放输入健壮性修复，不作为正常生产流程新发现的真 Bug 计分。
+
+本次失败轨迹进一步用于改进 Critic 上下文选择：优先失败场景点名的导入函数，从固定 head SHA 读取最多两个依赖，每个 8000 字符，标明截断并缓存读取；无 head SHA 不读取移动分支，失败保留 uncertain。这个最终选择策略有针对性测试，尚无新的整套 ReviewBench 效果指标。
