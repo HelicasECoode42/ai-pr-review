@@ -388,11 +388,40 @@ def review_with_ai(
     enable_evidence_gate: bool = True,
     review_context: "ReviewContext | None" = None,
     prompt_addendum: str = "",
+    repository_snapshot=None,
+    follow_changes: bool = False,
+    verify_behavior: bool = True,
+    repository_evidence_tokens: int = 6000,
 ) -> ReviewReport:
     try:
         # The main review must start from the PR text and diff alone. Rule
         # results are retained as audit signals, not injected as conclusions.
-        ctx = review_context if review_context is not None else build_review_context(pr, files)
+        ctx = review_context if review_context is not None else build_review_context(
+            pr, files, include_context_pack=not follow_changes, allow_remote_file_fetch=not follow_changes
+        )
+        if follow_changes and not two_stage and (repository_snapshot is not None or (pr.head_sha and pr.base_sha)):
+            from src.reviewer.grounded_review import review_grounded, build_grounded_report
+            def grounded(snapshot):
+                result = review_grounded(pr, files, provider, snapshot, ctx, max_suggestions,
+                                         min_confidence, language, repository_evidence_tokens, verify_behavior,
+                                         max_suggestions_per_file=max_suggestions_per_file)
+                return build_grounded_report(
+                    pr, files, findings, result, ctx, reviewer_version=reviewer_version,
+                    execution_status=execution_status, review_meta=review_meta, pr_syntax_ok=pr_syntax_ok,
+                    report_confidence=report_confidence, degradation_reason=degradation_reason,
+                )
+            if repository_snapshot is not None:
+                return grounded(repository_snapshot)
+            from src.analyzer.repository_context import GitHubSnapshot
+            from src.github.client import GitHubClient
+            from src.utils.config import get_settings
+            settings = get_settings()
+            # Earlier legacy callers have already closed their fetch client.
+            # Use a fresh scoped reader so HEAD evidence remains available.
+            token = gh_client.token if gh_client is not None else settings.github_token
+            with GitHubClient(token, timeout=settings.request_timeout_seconds) as reader:
+                snapshot = GitHubSnapshot(reader, pr.repo, pr.base_sha, pr.head_sha, [f.filename for f in files])
+                return grounded(snapshot)
         stage_audit = []
         if two_stage:
             from src.reviewer.two_stage import two_stage_review

@@ -152,6 +152,9 @@ class ReviewAgentRunner:
                 model=settings.review_model,
                 base_url=settings.openai_base_url,
                 timeout=settings.request_timeout_seconds,
+                stream=settings.enable_repository_review,
+                total_timeout=300 if settings.enable_repository_review else None,
+                max_output_tokens=32768 if settings.enable_repository_review else None,
             )
             critic_provider = provider
             if settings.enable_critic and settings.critic_model:
@@ -160,6 +163,9 @@ class ReviewAgentRunner:
                     model=settings.critic_model,
                     base_url=settings.openai_base_url,
                     timeout=settings.request_timeout_seconds,
+                    stream=settings.enable_repository_review,
+                    total_timeout=300 if settings.enable_repository_review else None,
+                    max_output_tokens=32768 if settings.enable_repository_review else None,
                 )
             try:
                 review_meta = ReviewMeta(
@@ -175,6 +181,8 @@ class ReviewAgentRunner:
                     findings=ctx["findings"],
                     provider=provider,
                     max_suggestions=settings.max_suggestions,
+                    follow_changes=settings.enable_repository_review,
+                    repository_evidence_tokens=settings.repository_evidence_tokens,
                     min_confidence=settings.min_comment_confidence,
                     max_suggestions_per_file=settings.max_suggestions_per_file,
                     language=ctx.get("language", "en"),

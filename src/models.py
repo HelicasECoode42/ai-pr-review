@@ -27,6 +27,7 @@ class PullRequest(BaseModel):
     body: str | None = None
     author: str | None = None
     base_ref: str | None = None
+    base_sha: str | None = None
     head_ref: str | None = None
     head_sha: str | None = None
     html_url: str | None = None
@@ -157,4 +158,7 @@ class ReviewReport(BaseModel):
     critic_decisions: list[dict] = Field(default_factory=list)
     pending_suggestions: list[ReviewSuggestion] = Field(default_factory=list)
     stage_results: list[dict] = Field(default_factory=list)
+    candidate_audit: list[dict] = Field(default_factory=list)
+    behavior_verifications: list[dict] = Field(default_factory=list)
+    repository_context: dict = Field(default_factory=dict)
     metrics: dict[str, int | float] = Field(default_factory=dict)

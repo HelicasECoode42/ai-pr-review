@@ -110,6 +110,10 @@ def run_review(
     model="unknown",
     two_stage=False,
     verify_signals=False,
+    follow_changes=False,
+    repository_snapshot=None,
+    patch_and_repository_tokens=12000,
+    repository_evidence_tokens=6000,
 ) -> tuple[dict, dict]:
     files = parse_diff(diff)
     pr = PullRequest(
@@ -118,12 +122,14 @@ def run_review(
         title=metadata["title"],
         body=metadata.get("body"),
         base_ref=metadata["base"],
+        base_sha=metadata["base"],
         head_ref=metadata["head"],
         head_sha=metadata["head"],
     )
     # Do not accidentally inject AI PR Review's own guide into other repositories.
     context = build_review_context(
-        pr, files, include_context_pack=False, allow_remote_file_fetch=False
+        pr, files, include_context_pack=False, allow_remote_file_fetch=False,
+        max_patch_tokens=patch_and_repository_tokens - (repository_evidence_tokens if follow_changes else 0),
     )
     if context_pack and project_root is not None:
         root = project_root.resolve()
@@ -148,6 +154,9 @@ def run_review(
         max_suggestions=20,
         two_stage=two_stage,
         verify_rule_signals=verify_signals,
+        follow_changes=follow_changes,
+        repository_snapshot=repository_snapshot,
+        repository_evidence_tokens=repository_evidence_tokens,
         min_confidence=min_confidence,
         enable_critic=critic,
         enable_evidence_gate=evidence,
@@ -199,6 +208,9 @@ def run_review(
             "two_stage": two_stage,
             "verify_signals": verify_signals,
             "min_confidence": min_confidence,
+            "follow_changes": follow_changes,
+            "patch_and_repository_tokens": patch_and_repository_tokens,
+            "repository_evidence_tokens": repository_evidence_tokens if follow_changes else 0,
             "prompt_sha256": hashlib.sha256(prompt_addendum.encode()).hexdigest(),
         },
         "report": report.model_dump(mode="json"),
@@ -213,6 +225,7 @@ def run_review(
             "skipped_files": [f.model_dump() for f in report.skipped_context_files],
         },
         "request_count": observed.calls,
+        "model_outputs": observed.outputs,
         "usage_records": getattr(provider, "usage_records", [])[usage_start:],
         "token_usage": _usage_total(getattr(provider, "usage_records", [])[usage_start:]),
         "cost_usd": None,

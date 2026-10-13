@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     min_comment_confidence: float = 0.65
     verify_rule_signals: bool = False
     enable_critic: bool = False
+    enable_repository_review: bool = True
+    repository_evidence_tokens: int = 6000
     critic_model: str | None = None
 
     model_config = SettingsConfigDict(
