@@ -1,0 +1,185 @@
+{
+  "model": "deepseek-v4-flash",
+  "latency_seconds": 35.100003499988816,
+  "diff_sha256": "a9b1c2b0a0c86586cce942e14d87e7b1873f8033d95ed77911e158bb1572355d",
+  "strategy": {
+    "evidence": true,
+    "critic": false,
+    "context_pack": true,
+    "two_stage": false,
+    "verify_signals": false,
+    "min_confidence": 0.65,
+    "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "report": {
+    "pr": {
+      "repo": "Marvell-Consulting/statswales-frontend",
+      "number": 626,
+      "title": "SW-1226: Fix download language selector",
+      "author": null,
+      "base_ref": "c1707c79a5a947cf7c6912af3ad00848c42a28e0",
+      "head_ref": "30ba27a5f20318f12fe74f26059d8b62d62874e9",
+      "head_sha": "30ba27a5f20318f12fe74f26059d8b62d62874e9",
+      "html_url": null
+    },
+    "files": [
+      {
+        "filename": "src/consumer/services/consumer-api.ts",
+        "status": "modified",
+        "additions": 4,
+        "deletions": 4,
+        "changes": 8,
+        "previous_filename": null,
+        "patch_sha256": "daf9a60969e9a48d2104adf5afbd0d3eb33d9f27cf0883aaa37abadda4dac188"
+      },
+      {
+        "filename": "src/publisher/services/publisher-api.ts",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 2,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "6fc86d4cb98145505a62fd5bb1718fb2b2e98d9d257a94ae4dbfeb22f6bad153"
+      },
+      {
+        "filename": "tests-e2e/consumer/dataset-download.spec.ts",
+        "status": "modified",
+        "additions": 39,
+        "deletions": 0,
+        "changes": 39,
+        "previous_filename": null,
+        "patch_sha256": "eb7e95bc111c79508975d805ebe8add7b4a8687e42792244e07b96a801c40183"
+      }
+    ],
+    "summary": "The PR moves the download language from the request query string (`lang`) into the `lang` option of the shared `fetch` helper for three download-stream methods: ConsumerApi CSV and pivot streams and PublisherApi preview stream. This is intended to stop the page-level locale from overwriting the explicitly selected download language. The e2e spec adds a check that a Welsh CSV download differs from the English one and contains a Welsh header marker. Reviewers should focus on whether the `Locale` type assertion is safe for all callers and on whether the `fetch` helper reliably propagates the supplied language for every stream format, not just CSV.",
+    "risk_level": "low",
+    "rule_findings": [],
+    "suggestions": [],
+    "used_ai": true,
+    "ai_failure_reason": null,
+    "analysis_warnings": [
+      "1 suggestion(s) filtered out (low confidence, unchanged line, or duplicate)"
+    ],
+    "context_truncated": false,
+    "context_token_count": 1030,
+    "patch_token_budget": 6000,
+    "context_tokenizer": "cl100k_base",
+    "hidden_suggestions_count": 1,
+    "skipped_context_files": [],
+    "hidden_rule_findings_count": 0,
+    "reviewer_version": "pr-branch",
+    "execution_status": "success",
+    "degradation_reason": null,
+    "report_confidence": "normal",
+    "completeness": [
+      {
+        "item": "PR 元信息获取",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "变更文件获取",
+        "status": "success",
+        "detail": "3 个文件"
+      },
+      {
+        "item": "AI 上下文文件",
+        "status": "success",
+        "detail": "全部文件进入上下文"
+      },
+      {
+        "item": "AI 分析",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "规则扫描",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "Patch 上下文",
+        "status": "success",
+        "detail": "完整"
+      },
+      {
+        "item": "PR head 语法诊断",
+        "status": "success",
+        "detail": "未检测到语法错误"
+      }
+    ],
+    "pr_syntax_check_ok": true,
+    "review_meta": {
+      "reviewed_commit": "30ba27a5f20318f12fe74f26059d8b62d62874e9",
+      "trigger_event": null,
+      "workflow_run_url": null,
+      "updated_at": null,
+      "review_mode": "full_pr"
+    },
+    "fix_tracking": [],
+    "confirmed_signals": [],
+    "dismissed_signals": [],
+    "unresolved_signals": [],
+    "unverified_signals": [],
+    "evidence_rejections": [],
+    "critic_decisions": [],
+    "stage_results": [],
+    "metrics": {
+      "raw_signal_count": 0,
+      "main_review_prompt_signal_count": 0,
+      "independent_suggestion_count": 0,
+      "evidence_rejected_suggestion_count": 0,
+      "critic_request_count": 0,
+      "critic_confirmed_count": 0,
+      "critic_dismissed_count": 0,
+      "critic_uncertain_count": 0,
+      "critic_unverified_count": 0,
+      "context_token_count": 1030,
+      "signal_verification_request_count": 0,
+      "telemetry_only_signal_count": 0,
+      "confirmed_signal_count": 0,
+      "dismissed_signal_count": 0,
+      "unresolved_signal_count": 0,
+      "unverified_signal_count": 0
+    }
+  },
+  "input_coverage": {
+    "binary_files": [],
+    "metadata_only_files": [],
+    "context_truncated": false,
+    "skipped_files": []
+  },
+  "request_count": 1,
+  "usage_records": [
+    {
+      "model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 1651,
+        "completion_tokens": 6399,
+        "total_tokens": 8050,
+        "prompt_tokens_details": {
+          "cached_tokens": 384
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 5705
+        },
+        "prompt_cache_hit_tokens": 384,
+        "prompt_cache_miss_tokens": 1267
+      },
+      "request_id": "a3b539d5-dc60-4b1e-87ad-c9a573e4069b"
+    }
+  ],
+  "token_usage": {
+    "prompt_tokens": 1651,
+    "completion_tokens": 6399,
+    "total_tokens": 8050
+  },
+  "cost_usd": null,
+  "reviewer_commit": "200ab1002c0362761cbcc1cac145bbd7d2ad47b8",
+  "working_tree_dirty": true,
+  "reviewer_source_sha256": "f06d31d67053fc56be31ee3149087d8573a8e08cb382d5a4297313be307c708c",
+  "transport": "streaming",
+  "timeout_seconds": 180,
+  "total_time_budget_seconds": 300,
+  "max_output_tokens": 32768
+}

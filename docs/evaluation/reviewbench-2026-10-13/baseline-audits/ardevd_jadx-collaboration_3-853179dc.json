@@ -1,0 +1,200 @@
+{
+  "model": "deepseek-v4-flash",
+  "latency_seconds": 93.92165995801042,
+  "diff_sha256": "a7b4355836c5c0949de4de41b56ea5352f22411d09b68f03cd14e1014f21a975",
+  "strategy": {
+    "evidence": true,
+    "critic": false,
+    "context_pack": true,
+    "two_stage": false,
+    "verify_signals": false,
+    "min_confidence": 0.65,
+    "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "report": {
+    "pr": {
+      "repo": "ardevd/jadx-collaboration",
+      "number": 3,
+      "title": "perf: serialize pull/push on a shared background executor; guard invokeAndWait exceptions",
+      "author": null,
+      "base_ref": "a9627c7cd6695e2389a68033c3985a0809f2978e",
+      "head_ref": "853179dcb73aed6afab52d11324ea3ff3eac8b8a",
+      "head_sha": "853179dcb73aed6afab52d11324ea3ff3eac8b8a",
+      "html_url": null
+    },
+    "files": [
+      {
+        "filename": "src/main/kotlin/uk/oshawk/jadx/collaboration/ConflictResolvers.kt",
+        "status": "modified",
+        "additions": 22,
+        "deletions": 1,
+        "changes": 23,
+        "previous_filename": null,
+        "patch_sha256": "28db3d4ed92cf66433e2e306495241721c539ee8a2bc78ad8bf3900e2ce3a9bd"
+      },
+      {
+        "filename": "src/main/kotlin/uk/oshawk/jadx/collaboration/Plugin.kt",
+        "status": "modified",
+        "additions": 39,
+        "deletions": 23,
+        "changes": 62,
+        "previous_filename": null,
+        "patch_sha256": "7977f4b49093f10aeea0ea416df49fd2a6a0751c17d3a345d78edcb999d83703"
+      },
+      {
+        "filename": "src/test/kotlin/uk/oshawk/jadx/collaboration/PluginTest.kt",
+        "status": "modified",
+        "additions": 4,
+        "deletions": 4,
+        "changes": 8,
+        "previous_filename": null,
+        "patch_sha256": "7ac10d1ace2ee71d0fcdf4a20937f0029a39019218316f46ae360d120ce1df2b"
+      }
+    ],
+    "summary": "This PR moves pull/push entry points off the EDT and centralizes error/info dialog creation into uiRun/showError/showInfo helpers in Plugin.kt, and hardens dialogConflictResolver's invokeAndWait usage with InterruptedException/InvocationTargetException handling in ConflictResolvers.kt; test call sites are updated to the new internal pull()/push() methods. Reviewers should focus on whether the new threading actually serializes concurrent pull/push invocations (the PR description claims a shared single-thread executor, but the diff uses kotlin.concurrent.thread per click) and on which work now runs on the event dispatch thread.",
+    "risk_level": "high",
+    "rule_findings": [],
+    "suggestions": [
+      {
+        "file_path": "src/main/kotlin/uk/oshawk/jadx/collaboration/Plugin.kt",
+        "line": 44,
+        "severity": "high",
+        "confidence": 0.85,
+        "title": "Menu/key actions spawn a new thread per click instead of submitting to a serializing executor",
+        "reason": "The diff replaces `uiRun(this::pull)` with `this.context?.guiContext?.addMenuAction(\"Pull\") { kotlin.concurrent.thread { this.pull() } }` (and the same pattern at lines 45, 50 and 54 for Push and both key bindings). This contradicts the stated design of a shared single-thread `backgroundExecutor`: every menu click or key press creates a brand-new thread, so rapid activations still run `pull()`/`push()` concurrently and can interleave repository reads/writes and project mutations — exactly the corruption case this PR claims to fix. Additionally `kotlin.concurrent.thread` defaults to `isDaemon = false`, so the hung/blocked worker also prevents JVM shutdown, contrary to the description's daemon-thread rationale.",
+        "recommendation": "Create one shared executor and submit all four entry points to it, e.g.:\n\nprivate val backgroundExecutor: ExecutorService = Executors.newSingleThreadExecutor { r ->\n    Thread(r, \"$ID-background\").apply { isDaemon = true }\n}\n\nthis.context?.guiContext?.addMenuAction(\"Pull\") { backgroundExecutor.submit(this::pull) }\nthis.context?.guiContext?.addMenuAction(\"Push\") { backgroundExecutor.submit(this::push) }\n\nand use the same submission for the two registerGlobalKeyBinding callbacks.",
+        "source": "ai",
+        "evidence": [
+          "this.context?.guiContext?.addMenuAction(\"Pull\") { kotlin.concurrent.thread { this.pull() } }"
+        ],
+        "failure_scenario": "A user double-clicks the Pull menu item (or presses ctrl+BACK_SLASH twice quickly). Two independent threads enter pull(), both call readLocalRepository()/projectToLocalRepository()/writeLocalRepository() on the same on-disk repository, and interleaved writes leave the local repository in a partially updated or inconsistent state."
+      }
+    ],
+    "used_ai": true,
+    "ai_failure_reason": null,
+    "analysis_warnings": [
+      "1 suggestion(s) filtered out (low confidence, unchanged line, or duplicate)"
+    ],
+    "context_truncated": false,
+    "context_token_count": 2537,
+    "patch_token_budget": 6000,
+    "context_tokenizer": "cl100k_base",
+    "hidden_suggestions_count": 1,
+    "skipped_context_files": [],
+    "hidden_rule_findings_count": 0,
+    "reviewer_version": "pr-branch",
+    "execution_status": "success",
+    "degradation_reason": null,
+    "report_confidence": "normal",
+    "completeness": [
+      {
+        "item": "PR 元信息获取",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "变更文件获取",
+        "status": "success",
+        "detail": "3 个文件"
+      },
+      {
+        "item": "AI 上下文文件",
+        "status": "success",
+        "detail": "全部文件进入上下文"
+      },
+      {
+        "item": "AI 分析",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "规则扫描",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "Patch 上下文",
+        "status": "success",
+        "detail": "完整"
+      },
+      {
+        "item": "PR head 语法诊断",
+        "status": "success",
+        "detail": "未检测到语法错误"
+      }
+    ],
+    "pr_syntax_check_ok": true,
+    "review_meta": {
+      "reviewed_commit": "853179dcb73aed6afab52d11324ea3ff3eac8b8a",
+      "trigger_event": null,
+      "workflow_run_url": null,
+      "updated_at": null,
+      "review_mode": "full_pr"
+    },
+    "fix_tracking": [],
+    "confirmed_signals": [],
+    "dismissed_signals": [],
+    "unresolved_signals": [],
+    "unverified_signals": [],
+    "evidence_rejections": [],
+    "critic_decisions": [],
+    "stage_results": [],
+    "metrics": {
+      "raw_signal_count": 0,
+      "main_review_prompt_signal_count": 0,
+      "independent_suggestion_count": 1,
+      "evidence_rejected_suggestion_count": 0,
+      "critic_request_count": 0,
+      "critic_confirmed_count": 0,
+      "critic_dismissed_count": 0,
+      "critic_uncertain_count": 0,
+      "critic_unverified_count": 0,
+      "context_token_count": 2537,
+      "signal_verification_request_count": 0,
+      "telemetry_only_signal_count": 0,
+      "confirmed_signal_count": 0,
+      "dismissed_signal_count": 0,
+      "unresolved_signal_count": 0,
+      "unverified_signal_count": 0
+    }
+  },
+  "input_coverage": {
+    "binary_files": [],
+    "metadata_only_files": [],
+    "context_truncated": false,
+    "skipped_files": []
+  },
+  "request_count": 1,
+  "usage_records": [
+    {
+      "model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 3420,
+        "completion_tokens": 19137,
+        "total_tokens": 22557,
+        "prompt_tokens_details": {
+          "cached_tokens": 384
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 18101
+        },
+        "prompt_cache_hit_tokens": 384,
+        "prompt_cache_miss_tokens": 3036
+      },
+      "request_id": "6527a171-0ef7-431b-88ff-728e1dfb910c"
+    }
+  ],
+  "token_usage": {
+    "prompt_tokens": 3420,
+    "completion_tokens": 19137,
+    "total_tokens": 22557
+  },
+  "cost_usd": null,
+  "reviewer_commit": "acabdc0fafd67aa7946a451928f8c27e1a571202",
+  "working_tree_dirty": true,
+  "reviewer_source_sha256": "60cb296a54c9e453c85c74e32f03dc75024c44138263e2e885d21c1b315a658a",
+  "retry_transport": "streaming",
+  "timeout_seconds": 180,
+  "total_time_budget_seconds": 300,
+  "max_output_tokens": 32768
+}

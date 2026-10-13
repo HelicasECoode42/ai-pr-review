@@ -1,0 +1,18 @@
+{
+  "pr": {
+    "repo": "https://github.com/scotthamilton77/agents-config",
+    "pr_number": 1,
+    "base": "3776d9195827d79efec978fb900573f3a5a53339",
+    "head": "1fc789709ae044579908fed58c8c14638d0db095"
+  },
+  "agent": "ai-pr-review",
+  "findings": [
+    {
+      "file": "scripts/install.sh",
+      "start_line": 129,
+      "end_line": 129,
+      "message": "Trim whitespace when parsing the --tools list: The new override parsing splits the value on commas only (`IFS=',' read -ra TOOLS <<< \"$TOOLS_OVERRIDE\"`), and the validation loop immediately after rejects any element that is not an exact match for an entry in `ALL_TOOLS` (`err \"Unknown tool: $tool (valid: ${ALL_TOOLS[*]})\"`). A space after a comma \u2014 the natural way to write a comma-separated CLI list \u2014 therefore produces a hard failure instead of being tolerated.\nScenario: Running `scripts/install.sh --yes --tools=\"claude, codex\"` yields `x Unknown tool:  codex (valid: claude codex gemini)` and exits with status 1, installing nothing, even though both requested tool names are valid.\nNormalize each entry before validating, e.g. inside the validation loop do `tool=\"${tool//[[:space:]]/}\"` (and also strip when building `TOOLS`), or change the parse to `IFS=', ' read -ra TOOLS <<< \"$TOOLS_OVERRIDE\"`.",
+      "producer": "ai-pr-review"
+    }
+  ]
+}

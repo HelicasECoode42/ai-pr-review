@@ -1,0 +1,330 @@
+{
+  "model": "deepseek-v4-flash",
+  "latency_seconds": 143.94319199999154,
+  "diff_sha256": "b248d549c114d0a3c9f079cbc09d316399984dcae1fa87b93089722d6a2991a7",
+  "strategy": {
+    "evidence": true,
+    "critic": false,
+    "context_pack": true,
+    "two_stage": false,
+    "verify_signals": false,
+    "min_confidence": 0.65,
+    "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "report": {
+    "pr": {
+      "repo": "AY2526S2-CS2103T-W14-3/tp",
+      "number": 152,
+      "title": " Implement Global Date Notes",
+      "author": null,
+      "base_ref": "a27b3e40d94f92f229b9301a8a9d5207d9a5b0bb",
+      "head_ref": "e0a9ce03c8c1cc839eaf409e2677b9abf2017b1f",
+      "head_sha": "e0a9ce03c8c1cc839eaf409e2677b9abf2017b1f",
+      "html_url": null
+    },
+    "files": [
+      {
+        "filename": "docs/UserGuide.md",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 2,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "853334d09d4c6da44889833b1f553768a893d1356f669c8840356bbc02035b04"
+      },
+      {
+        "filename": "src/main/java/seedu/address/logic/Logic.java",
+        "status": "modified",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "a8febf6dc9d4337633fe87eca410bdb9272d6cb8514c279e0dcd6730cce1d2cc"
+      },
+      {
+        "filename": "src/main/java/seedu/address/logic/LogicManager.java",
+        "status": "modified",
+        "additions": 7,
+        "deletions": 0,
+        "changes": 7,
+        "previous_filename": null,
+        "patch_sha256": "4dffa1405d9f569e4800ba28c3ecd9ff9dd7339378aa82fdad41b35f87e0e635"
+      },
+      {
+        "filename": "src/main/java/seedu/address/logic/commands/NoteCommand.java",
+        "status": "modified",
+        "additions": 10,
+        "deletions": 8,
+        "changes": 18,
+        "previous_filename": null,
+        "patch_sha256": "d9f04dad71cb445dc132b9815c730db4f3d7223ab082224cbd8fe22028aa1e2d"
+      },
+      {
+        "filename": "src/main/java/seedu/address/model/AddressBook.java",
+        "status": "modified",
+        "additions": 49,
+        "deletions": 2,
+        "changes": 51,
+        "previous_filename": null,
+        "patch_sha256": "389dbcc6adc8e1af1357963618feeb84c951e90cd229e90445221fdc9666a7c4"
+      },
+      {
+        "filename": "src/main/java/seedu/address/model/Model.java",
+        "status": "modified",
+        "additions": 14,
+        "deletions": 1,
+        "changes": 15,
+        "previous_filename": null,
+        "patch_sha256": "f4a06a04644e16d208cf7fba793915fc6e4861ba0f01781db6f239daa0d5a283"
+      },
+      {
+        "filename": "src/main/java/seedu/address/model/ModelManager.java",
+        "status": "modified",
+        "additions": 56,
+        "deletions": 1,
+        "changes": 57,
+        "previous_filename": null,
+        "patch_sha256": "dbf931839e81173c98a8e69f52037d6a986f5a28e1215e5ad8a2ee2664b4882c"
+      },
+      {
+        "filename": "src/main/java/seedu/address/model/ReadOnlyAddressBook.java",
+        "status": "modified",
+        "additions": 10,
+        "deletions": 0,
+        "changes": 10,
+        "previous_filename": null,
+        "patch_sha256": "9447ee8f1dab99b1ee7ecfc3aa3dc70981aa546e340005588de2ee21e28724fb"
+      },
+      {
+        "filename": "src/main/java/seedu/address/model/location/NoteContent.java",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 1,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "4cd3cc21c049ea9df81c3340408d546a57dc871f84f6ea3a799ceb2f859304b0"
+      },
+      {
+        "filename": "src/main/java/seedu/address/storage/JsonSerializableAddressBook.java",
+        "status": "modified",
+        "additions": 31,
+        "deletions": 2,
+        "changes": 33,
+        "previous_filename": null,
+        "patch_sha256": "305c33e5fbe64b7bba6ed67eafb1a85f2ce18dd26e618bb4583c84e3ef71f67f"
+      },
+      {
+        "filename": "src/main/java/seedu/address/ui/MainWindow.java",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "b7cdeec60d172d7b4ca5514514bca6df53c8c47fb46060636fa6f05219836312"
+      },
+      {
+        "filename": "src/main/java/seedu/address/ui/PlannerListPanel.java",
+        "status": "modified",
+        "additions": 10,
+        "deletions": 4,
+        "changes": 14,
+        "previous_filename": null,
+        "patch_sha256": "0e54d88a00852dba6d4481bb1fe546fff30c728be3d4deefb8bb3da0725eddac"
+      },
+      {
+        "filename": "src/test/java/seedu/address/logic/LogicManagerTest.java",
+        "status": "modified",
+        "additions": 8,
+        "deletions": 0,
+        "changes": 8,
+        "previous_filename": null,
+        "patch_sha256": "cfa3dedef19db5c04dae26cc34703c6ef0868c44215c45f3891c0d64d29a5238"
+      },
+      {
+        "filename": "src/test/java/seedu/address/logic/commands/AddCommandTest.java",
+        "status": "modified",
+        "additions": 13,
+        "deletions": 0,
+        "changes": 13,
+        "previous_filename": null,
+        "patch_sha256": "58871274999366e12c3736d18450f28bd7e37d406d2c53a81be5879113f1ecdc"
+      },
+      {
+        "filename": "src/test/java/seedu/address/logic/commands/NoteCommandTest.java",
+        "status": "modified",
+        "additions": 20,
+        "deletions": 1,
+        "changes": 21,
+        "previous_filename": null,
+        "patch_sha256": "27c7f688eeb8ac5cfeabfdd8b9fa689e8165eb1cc708a7fe1b8896e6f204bcc2"
+      },
+      {
+        "filename": "src/test/java/seedu/address/model/AddressBookTest.java",
+        "status": "modified",
+        "additions": 41,
+        "deletions": 1,
+        "changes": 42,
+        "previous_filename": null,
+        "patch_sha256": "27cb7cc76801c823ca2ffb391ef21d85ea7018ea79aefc0ea5452b3854f95d83"
+      },
+      {
+        "filename": "src/test/java/seedu/address/model/ModelManagerTest.java",
+        "status": "modified",
+        "additions": 98,
+        "deletions": 0,
+        "changes": 98,
+        "previous_filename": null,
+        "patch_sha256": "080a7a12716a5483fbf3055a0558b83b3feccc03eb2625ffe33d9f8da8c272fb"
+      },
+      {
+        "filename": "src/test/java/seedu/address/storage/JsonSerializableAddressBookTest.java",
+        "status": "modified",
+        "additions": 22,
+        "deletions": 4,
+        "changes": 26,
+        "previous_filename": null,
+        "patch_sha256": "4546831655d80dbc207dd6f802c28026ec3d70ce2402eee796b48fe3855c84b3"
+      },
+      {
+        "filename": "src/test/java/seedu/address/testutil/AddressBookBuilder.java",
+        "status": "modified",
+        "additions": 10,
+        "deletions": 0,
+        "changes": 10,
+        "previous_filename": null,
+        "patch_sha256": "36f09b63f99b64691cd8673bdbd5ce4b9578612f3573970e6c92ab4bc7310af7"
+      }
+    ],
+    "summary": "This PR completes the `note` command: notes are now stored globally in `AddressBook` as a `Map<VisitDate, NoteContent>`, exposed to the UI through a new `plannerNote` observable property on `Model`/`ModelManager`, persisted through `JsonSerializableAddressBook`, and included in undo/redo snapshots via `AddressBook.resetData`. Reviewers should focus on the new null-flow between `ModelManager` and `PlannerListPanel` (the property is set to null on every navigation to a dateless view), on the save/load round trip of the note map, and on the semantics of repeatedly running `note` for the same date.",
+    "risk_level": "low",
+    "rule_findings": [],
+    "suggestions": [],
+    "used_ai": true,
+    "ai_failure_reason": null,
+    "analysis_warnings": [
+      "3 suggestion(s) filtered out (low confidence, unchanged line, or duplicate)",
+      "Patch context was truncated to fit token budget; some files were not analyzed by AI."
+    ],
+    "context_truncated": true,
+    "context_token_count": 7441,
+    "patch_token_budget": 6000,
+    "context_tokenizer": "cl100k_base",
+    "hidden_suggestions_count": 3,
+    "skipped_context_files": [],
+    "hidden_rule_findings_count": 0,
+    "reviewer_version": "pr-branch",
+    "execution_status": "success",
+    "degradation_reason": null,
+    "report_confidence": "normal",
+    "completeness": [
+      {
+        "item": "PR 元信息获取",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "变更文件获取",
+        "status": "success",
+        "detail": "19 个文件"
+      },
+      {
+        "item": "AI 上下文文件",
+        "status": "success",
+        "detail": "全部文件进入上下文"
+      },
+      {
+        "item": "AI 分析",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "规则扫描",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "Patch 上下文",
+        "status": "partial",
+        "detail": "裁剪 — 超出 token 预算"
+      },
+      {
+        "item": "PR head 语法诊断",
+        "status": "success",
+        "detail": "未检测到语法错误"
+      }
+    ],
+    "pr_syntax_check_ok": true,
+    "review_meta": {
+      "reviewed_commit": "e0a9ce03c8c1cc839eaf409e2677b9abf2017b1f",
+      "trigger_event": null,
+      "workflow_run_url": null,
+      "updated_at": null,
+      "review_mode": "full_pr"
+    },
+    "fix_tracking": [],
+    "confirmed_signals": [],
+    "dismissed_signals": [],
+    "unresolved_signals": [],
+    "unverified_signals": [],
+    "evidence_rejections": [],
+    "critic_decisions": [],
+    "stage_results": [],
+    "metrics": {
+      "raw_signal_count": 0,
+      "main_review_prompt_signal_count": 0,
+      "independent_suggestion_count": 0,
+      "evidence_rejected_suggestion_count": 0,
+      "critic_request_count": 0,
+      "critic_confirmed_count": 0,
+      "critic_dismissed_count": 0,
+      "critic_uncertain_count": 0,
+      "critic_unverified_count": 0,
+      "context_token_count": 7441,
+      "signal_verification_request_count": 0,
+      "telemetry_only_signal_count": 0,
+      "confirmed_signal_count": 0,
+      "dismissed_signal_count": 0,
+      "unresolved_signal_count": 0,
+      "unverified_signal_count": 0
+    }
+  },
+  "input_coverage": {
+    "binary_files": [],
+    "metadata_only_files": [],
+    "context_truncated": true,
+    "skipped_files": []
+  },
+  "request_count": 1,
+  "usage_records": [
+    {
+      "model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 8649,
+        "completion_tokens": 29799,
+        "total_tokens": 38448,
+        "prompt_tokens_details": {
+          "cached_tokens": 8448
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 28232
+        },
+        "prompt_cache_hit_tokens": 8448,
+        "prompt_cache_miss_tokens": 201
+      },
+      "request_id": "ce16dad7-4e27-4d76-9f18-ecf1ec61e139"
+    }
+  ],
+  "token_usage": {
+    "prompt_tokens": 8649,
+    "completion_tokens": 29799,
+    "total_tokens": 38448
+  },
+  "cost_usd": null,
+  "reviewer_commit": "acabdc0fafd67aa7946a451928f8c27e1a571202",
+  "working_tree_dirty": true,
+  "reviewer_source_sha256": "60cb296a54c9e453c85c74e32f03dc75024c44138263e2e885d21c1b315a658a",
+  "retry_transport": "streaming",
+  "timeout_seconds": 180,
+  "total_time_budget_seconds": 300,
+  "max_output_tokens": 32768
+}

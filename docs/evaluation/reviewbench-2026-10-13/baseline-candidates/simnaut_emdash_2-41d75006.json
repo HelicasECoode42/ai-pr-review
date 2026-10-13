@@ -1,0 +1,10 @@
+{
+  "pr": {
+    "repo": "https://github.com/simnaut/emdash",
+    "pr_number": 2,
+    "base": "5beb0ddc334deb862ba90cedbf03f052b58e4974",
+    "head": "41d750067fc7a39eb29f6a530cf0d4ae0f8bdb41"
+  },
+  "agent": "ai-pr-review",
+  "findings": []
+}

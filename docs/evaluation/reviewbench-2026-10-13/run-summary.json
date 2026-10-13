@@ -1,0 +1,950 @@
+{
+  "task_count": 25,
+  "baseline": {
+    "grounded_precision": 0.9090909090909091,
+    "grounded_recall": 0.03977272727272727,
+    "augmented_precision": 0.9166666666666666,
+    "augmented_recall": 0.042492917847025496,
+    "novel_tp_count": 1,
+    "novel_tp_yield": 0.08333333333333333,
+    "candidate_count": 12,
+    "golden_tp_count": 352,
+    "matched_count": 11,
+    "matched_tp_count": 10,
+    "unmatched_count": 1,
+    "unmatched_tp_count": 1,
+    "unmatched_fp_count": 0,
+    "golden_covered_count": 14
+  },
+  "critic_fresh_judge": {
+    "grounded_precision": 0.8888888888888888,
+    "grounded_recall": 0.036931818181818184,
+    "augmented_precision": 0.9,
+    "augmented_recall": 0.039660056657223795,
+    "novel_tp_count": 1,
+    "novel_tp_yield": 0.1,
+    "candidate_count": 10,
+    "golden_tp_count": 352,
+    "matched_count": 9,
+    "matched_tp_count": 8,
+    "unmatched_count": 1,
+    "unmatched_tp_count": 1,
+    "unmatched_fp_count": 0,
+    "golden_covered_count": 13
+  },
+  "critic_fixed_baseline_labels": {
+    "tp": 9,
+    "fp": 1,
+    "augmented_precision": 0.9,
+    "golden_covered_count": 12,
+    "grounded_recall": 0.03409090909090909
+  },
+  "served_models": {
+    "deepseek-flash": 25
+  },
+  "successful_main_response_tokens": {
+    "prompt_tokens": 166646,
+    "completion_tokens": 459135,
+    "total_tokens": 625781
+  },
+  "context_truncated_task_count": 14,
+  "tokenizers": {
+    "cl100k_base": 25
+  },
+  "usage_note": "Successful responses only; excludes failed/interrupted calls and judge/Critic usage",
+  "generation_note": "Engineering pilot with mixed transport/output budgets and dirty source snapshots; no held-out claim",
+  "records": [
+    {
+      "case_id": "PierreJanineh_TechDebtMCP_135-16a54f0f",
+      "status": "success",
+      "reviewer_commit": "acabdc0fafd67aa7946a451928f8c27e1a571202",
+      "source_sha256": "6b3c4b810c30d5816064ba29d3be0cb6f1b564b353ef8b7232851b4d80bcd528",
+      "working_tree_dirty": true,
+      "diff_sha256": "45e636614bf6ae452b8f09c134fdd5dc2e5b5ce6830923c5d46af82fd011c73b",
+      "strategy": {
+        "evidence": true,
+        "critic": false,
+        "context_pack": true,
+        "two_stage": false,
+        "verify_signals": false,
+        "min_confidence": 0.65,
+        "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "max_output_tokens": null,
+      "latency_seconds": 51.65600504199392,
+      "token_usage": {
+        "prompt_tokens": 6855,
+        "completion_tokens": 8940,
+        "total_tokens": 15795
+      },
+      "finding_count": 1,
+      "context_token_count": 5978,
+      "context_truncated": false,
+      "input_coverage": {
+        "binary_files": [],
+        "metadata_only_files": [],
+        "context_truncated": false,
+        "skipped_files": []
+      }
+    },
+    {
+      "case_id": "simnaut_emdash_2-41d75006",
+      "status": "success",
+      "reviewer_commit": "acabdc0fafd67aa7946a451928f8c27e1a571202",
+      "source_sha256": "ad6bf74b1bac6495265b788ad064fc9b4367a85a0c45ddc4a2a67d5eafd8e757",
+      "working_tree_dirty": true,
+      "diff_sha256": "cf5d991ce3cdd86e20499f59aa2f3dbb67fc01a686145ec9b5bcb3523107430a",
+      "strategy": {
+        "evidence": true,
+        "critic": false,
+        "context_pack": true,
+        "two_stage": false,
+        "verify_signals": false,
+        "min_confidence": 0.65,
+        "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "max_output_tokens": null,
+      "latency_seconds": 33.962236207997194,
+      "token_usage": {
+        "prompt_tokens": 18199,
+        "completion_tokens": 6146,
+        "total_tokens": 24345
+      },
+      "finding_count": 0,
+      "context_token_count": 16073,
+      "context_truncated": true,
+      "input_coverage": {
+        "binary_files": [],
+        "metadata_only_files": [
+          ".agents/skills",
+          "packages/core/src/astro/routes/api/media/file/[...key].ts"
+        ],
+        "context_truncated": true,
+        "skipped_files": [
+          {
+            "file_path": "pnpm-lock.yaml",
+            "reason": "lockfile"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "konturio_disaster-ninja-fe_1230-d169e9da",
+      "status": "success",
+      "reviewer_commit": "acabdc0fafd67aa7946a451928f8c27e1a571202",
+      "source_sha256": "6b3c4b810c30d5816064ba29d3be0cb6f1b564b353ef8b7232851b4d80bcd528",
+      "working_tree_dirty": true,
+      "diff_sha256": "a097b72c2cc65a9b8766e7d5c86a435e9f6f738eca188972bc748598c8afe1cf",
+      "strategy": {
+        "evidence": true,
+        "critic": false,
+        "context_pack": true,
+        "two_stage": false,
+        "verify_signals": false,
+        "min_confidence": 0.65,
+        "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "max_output_tokens": null,
+      "latency_seconds": 76.89215579099255,
+      "token_usage": {
+        "prompt_tokens": 2447,
+        "completion_tokens": 12772,
+        "total_tokens": 15219
+      },
+      "finding_count": 0,
+      "context_token_count": 1773,
+      "context_truncated": false,
+      "input_coverage": {
+        "binary_files": [],
+        "metadata_only_files": [],
+        "context_truncated": false,
+        "skipped_files": []
+      }
+    },
+    {
+      "case_id": "cmik_apilix_12-0c34439a",
+      "status": "success",
+      "reviewer_commit": "acabdc0fafd67aa7946a451928f8c27e1a571202",
+      "source_sha256": "ad6bf74b1bac6495265b788ad064fc9b4367a85a0c45ddc4a2a67d5eafd8e757",
+      "working_tree_dirty": true,
+      "diff_sha256": "1dc3999f82f259ac1491750b34fb43e19e36122c4683d247a482d5bc87810666",
+      "strategy": {
+        "evidence": true,
+        "critic": false,
+        "context_pack": true,
+        "two_stage": false,
+        "verify_signals": false,
+        "min_confidence": 0.65,
+        "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "max_output_tokens": null,
+      "latency_seconds": 7.890050667003379,
+      "token_usage": {
+        "prompt_tokens": 7236,
+        "completion_tokens": 1119,
+        "total_tokens": 8355
+      },
+      "finding_count": 0,
+      "context_token_count": 6547,
+      "context_truncated": true,
+      "input_coverage": {
+        "binary_files": [],
+        "metadata_only_files": [],
+        "context_truncated": true,
+        "skipped_files": []
+      }
+    },
+    {
+      "case_id": "AA-Factory_aafactory-prototype_17-a1978cb7",
+      "status": "success",
+      "reviewer_commit": "acabdc0fafd67aa7946a451928f8c27e1a571202",
+      "source_sha256": "60cb296a54c9e453c85c74e32f03dc75024c44138263e2e885d21c1b315a658a",
+      "working_tree_dirty": true,
+      "diff_sha256": "536044f32a3720b70e20720ca88ff0b6320e04baf3dd1f0d6f16420c0a3c50ab",
+      "strategy": {
+        "evidence": true,
+        "critic": false,
+        "context_pack": true,
+        "two_stage": false,
+        "verify_signals": false,
+        "min_confidence": 0.65,
+        "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "max_output_tokens": 32768,
+      "latency_seconds": 14.734318374990835,
+      "token_usage": {
+        "prompt_tokens": 1479,
+        "completion_tokens": 3091,
+        "total_tokens": 4570
+      },
+      "finding_count": 0,
+      "context_token_count": 801,
+      "context_truncated": false,
+      "input_coverage": {
+        "binary_files": [],
+        "metadata_only_files": [],
+        "context_truncated": false,
+        "skipped_files": []
+      }
+    },
+    {
+      "case_id": "DisciplinedSoftware_Codebase-Conversion_1-4b46d68c",
+      "status": "success",
+      "reviewer_commit": "acabdc0fafd67aa7946a451928f8c27e1a571202",
+      "source_sha256": "6b3c4b810c30d5816064ba29d3be0cb6f1b564b353ef8b7232851b4d80bcd528",
+      "working_tree_dirty": true,
+      "diff_sha256": "9096ac3342141ae6a3e63b9ffdb904419cd9488260b021b4ebff63fa84d50c21",
+      "strategy": {
+        "evidence": true,
+        "critic": false,
+        "context_pack": true,
+        "two_stage": false,
+        "verify_signals": false,
+        "min_confidence": 0.65,
+        "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "max_output_tokens": null,
+      "latency_seconds": 157.27390137499606,
+      "token_usage": {
+        "prompt_tokens": 9079,
+        "completion_tokens": 32007,
+        "total_tokens": 41086
+      },
+      "finding_count": 1,
+      "context_token_count": 8027,
+      "context_truncated": true,
+      "input_coverage": {
+        "binary_files": [],
+        "metadata_only_files": [],
+        "context_truncated": true,
+        "skipped_files": []
+      }
+    },
+    {
+      "case_id": "brianc_node-postgres_3650-b922f0dd",
+      "status": "success",
+      "reviewer_commit": "acabdc0fafd67aa7946a451928f8c27e1a571202",
+      "source_sha256": "7f6d305b70ad9e6e095c5e1cc335b5c8339caf9bcabd3285851e2eaf34401280",
+      "working_tree_dirty": true,
+      "diff_sha256": "5942345514b866f0d3cc700c945bee6d7ae401ce124a702c3b5f1663cc78440f",
+      "strategy": {
+        "evidence": true,
+        "critic": false,
+        "context_pack": true,
+        "two_stage": false,
+        "verify_signals": false,
+        "min_confidence": 0.65,
+        "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "max_output_tokens": null,
+      "latency_seconds": 292.71590404200833,
+      "token_usage": {
+        "prompt_tokens": 6767,
+        "completion_tokens": 55665,
+        "total_tokens": 62432
+      },
+      "finding_count": 0,
+      "context_token_count": 5882,
+      "context_truncated": false,
+      "input_coverage": {
+        "binary_files": [],
+        "metadata_only_files": [],
+        "context_truncated": false,
+        "skipped_files": []
+      }
+    },
+    {
+      "case_id": "PaulStSmith_figlet-comment-generator_32-1d0b6642",
+      "status": "success",
+      "reviewer_commit": "acabdc0fafd67aa7946a451928f8c27e1a571202",
+      "source_sha256": "60cb296a54c9e453c85c74e32f03dc75024c44138263e2e885d21c1b315a658a",
+      "working_tree_dirty": true,
+      "diff_sha256": "2fd9e45a62dfad1c13ebafa3d0e16ef8d54b3d8a29b8009ccc0830d8992d8ba4",
+      "strategy": {
+        "evidence": true,
+        "critic": false,
+        "context_pack": true,
+        "two_stage": false,
+        "verify_signals": false,
+        "min_confidence": 0.65,
+        "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "max_output_tokens": 32768,
+      "latency_seconds": 65.54204604099505,
+      "token_usage": {
+        "prompt_tokens": 7774,
+        "completion_tokens": 13450,
+        "total_tokens": 21224
+      },
+      "finding_count": 0,
+      "context_token_count": 6791,
+      "context_truncated": true,
+      "input_coverage": {
+        "binary_files": [],
+        "metadata_only_files": [],
+        "context_truncated": true,
+        "skipped_files": []
+      }
+    },
+    {
+      "case_id": "brexhq_CrabTrap_15-5ef0884c",
+      "status": "success",
+      "reviewer_commit": "acabdc0fafd67aa7946a451928f8c27e1a571202",
+      "source_sha256": "60cb296a54c9e453c85c74e32f03dc75024c44138263e2e885d21c1b315a658a",
+      "working_tree_dirty": true,
+      "diff_sha256": "a41c5980bd62a7e7d9113178c3ce968ad23f4ecdc8658c790331d8a32ddada89",
+      "strategy": {
+        "evidence": true,
+        "critic": false,
+        "context_pack": true,
+        "two_stage": false,
+        "verify_signals": false,
+        "min_confidence": 0.65,
+        "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "max_output_tokens": 32768,
+      "latency_seconds": 120.70990820799489,
+      "token_usage": {
+        "prompt_tokens": 7296,
+        "completion_tokens": 23884,
+        "total_tokens": 31180
+      },
+      "finding_count": 0,
+      "context_token_count": 6217,
+      "context_truncated": false,
+      "input_coverage": {
+        "binary_files": [],
+        "metadata_only_files": [],
+        "context_truncated": false,
+        "skipped_files": []
+      }
+    },
+    {
+      "case_id": "k1LoW_gh-copilot-review_9-f9828193",
+      "status": "success",
+      "reviewer_commit": "acabdc0fafd67aa7946a451928f8c27e1a571202",
+      "source_sha256": "60cb296a54c9e453c85c74e32f03dc75024c44138263e2e885d21c1b315a658a",
+      "working_tree_dirty": true,
+      "diff_sha256": "092fbbc4c45e368cfff0149316323c9298d43961e061607371f83bfa2a40b3cb",
+      "strategy": {
+        "evidence": true,
+        "critic": false,
+        "context_pack": true,
+        "two_stage": false,
+        "verify_signals": false,
+        "min_confidence": 0.65,
+        "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "max_output_tokens": 32768,
+      "latency_seconds": 73.24855016700167,
+      "token_usage": {
+        "prompt_tokens": 1653,
+        "completion_tokens": 15547,
+        "total_tokens": 17200
+      },
+      "finding_count": 1,
+      "context_token_count": 1035,
+      "context_truncated": false,
+      "input_coverage": {
+        "binary_files": [],
+        "metadata_only_files": [],
+        "context_truncated": false,
+        "skipped_files": []
+      }
+    },
+    {
+      "case_id": "scotthamilton77_agents-config_1-1fc78970",
+      "status": "success",
+      "reviewer_commit": "acabdc0fafd67aa7946a451928f8c27e1a571202",
+      "source_sha256": "60cb296a54c9e453c85c74e32f03dc75024c44138263e2e885d21c1b315a658a",
+      "working_tree_dirty": true,
+      "diff_sha256": "fa1fdad2a1a4a613bc4d8de458ee6cd1ad2754f3852b41f4b50041265819e2b6",
+      "strategy": {
+        "evidence": true,
+        "critic": false,
+        "context_pack": true,
+        "two_stage": false,
+        "verify_signals": false,
+        "min_confidence": 0.65,
+        "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "max_output_tokens": 32768,
+      "latency_seconds": 90.83109562500613,
+      "token_usage": {
+        "prompt_tokens": 9013,
+        "completion_tokens": 19728,
+        "total_tokens": 28741
+      },
+      "finding_count": 1,
+      "context_token_count": 7931,
+      "context_truncated": true,
+      "input_coverage": {
+        "binary_files": [],
+        "metadata_only_files": [
+          "src/user/.agents/AGENT-PERSONA.md.template",
+          "src/user/.agents/USER-PERSONA.md.template",
+          "src/user/.agents/agents/api-developer.md",
+          "src/user/.agents/agents/backend-developer.md",
+          "src/user/.agents/agents/code-debugger.md",
+          "src/user/.agents/agents/code-documenter.md",
+          "src/user/.agents/agents/code-refactor.md",
+          "src/user/.agents/agents/code-reviewer.md",
+          "src/user/.agents/agents/data-scientist.md",
+          "src/user/.agents/agents/database-designer.md",
+          "src/user/.agents/agents/frontend-developer.md",
+          "src/user/.agents/agents/javascript-developer.md",
+          "src/user/.agents/agents/tech-lead.md",
+          "src/user/.agents/agents/typescript-developer.md",
+          "src/user/.agents/skills/bugfix/SKILL.md",
+          "src/user/.agents/skills/condition-based-waiting/SKILL.md",
+          "src/user/.agents/skills/condition-based-waiting/example.ts",
+          "src/user/.agents/skills/optimize-agents-md/SKILL.md",
+          "src/user/.agents/skills/ralf-it/SKILL.md",
+          "src/user/.agents/skills/ralf-it/foreign-agent-prompt.md",
+          "src/user/.agents/skills/ralf-it/foreign-eyes-prompt.md",
+          "src/user/.agents/skills/ralf-it/fresh-eyes-prompt.md",
+          "src/user/.agents/skills/ralf-it/implementer-prompt.md",
+          "src/user/.agents/skills/root-cause-tracing/SKILL.md",
+          "src/user/.agents/skills/root-cause-tracing/find-polluter.sh",
+          "src/user/.agents/skills/self-improving-agent/SKILL.md",
+          "src/user/.agents/skills/test-review/SKILL.md",
+          "src/user/.agents/skills/testing-anti-patterns/SKILL.md",
+          "src/user/.agents/skills/writing-unit-tests/SKILL.md"
+        ],
+        "context_truncated": true,
+        "skipped_files": []
+      }
+    },
+    {
+      "case_id": "ardevd_jadx-collaboration_3-853179dc",
+      "status": "success",
+      "reviewer_commit": "acabdc0fafd67aa7946a451928f8c27e1a571202",
+      "source_sha256": "60cb296a54c9e453c85c74e32f03dc75024c44138263e2e885d21c1b315a658a",
+      "working_tree_dirty": true,
+      "diff_sha256": "a7b4355836c5c0949de4de41b56ea5352f22411d09b68f03cd14e1014f21a975",
+      "strategy": {
+        "evidence": true,
+        "critic": false,
+        "context_pack": true,
+        "two_stage": false,
+        "verify_signals": false,
+        "min_confidence": 0.65,
+        "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "max_output_tokens": 32768,
+      "latency_seconds": 93.92165995801042,
+      "token_usage": {
+        "prompt_tokens": 3420,
+        "completion_tokens": 19137,
+        "total_tokens": 22557
+      },
+      "finding_count": 1,
+      "context_token_count": 2537,
+      "context_truncated": false,
+      "input_coverage": {
+        "binary_files": [],
+        "metadata_only_files": [],
+        "context_truncated": false,
+        "skipped_files": []
+      }
+    },
+    {
+      "case_id": "AY2526S2-CS2103T-W14-3_tp_152-e0a9ce03",
+      "status": "success",
+      "reviewer_commit": "acabdc0fafd67aa7946a451928f8c27e1a571202",
+      "source_sha256": "60cb296a54c9e453c85c74e32f03dc75024c44138263e2e885d21c1b315a658a",
+      "working_tree_dirty": true,
+      "diff_sha256": "b248d549c114d0a3c9f079cbc09d316399984dcae1fa87b93089722d6a2991a7",
+      "strategy": {
+        "evidence": true,
+        "critic": false,
+        "context_pack": true,
+        "two_stage": false,
+        "verify_signals": false,
+        "min_confidence": 0.65,
+        "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "max_output_tokens": 32768,
+      "latency_seconds": 143.94319199999154,
+      "token_usage": {
+        "prompt_tokens": 8649,
+        "completion_tokens": 29799,
+        "total_tokens": 38448
+      },
+      "finding_count": 0,
+      "context_token_count": 7441,
+      "context_truncated": true,
+      "input_coverage": {
+        "binary_files": [],
+        "metadata_only_files": [],
+        "context_truncated": true,
+        "skipped_files": []
+      }
+    },
+    {
+      "case_id": "vanyastaff_nebula_224-d5ba86dd",
+      "status": "success",
+      "reviewer_commit": "acabdc0fafd67aa7946a451928f8c27e1a571202",
+      "source_sha256": "60cb296a54c9e453c85c74e32f03dc75024c44138263e2e885d21c1b315a658a",
+      "working_tree_dirty": true,
+      "diff_sha256": "e86a2d01c0b1733bdfded69dd8161d4ebd7b277dc8fccdfe887391e7e550bfb6",
+      "strategy": {
+        "evidence": true,
+        "critic": false,
+        "context_pack": true,
+        "two_stage": false,
+        "verify_signals": false,
+        "min_confidence": 0.65,
+        "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "max_output_tokens": 32768,
+      "latency_seconds": 75.00655291700969,
+      "token_usage": {
+        "prompt_tokens": 8798,
+        "completion_tokens": 15886,
+        "total_tokens": 24684
+      },
+      "finding_count": 0,
+      "context_token_count": 7507,
+      "context_truncated": true,
+      "input_coverage": {
+        "binary_files": [],
+        "metadata_only_files": [],
+        "context_truncated": true,
+        "skipped_files": []
+      }
+    },
+    {
+      "case_id": "NCATSTranslator_translator-ingests_336-efb31e9c",
+      "status": "success",
+      "reviewer_commit": "200ab1002c0362761cbcc1cac145bbd7d2ad47b8",
+      "source_sha256": "f06d31d67053fc56be31ee3149087d8573a8e08cb382d5a4297313be307c708c",
+      "working_tree_dirty": true,
+      "diff_sha256": "75ef0c89ace2147f2eaec2ba64d977d41b81248bb37faf4a3323a913896417d7",
+      "strategy": {
+        "evidence": true,
+        "critic": false,
+        "context_pack": true,
+        "two_stage": false,
+        "verify_signals": false,
+        "min_confidence": 0.65,
+        "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "max_output_tokens": 32768,
+      "latency_seconds": 91.32045329098764,
+      "token_usage": {
+        "prompt_tokens": 7753,
+        "completion_tokens": 20104,
+        "total_tokens": 27857
+      },
+      "finding_count": 1,
+      "context_token_count": 6546,
+      "context_truncated": true,
+      "input_coverage": {
+        "binary_files": [],
+        "metadata_only_files": [],
+        "context_truncated": true,
+        "skipped_files": []
+      }
+    },
+    {
+      "case_id": "mheuss_chronicle_14-04ac4c02",
+      "status": "success",
+      "reviewer_commit": "200ab1002c0362761cbcc1cac145bbd7d2ad47b8",
+      "source_sha256": "f06d31d67053fc56be31ee3149087d8573a8e08cb382d5a4297313be307c708c",
+      "working_tree_dirty": true,
+      "diff_sha256": "876dba2b88f997e2c7aa2bad3dfecfd866b15e02c1e5052514e8e71cc97ed402",
+      "strategy": {
+        "evidence": true,
+        "critic": false,
+        "context_pack": true,
+        "two_stage": false,
+        "verify_signals": false,
+        "min_confidence": 0.65,
+        "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "max_output_tokens": 32768,
+      "latency_seconds": 63.5319093339931,
+      "token_usage": {
+        "prompt_tokens": 7594,
+        "completion_tokens": 14597,
+        "total_tokens": 22191
+      },
+      "finding_count": 0,
+      "context_token_count": 6611,
+      "context_truncated": true,
+      "input_coverage": {
+        "binary_files": [],
+        "metadata_only_files": [],
+        "context_truncated": true,
+        "skipped_files": []
+      }
+    },
+    {
+      "case_id": "superhighfives_pika_200-b227aff0",
+      "status": "success",
+      "reviewer_commit": "200ab1002c0362761cbcc1cac145bbd7d2ad47b8",
+      "source_sha256": "f06d31d67053fc56be31ee3149087d8573a8e08cb382d5a4297313be307c708c",
+      "working_tree_dirty": true,
+      "diff_sha256": "61836e6d849df1ab2d0ca62b6d32c402ec9193eeb99d7b2527a6978a06c9e57a",
+      "strategy": {
+        "evidence": true,
+        "critic": false,
+        "context_pack": true,
+        "two_stage": false,
+        "verify_signals": false,
+        "min_confidence": 0.65,
+        "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "max_output_tokens": 32768,
+      "latency_seconds": 95.88116491599067,
+      "token_usage": {
+        "prompt_tokens": 8024,
+        "completion_tokens": 22253,
+        "total_tokens": 30277
+      },
+      "finding_count": 1,
+      "context_token_count": 6998,
+      "context_truncated": true,
+      "input_coverage": {
+        "binary_files": [],
+        "metadata_only_files": [],
+        "context_truncated": true,
+        "skipped_files": []
+      }
+    },
+    {
+      "case_id": "gagneurlab_PROTRIDER_10-b462b109",
+      "status": "success",
+      "reviewer_commit": "200ab1002c0362761cbcc1cac145bbd7d2ad47b8",
+      "source_sha256": "f06d31d67053fc56be31ee3149087d8573a8e08cb382d5a4297313be307c708c",
+      "working_tree_dirty": true,
+      "diff_sha256": "1360f64ae62262c2ea1c44871b80fb6a4e56973e735700e5486e5ea0a25b53be",
+      "strategy": {
+        "evidence": true,
+        "critic": false,
+        "context_pack": true,
+        "two_stage": false,
+        "verify_signals": false,
+        "min_confidence": 0.65,
+        "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "max_output_tokens": 32768,
+      "latency_seconds": 36.72328729199944,
+      "token_usage": {
+        "prompt_tokens": 7841,
+        "completion_tokens": 7294,
+        "total_tokens": 15135
+      },
+      "finding_count": 2,
+      "context_token_count": 6707,
+      "context_truncated": true,
+      "input_coverage": {
+        "binary_files": [],
+        "metadata_only_files": [],
+        "context_truncated": true,
+        "skipped_files": [
+          {
+            "file_path": "uv.lock",
+            "reason": "lockfile"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "allan-mobley-jr_gimmes_468-e1477f8b",
+      "status": "success",
+      "reviewer_commit": "200ab1002c0362761cbcc1cac145bbd7d2ad47b8",
+      "source_sha256": "f06d31d67053fc56be31ee3149087d8573a8e08cb382d5a4297313be307c708c",
+      "working_tree_dirty": true,
+      "diff_sha256": "6628d97c750caee1aeb01777c77a9d1608867bdc38fb1420575eef91b9ebde0c",
+      "strategy": {
+        "evidence": true,
+        "critic": false,
+        "context_pack": true,
+        "two_stage": false,
+        "verify_signals": false,
+        "min_confidence": 0.65,
+        "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "max_output_tokens": 32768,
+      "latency_seconds": 39.612872083002,
+      "token_usage": {
+        "prompt_tokens": 4412,
+        "completion_tokens": 7771,
+        "total_tokens": 12183
+      },
+      "finding_count": 1,
+      "context_token_count": 3685,
+      "context_truncated": false,
+      "input_coverage": {
+        "binary_files": [],
+        "metadata_only_files": [],
+        "context_truncated": false,
+        "skipped_files": []
+      }
+    },
+    {
+      "case_id": "superyyrrzz_ForgeMap_106-2f3977ed",
+      "status": "success",
+      "reviewer_commit": "200ab1002c0362761cbcc1cac145bbd7d2ad47b8",
+      "source_sha256": "f06d31d67053fc56be31ee3149087d8573a8e08cb382d5a4297313be307c708c",
+      "working_tree_dirty": true,
+      "diff_sha256": "4c0c3a2cbbc85269c5ebae366267a5f0980726178d0a74289c9b77318f847d96",
+      "strategy": {
+        "evidence": true,
+        "critic": false,
+        "context_pack": true,
+        "two_stage": false,
+        "verify_signals": false,
+        "min_confidence": 0.65,
+        "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "max_output_tokens": 32768,
+      "latency_seconds": 100.18831129200407,
+      "token_usage": {
+        "prompt_tokens": 4935,
+        "completion_tokens": 24864,
+        "total_tokens": 29799
+      },
+      "finding_count": 1,
+      "context_token_count": 4187,
+      "context_truncated": false,
+      "input_coverage": {
+        "binary_files": [],
+        "metadata_only_files": [],
+        "context_truncated": false,
+        "skipped_files": []
+      }
+    },
+    {
+      "case_id": "renedierking_LANdalf_88-bc1698f4",
+      "status": "success",
+      "reviewer_commit": "200ab1002c0362761cbcc1cac145bbd7d2ad47b8",
+      "source_sha256": "f06d31d67053fc56be31ee3149087d8573a8e08cb382d5a4297313be307c708c",
+      "working_tree_dirty": true,
+      "diff_sha256": "87480a773ea9a8c2ad561edec217f06ee894d6271f5827908c11afe6ec528756",
+      "strategy": {
+        "evidence": true,
+        "critic": false,
+        "context_pack": true,
+        "two_stage": false,
+        "verify_signals": false,
+        "min_confidence": 0.65,
+        "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "max_output_tokens": 32768,
+      "latency_seconds": 37.9627757499984,
+      "token_usage": {
+        "prompt_tokens": 1625,
+        "completion_tokens": 7620,
+        "total_tokens": 9245
+      },
+      "finding_count": 0,
+      "context_token_count": 975,
+      "context_truncated": false,
+      "input_coverage": {
+        "binary_files": [],
+        "metadata_only_files": [],
+        "context_truncated": false,
+        "skipped_files": []
+      }
+    },
+    {
+      "case_id": "scottlz0310_Mcp-Docker_29-e7705d26",
+      "status": "success",
+      "reviewer_commit": "200ab1002c0362761cbcc1cac145bbd7d2ad47b8",
+      "source_sha256": "f06d31d67053fc56be31ee3149087d8573a8e08cb382d5a4297313be307c708c",
+      "working_tree_dirty": true,
+      "diff_sha256": "c29c5811be547deaaea3f04a24898f21f56acd18e94c03568356891a02ec2c46",
+      "strategy": {
+        "evidence": true,
+        "critic": false,
+        "context_pack": true,
+        "two_stage": false,
+        "verify_signals": false,
+        "min_confidence": 0.65,
+        "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "max_output_tokens": 32768,
+      "latency_seconds": 87.85189683399221,
+      "token_usage": {
+        "prompt_tokens": 7769,
+        "completion_tokens": 19062,
+        "total_tokens": 26831
+      },
+      "finding_count": 1,
+      "context_token_count": 6654,
+      "context_truncated": true,
+      "input_coverage": {
+        "binary_files": [],
+        "metadata_only_files": [
+          "services/copilot-review-mcp/go.sum"
+        ],
+        "context_truncated": true,
+        "skipped_files": []
+      }
+    },
+    {
+      "case_id": "wirechat_wirechat_183-6e3156e7",
+      "status": "success",
+      "reviewer_commit": "200ab1002c0362761cbcc1cac145bbd7d2ad47b8",
+      "source_sha256": "d22560c2d9a3cd28eb8957bde561acf758276bd32ede42392f9b6648b54a5561",
+      "working_tree_dirty": true,
+      "diff_sha256": "bafc750ce634b1e0e357932c5af659cc9b2fecd142c3b699ef99395dbd7fa09c",
+      "strategy": {
+        "evidence": true,
+        "critic": false,
+        "context_pack": true,
+        "two_stage": false,
+        "verify_signals": false,
+        "min_confidence": 0.65,
+        "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "max_output_tokens": 65536,
+      "latency_seconds": 145.8487759999989,
+      "token_usage": {
+        "prompt_tokens": 8386,
+        "completion_tokens": 29853,
+        "total_tokens": 38239
+      },
+      "finding_count": 0,
+      "context_token_count": 7296,
+      "context_truncated": true,
+      "input_coverage": {
+        "binary_files": [
+          ".DS_Store",
+          ".github/.DS_Store",
+          "database/.DS_Store",
+          "lang/.DS_Store",
+          "resources/.DS_Store",
+          "src/.DS_Store",
+          "tests/.DS_Store"
+        ],
+        "metadata_only_files": [
+          ".DS_Store",
+          ".github/.DS_Store",
+          "database/.DS_Store",
+          "lang/.DS_Store",
+          "resources/.DS_Store",
+          "src/.DS_Store",
+          "tests/.DS_Store"
+        ],
+        "context_truncated": true,
+        "skipped_files": []
+      }
+    },
+    {
+      "case_id": "sdsykes_fastimage_165-8fc7cd32",
+      "status": "success",
+      "reviewer_commit": "200ab1002c0362761cbcc1cac145bbd7d2ad47b8",
+      "source_sha256": "d22560c2d9a3cd28eb8957bde561acf758276bd32ede42392f9b6648b54a5561",
+      "working_tree_dirty": true,
+      "diff_sha256": "08b05b1aa354463a4a408c2ac2b4d7fdf260d508941edffacf3a46555d57d0b1",
+      "strategy": {
+        "evidence": true,
+        "critic": false,
+        "context_pack": true,
+        "two_stage": false,
+        "verify_signals": false,
+        "min_confidence": 0.65,
+        "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "max_output_tokens": 65536,
+      "latency_seconds": 195.85895679199893,
+      "token_usage": {
+        "prompt_tokens": 7991,
+        "completion_tokens": 42147,
+        "total_tokens": 50138
+      },
+      "finding_count": 0,
+      "context_token_count": 6915,
+      "context_truncated": true,
+      "input_coverage": {
+        "binary_files": [
+          "test/fixtures/test_no_resolution_unit.png",
+          "test/fixtures/test_with_resolution.png"
+        ],
+        "metadata_only_files": [
+          "test/fixtures/test_no_resolution_unit.png",
+          "test/fixtures/test_with_resolution.png"
+        ],
+        "context_truncated": true,
+        "skipped_files": []
+      }
+    },
+    {
+      "case_id": "Marvell-Consulting_statswales-frontend_626-30ba27a5",
+      "status": "success",
+      "reviewer_commit": "200ab1002c0362761cbcc1cac145bbd7d2ad47b8",
+      "source_sha256": "f06d31d67053fc56be31ee3149087d8573a8e08cb382d5a4297313be307c708c",
+      "working_tree_dirty": true,
+      "diff_sha256": "a9b1c2b0a0c86586cce942e14d87e7b1873f8033d95ed77911e158bb1572355d",
+      "strategy": {
+        "evidence": true,
+        "critic": false,
+        "context_pack": true,
+        "two_stage": false,
+        "verify_signals": false,
+        "min_confidence": 0.65,
+        "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "max_output_tokens": 32768,
+      "latency_seconds": 35.100003499988816,
+      "token_usage": {
+        "prompt_tokens": 1651,
+        "completion_tokens": 6399,
+        "total_tokens": 8050
+      },
+      "finding_count": 0,
+      "context_token_count": 1030,
+      "context_truncated": false,
+      "input_coverage": {
+        "binary_files": [],
+        "metadata_only_files": [],
+        "context_truncated": false,
+        "skipped_files": []
+      }
+    }
+  ]
+}

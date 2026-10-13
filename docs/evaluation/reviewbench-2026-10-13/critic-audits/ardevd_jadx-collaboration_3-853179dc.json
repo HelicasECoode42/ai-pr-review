@@ -1,0 +1,39 @@
+{
+  "reviewer_commit": "200ab1002c0362761cbcc1cac145bbd7d2ad47b8",
+  "working_tree_dirty": true,
+  "reviewer_source_sha256": "d22560c2d9a3cd28eb8957bde561acf758276bd32ede42392f9b6648b54a5561",
+  "baseline_source": "reports/evaluation/reviewbench-baseline-v2-complete",
+  "decisions": [
+    {
+      "suggestion_index": 0,
+      "file_path": "src/main/kotlin/uk/oshawk/jadx/collaboration/Plugin.kt",
+      "line": 44,
+      "title": "Menu/key actions spawn a new thread per click instead of submitting to a serializing executor",
+      "decision": "confirmed",
+      "confidence": 0.8,
+      "reason": "The diff directly replaces all four uiRun-based entry points with kotlin.concurrent.thread { this.pull() } / { this.push() }, so each menu activation or key binding creates a separate thread with no serialization at the call site. Rapid double activation can therefore run pull()/push() concurrently. The newly added private uiRun helper is not used by these call sites, so any intended single-thread executor is bypassed. kotlin.concurrent.thread also defaults to isDaemon=false, so a blocked worker can prevent JVM shutdown. The exact repository corruption depends on pull/push internals, but the concurrency regression follows from the changed code."
+    }
+  ],
+  "request_count": 1,
+  "usage_records": [
+    {
+      "model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 985,
+        "completion_tokens": 4853,
+        "total_tokens": 5838,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 4694
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 985
+      },
+      "request_id": "d8cae164-afee-480d-a46f-eda4861df8e2",
+      "finish_reason": "stop",
+      "stream_complete": true
+    }
+  ]
+}

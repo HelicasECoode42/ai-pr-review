@@ -1,0 +1,10 @@
+{
+  "pr": {
+    "repo": "https://github.com/AY2526S2-CS2103T-W14-3/tp",
+    "pr_number": 152,
+    "base": "a27b3e40d94f92f229b9301a8a9d5207d9a5b0bb",
+    "head": "e0a9ce03c8c1cc839eaf409e2677b9abf2017b1f"
+  },
+  "agent": "ai-pr-review",
+  "findings": []
+}

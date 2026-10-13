@@ -1,0 +1,352 @@
+{
+  "model": "deepseek-v4-flash",
+  "latency_seconds": 7.890050667003379,
+  "diff_sha256": "1dc3999f82f259ac1491750b34fb43e19e36122c4683d247a482d5bc87810666",
+  "strategy": {
+    "evidence": true,
+    "critic": false,
+    "context_pack": true,
+    "two_stage": false,
+    "verify_signals": false,
+    "min_confidence": 0.65,
+    "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "report": {
+    "pr": {
+      "repo": "cmik/apilix",
+      "number": 12,
+      "title": "implement data storages",
+      "author": null,
+      "base_ref": "4fe23e22e3937c38cb859a3b9c00b193bb309aa1",
+      "head_ref": "0c34439aeebedc646d76d90db6b79a5c54b4cb8f",
+      "head_sha": "0c34439aeebedc646d76d90db6b79a5c54b4cb8f",
+      "html_url": null
+    },
+    "files": [
+      {
+        "filename": "README.md",
+        "status": "modified",
+        "additions": 241,
+        "deletions": 0,
+        "changes": 241,
+        "previous_filename": null,
+        "patch_sha256": "b2d714e17726b983799dcc5dbf6142d139754e93201aa53fab5c243fcc769582"
+      },
+      {
+        "filename": "WORKSPACES.md",
+        "status": "added",
+        "additions": 679,
+        "deletions": 0,
+        "changes": 679,
+        "previous_filename": null,
+        "patch_sha256": "421bf021db2be007e23cf4cd0df5a51f15512264cfd14337c3d416f9bfeb0871"
+      },
+      {
+        "filename": "client/src/components/ActivityBar.tsx",
+        "status": "modified",
+        "additions": 6,
+        "deletions": 1,
+        "changes": 7,
+        "previous_filename": null,
+        "patch_sha256": "022ca2d5dd591058f44f6c8be4fe3a78b1b4042fe598572068c21ff9ce24d3b9"
+      },
+      {
+        "filename": "client/src/components/RequestBuilder.tsx",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 2,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "5d6841d3515e54cb4bb5533da51ad10d7104d32fe24149eed0872b0be28e2c34"
+      },
+      {
+        "filename": "client/src/components/Sidebar.tsx",
+        "status": "modified",
+        "additions": 8,
+        "deletions": 0,
+        "changes": 8,
+        "previous_filename": null,
+        "patch_sha256": "2d3ffa5fb7d9b582a0a83b5f25210ec49fcd0cbdba55172ba914bcc7c744b1b6"
+      },
+      {
+        "filename": "client/src/components/WorkspaceManagerModal.tsx",
+        "status": "added",
+        "additions": 629,
+        "deletions": 0,
+        "changes": 629,
+        "previous_filename": null,
+        "patch_sha256": "cf80dea2b3f018d1a1bc6538c9de3dba6752b25de3695c31cfccaa8fe4742d76"
+      },
+      {
+        "filename": "client/src/components/WorkspaceSwitcher.tsx",
+        "status": "added",
+        "additions": 190,
+        "deletions": 0,
+        "changes": 190,
+        "previous_filename": null,
+        "patch_sha256": "a60dbc3d97840e0a766c1438668843cfb5e6877a44fdcb3b46337ffe2636ea02"
+      },
+      {
+        "filename": "client/src/index.css",
+        "status": "modified",
+        "additions": 14,
+        "deletions": 0,
+        "changes": 14,
+        "previous_filename": null,
+        "patch_sha256": "1a9b6faccd53c1db05815c8b0b9c0791c92a8c4830be62a8d13c3939aadb8e9c"
+      },
+      {
+        "filename": "client/src/store.tsx",
+        "status": "modified",
+        "additions": 278,
+        "deletions": 70,
+        "changes": 348,
+        "previous_filename": null,
+        "patch_sha256": "ac4eea0b4205db8444b3f3f634ef1a39efedc9d70eb335d15d76d3cfbd873d03"
+      },
+      {
+        "filename": "client/src/types.ts",
+        "status": "modified",
+        "additions": 79,
+        "deletions": 1,
+        "changes": 80,
+        "previous_filename": null,
+        "patch_sha256": "cf81612c04db0d2ba984f86105d34fc26533ea237d8807bf7e109c2c40073075"
+      },
+      {
+        "filename": "client/src/utils/snapshotEngine.ts",
+        "status": "added",
+        "additions": 109,
+        "deletions": 0,
+        "changes": 109,
+        "previous_filename": null,
+        "patch_sha256": "bc516a84b19fa8e5c14a8fd1a7b8ea0b441dabb9a54124a2dc1fa215d9559532"
+      },
+      {
+        "filename": "client/src/utils/storageDriver.ts",
+        "status": "added",
+        "additions": 267,
+        "deletions": 0,
+        "changes": 267,
+        "previous_filename": null,
+        "patch_sha256": "74000c9a5f859fdfb231d01af2f8677905ce4385ccf53c1485a1d2134df45b7c"
+      },
+      {
+        "filename": "client/src/utils/sync/gitAdapter.ts",
+        "status": "added",
+        "additions": 73,
+        "deletions": 0,
+        "changes": 73,
+        "previous_filename": null,
+        "patch_sha256": "35e1c1a44c13a58ff926851921063668d6e5399d120459059d8a5710204f6be0"
+      },
+      {
+        "filename": "client/src/utils/sync/httpAdapter.ts",
+        "status": "added",
+        "additions": 62,
+        "deletions": 0,
+        "changes": 62,
+        "previous_filename": null,
+        "patch_sha256": "1cb6c07d089f03ca311d799cac2260264a9a744e3766d2f49f5d8c57145b10c7"
+      },
+      {
+        "filename": "client/src/utils/sync/s3Adapter.ts",
+        "status": "added",
+        "additions": 71,
+        "deletions": 0,
+        "changes": 71,
+        "previous_filename": null,
+        "patch_sha256": "a542d74d1e95a1d3fa30c65c6f47e0f941801e69851924e3244f5b48f668fff9"
+      },
+      {
+        "filename": "client/src/utils/sync/teamAdapter.ts",
+        "status": "added",
+        "additions": 64,
+        "deletions": 0,
+        "changes": 64,
+        "previous_filename": null,
+        "patch_sha256": "24025f9255707de89eec11c66a24d9dd49031a3aa673f3bbcdff6286f1cacc70"
+      },
+      {
+        "filename": "client/src/utils/syncEngine.ts",
+        "status": "added",
+        "additions": 104,
+        "deletions": 0,
+        "changes": 104,
+        "previous_filename": null,
+        "patch_sha256": "c9b9dec3e05c1a559e4b381ee56276024a02a00ccda0a7e3fedd56bbbc2850af"
+      },
+      {
+        "filename": "electron/main.js",
+        "status": "modified",
+        "additions": 92,
+        "deletions": 2,
+        "changes": 94,
+        "previous_filename": null,
+        "patch_sha256": "cc22a2c046bf297a9a1b440bad4080365bd5d2c7ecb839ea5a846c08039ba3e3"
+      },
+      {
+        "filename": "electron/preload.js",
+        "status": "modified",
+        "additions": 11,
+        "deletions": 0,
+        "changes": 11,
+        "previous_filename": null,
+        "patch_sha256": "49808c6cfec72c556bc592c9c58070dd59a6da92cd4474636d18dff67684fd9d"
+      },
+      {
+        "filename": "server/index.js",
+        "status": "modified",
+        "additions": 173,
+        "deletions": 0,
+        "changes": 173,
+        "previous_filename": null,
+        "patch_sha256": "1e0f6cc3b2b631bacb5ab5a9f164e93442f6dbbdf813e8c1104df78a79a49136"
+      },
+      {
+        "filename": "server/package-lock.json",
+        "status": "modified",
+        "additions": 214,
+        "deletions": 0,
+        "changes": 214,
+        "previous_filename": null,
+        "patch_sha256": "e4b9121c338ad8c56bd7499b9c735df12462c5a33279a18784b7caa60335ee4a"
+      },
+      {
+        "filename": "server/package.json",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 0,
+        "changes": 1,
+        "previous_filename": null,
+        "patch_sha256": "c6ebdcbdfa7ccdc586daf0b34ea521a21332848c66c538aaf86aa7a8717d9283"
+      }
+    ],
+    "summary": "This PR adds a full workspace-storage layer to Apilix: a browser/Electron storage driver, snapshot engine, four sync adapters (git, HTTP, S3, team server), an Electron IPC surface for encrypted credential storage, new server routes, and the WorkspaceManager/WorkspaceSwitcher UI, along with a large WORKSPACES.md design document and the fix that declares jsonwebtoken and bcryptjs in server/package.json. The only file diff supplied in this review context is WORKSPACES.md; the implementation files (client/src/utils/storageDriver.ts, syncEngine.ts, snapshotEngine.ts, server/index.js, electron/main.js, client/src/store.tsx, etc.) were omitted by the patch budget, so they could not be reviewed line by line here. Reviewers should focus on the omitted implementation files: credential handling/encryption in the Electron path, path/ID sanitisation for workspace and snapshot file names, error handling in the sync adapters, and authorization enforcement on the new server routes.",
+    "risk_level": "low",
+    "rule_findings": [],
+    "suggestions": [],
+    "used_ai": true,
+    "ai_failure_reason": null,
+    "analysis_warnings": [
+      "Patch context was truncated to fit token budget; some files were not analyzed by AI."
+    ],
+    "context_truncated": true,
+    "context_token_count": 6547,
+    "patch_token_budget": 6000,
+    "context_tokenizer": "cl100k_base",
+    "hidden_suggestions_count": 0,
+    "skipped_context_files": [],
+    "hidden_rule_findings_count": 0,
+    "reviewer_version": "pr-branch",
+    "execution_status": "success",
+    "degradation_reason": null,
+    "report_confidence": "normal",
+    "completeness": [
+      {
+        "item": "PR 元信息获取",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "变更文件获取",
+        "status": "success",
+        "detail": "22 个文件"
+      },
+      {
+        "item": "AI 上下文文件",
+        "status": "success",
+        "detail": "全部文件进入上下文"
+      },
+      {
+        "item": "AI 分析",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "规则扫描",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "Patch 上下文",
+        "status": "partial",
+        "detail": "裁剪 — 超出 token 预算"
+      },
+      {
+        "item": "PR head 语法诊断",
+        "status": "success",
+        "detail": "未检测到语法错误"
+      }
+    ],
+    "pr_syntax_check_ok": true,
+    "review_meta": {
+      "reviewed_commit": "0c34439aeebedc646d76d90db6b79a5c54b4cb8f",
+      "trigger_event": null,
+      "workflow_run_url": null,
+      "updated_at": null,
+      "review_mode": "full_pr"
+    },
+    "fix_tracking": [],
+    "confirmed_signals": [],
+    "dismissed_signals": [],
+    "unresolved_signals": [],
+    "unverified_signals": [],
+    "evidence_rejections": [],
+    "critic_decisions": [],
+    "stage_results": [],
+    "metrics": {
+      "raw_signal_count": 0,
+      "main_review_prompt_signal_count": 0,
+      "independent_suggestion_count": 0,
+      "evidence_rejected_suggestion_count": 0,
+      "critic_request_count": 0,
+      "critic_confirmed_count": 0,
+      "critic_dismissed_count": 0,
+      "critic_uncertain_count": 0,
+      "critic_unverified_count": 0,
+      "context_token_count": 6547,
+      "signal_verification_request_count": 0,
+      "telemetry_only_signal_count": 0,
+      "confirmed_signal_count": 0,
+      "dismissed_signal_count": 0,
+      "unresolved_signal_count": 0,
+      "unverified_signal_count": 0
+    }
+  },
+  "input_coverage": {
+    "binary_files": [],
+    "metadata_only_files": [],
+    "context_truncated": true,
+    "skipped_files": []
+  },
+  "request_count": 1,
+  "usage_records": [
+    {
+      "model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 7236,
+        "completion_tokens": 1119,
+        "total_tokens": 8355,
+        "prompt_tokens_details": {
+          "cached_tokens": 384
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 885
+        },
+        "prompt_cache_hit_tokens": 384,
+        "prompt_cache_miss_tokens": 6852
+      },
+      "request_id": "29184e98-ea95-42a1-95aa-88ba0d5ed874"
+    }
+  ],
+  "token_usage": {
+    "prompt_tokens": 7236,
+    "completion_tokens": 1119,
+    "total_tokens": 8355
+  },
+  "cost_usd": null,
+  "reviewer_commit": "acabdc0fafd67aa7946a451928f8c27e1a571202",
+  "working_tree_dirty": true,
+  "reviewer_source_sha256": "ad6bf74b1bac6495265b788ad064fc9b4367a85a0c45ddc4a2a67d5eafd8e757"
+}

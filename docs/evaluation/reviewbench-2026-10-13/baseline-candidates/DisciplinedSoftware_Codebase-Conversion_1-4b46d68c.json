@@ -1,0 +1,18 @@
+{
+  "pr": {
+    "repo": "https://github.com/DisciplinedSoftware/Codebase-Conversion",
+    "pr_number": 1,
+    "base": "ed10728c91f7858a0bd95a97c754f4bd6c0487ec",
+    "head": "4b46d68c215dd2448a62f751e81218a0da789165"
+  },
+  "agent": "ai-pr-review",
+  "findings": [
+    {
+      "file": "fortran_to_rust/test_harness.py",
+      "start_line": 557,
+      "end_line": 557,
+      "message": "Function result printed before array outputs, while the Fortran driver prints it after: The Rust FUNCTION template prints the return value first: line 557 `    println!(\"{{:.15e}}\", _result as f64);` comes before `{rust_prints}` (line 560). In `generate_fortran_driver` the opposite happens: the array WRITE loops are appended to `print_lines` at lines 418-441, and the return value is appended afterwards at line 471 (`print_lines.append(f\"      WRITE(*,'{print_fmt}') {result_var}\")`, comment: `# Print the function result after all array prints`). The two output streams therefore have different element order.\nScenario: Converting `DOUBLE PRECISION FUNCTION DDOT(N,DX,DY)` produces a Fortran driver that writes DX(1..4), DY(1..4) and then RES, while the Rust example prints the dot product and then DX(1..4), DY(1..4). A positional comparison of the two streams pairs the scalar result with DX(1) and reports a huge max error, so a correct conversion is reported as failing (and a wrong conversion can accidentally cancel out).\nMake both sides emit the return value in the same position, e.g. in the FN template move the result print after the array prints (`{rust_prints}` then the `println!`), or in `generate_fortran_driver` build the result write into a separate list and concatenate it *before* `print_lines` when `routine_kind == \"function\"`.",
+      "producer": "ai-pr-review"
+    }
+  ]
+}

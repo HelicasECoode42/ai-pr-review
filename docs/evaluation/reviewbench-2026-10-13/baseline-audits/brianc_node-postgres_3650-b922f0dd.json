@@ -1,0 +1,210 @@
+{
+  "model": "deepseek-v4-flash",
+  "latency_seconds": 292.71590404200833,
+  "diff_sha256": "5942345514b866f0d3cc700c945bee6d7ae401ce124a702c3b5f1663cc78440f",
+  "strategy": {
+    "evidence": true,
+    "critic": false,
+    "context_pack": true,
+    "two_stage": false,
+    "verify_signals": false,
+    "min_confidence": 0.65,
+    "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "report": {
+    "pr": {
+      "repo": "brianc/node-postgres",
+      "number": 3650,
+      "title": "Add diagnostics_channel TracingChannel support",
+      "author": null,
+      "base_ref": "c6028a875f953eff9e8e403622b0aac127d1b4a6",
+      "head_ref": "b922f0ddfa3914cc7b05387cd12fc606bc658dc4",
+      "head_sha": "b922f0ddfa3914cc7b05387cd12fc606bc658dc4",
+      "html_url": null
+    },
+    "files": [
+      {
+        "filename": "packages/pg-pool/diagnostics.js",
+        "status": "added",
+        "additions": 35,
+        "deletions": 0,
+        "changes": 35,
+        "previous_filename": null,
+        "patch_sha256": "27506b5a2a95f3b7d35bb55a7f4d95ea7a3f34875895a75fe12cbbc779eb5d1f"
+      },
+      {
+        "filename": "packages/pg-pool/index.js",
+        "status": "modified",
+        "additions": 34,
+        "deletions": 0,
+        "changes": 34,
+        "previous_filename": null,
+        "patch_sha256": "e3671a9bc0fbc78fe6687b2ce37d3b6b23030718ead49532d44c7f703169a99b"
+      },
+      {
+        "filename": "packages/pg-pool/test/diagnostics.js",
+        "status": "added",
+        "additions": 197,
+        "deletions": 0,
+        "changes": 197,
+        "previous_filename": null,
+        "patch_sha256": "dd54b08b5a4703641a6216e8622ef0e3da3a78ca4cdefee2cf24f6c843216867"
+      },
+      {
+        "filename": "packages/pg/lib/client.js",
+        "status": "modified",
+        "additions": 55,
+        "deletions": 11,
+        "changes": 66,
+        "previous_filename": null,
+        "patch_sha256": "48de6eea38a99707ac0bcbee210c956c677b8185b812e8279d9ad11ee596601b"
+      },
+      {
+        "filename": "packages/pg/lib/diagnostics.js",
+        "status": "added",
+        "additions": 31,
+        "deletions": 0,
+        "changes": 31,
+        "previous_filename": null,
+        "patch_sha256": "0f10382a00d04a0a2a4af458ff729d9348578392698c0ad783693b3118dacd65"
+      },
+      {
+        "filename": "packages/pg/test/unit/client/diagnostics-tests.js",
+        "status": "added",
+        "additions": 205,
+        "deletions": 0,
+        "changes": 205,
+        "previous_filename": null,
+        "patch_sha256": "44d0ccd7f9feb0c218d0678727bfea574e0f8b4361956c8d180ecdccab94fca7"
+      }
+    ],
+    "summary": "This PR adds diagnostics_channel instrumentation to `pg` and `pg-pool`: two new `diagnostics.js` modules lazily create `pg:query`/`pg:connection` TracingChannels (plus `pg:pool:connect` TracingChannel and plain `pg:pool:release`/`pg:pool:remove` channels), and `Client.connect`/`Client.query` plus `Pool.connect`/`release`/`_remove` are wrapped so that instrumentations can subscribe without monkey-patching. The wrapping is done by replacing the internal callback (`query.callback`, `response.callback`) with the traced callback, and by a `shouldTrace()` helper that skips tracing when `hasSubscribers === false`. Reviewers should focus on: the Node 18 fallback where the aggregated `hasSubscribers` getter is absent, interactions with pg's own mutation of `query.callback` (e.g. `query_timeout`), and error handling when `diagnostics_channel` cannot be loaded.",
+    "risk_level": "low",
+    "rule_findings": [],
+    "suggestions": [],
+    "used_ai": true,
+    "ai_failure_reason": null,
+    "analysis_warnings": [
+      "3 suggestion(s) filtered out (low confidence, unchanged line, or duplicate)"
+    ],
+    "context_truncated": false,
+    "context_token_count": 5882,
+    "patch_token_budget": 6000,
+    "context_tokenizer": "cl100k_base",
+    "hidden_suggestions_count": 3,
+    "skipped_context_files": [],
+    "hidden_rule_findings_count": 0,
+    "reviewer_version": "pr-branch",
+    "execution_status": "success",
+    "degradation_reason": null,
+    "report_confidence": "normal",
+    "completeness": [
+      {
+        "item": "PR 元信息获取",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "变更文件获取",
+        "status": "success",
+        "detail": "6 个文件"
+      },
+      {
+        "item": "AI 上下文文件",
+        "status": "success",
+        "detail": "全部文件进入上下文"
+      },
+      {
+        "item": "AI 分析",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "规则扫描",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "Patch 上下文",
+        "status": "success",
+        "detail": "完整"
+      },
+      {
+        "item": "PR head 语法诊断",
+        "status": "success",
+        "detail": "未检测到语法错误"
+      }
+    ],
+    "pr_syntax_check_ok": true,
+    "review_meta": {
+      "reviewed_commit": "b922f0ddfa3914cc7b05387cd12fc606bc658dc4",
+      "trigger_event": null,
+      "workflow_run_url": null,
+      "updated_at": null,
+      "review_mode": "full_pr"
+    },
+    "fix_tracking": [],
+    "confirmed_signals": [],
+    "dismissed_signals": [],
+    "unresolved_signals": [],
+    "unverified_signals": [],
+    "evidence_rejections": [],
+    "critic_decisions": [],
+    "stage_results": [],
+    "metrics": {
+      "raw_signal_count": 0,
+      "main_review_prompt_signal_count": 0,
+      "independent_suggestion_count": 0,
+      "evidence_rejected_suggestion_count": 0,
+      "critic_request_count": 0,
+      "critic_confirmed_count": 0,
+      "critic_dismissed_count": 0,
+      "critic_uncertain_count": 0,
+      "critic_unverified_count": 0,
+      "context_token_count": 5882,
+      "signal_verification_request_count": 0,
+      "telemetry_only_signal_count": 0,
+      "confirmed_signal_count": 0,
+      "dismissed_signal_count": 0,
+      "unresolved_signal_count": 0,
+      "unverified_signal_count": 0
+    }
+  },
+  "input_coverage": {
+    "binary_files": [],
+    "metadata_only_files": [],
+    "context_truncated": false,
+    "skipped_files": []
+  },
+  "request_count": 1,
+  "usage_records": [
+    {
+      "model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 6767,
+        "completion_tokens": 55665,
+        "total_tokens": 62432,
+        "prompt_tokens_details": {
+          "cached_tokens": 6528
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 54013
+        },
+        "prompt_cache_hit_tokens": 6528,
+        "prompt_cache_miss_tokens": 239
+      },
+      "request_id": "8cc109b3-f525-4199-95c0-47943e369420"
+    }
+  ],
+  "token_usage": {
+    "prompt_tokens": 6767,
+    "completion_tokens": 55665,
+    "total_tokens": 62432
+  },
+  "cost_usd": null,
+  "reviewer_commit": "acabdc0fafd67aa7946a451928f8c27e1a571202",
+  "working_tree_dirty": true,
+  "reviewer_source_sha256": "7f6d305b70ad9e6e095c5e1cc335b5c8339caf9bcabd3285851e2eaf34401280",
+  "retry_transport": "streaming",
+  "timeout_seconds": 180
+}

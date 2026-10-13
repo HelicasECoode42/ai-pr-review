@@ -1,0 +1,39 @@
+{
+  "reviewer_commit": "200ab1002c0362761cbcc1cac145bbd7d2ad47b8",
+  "working_tree_dirty": true,
+  "reviewer_source_sha256": "d22560c2d9a3cd28eb8957bde561acf758276bd32ede42392f9b6648b54a5561",
+  "baseline_source": "reports/evaluation/reviewbench-baseline-v2-complete",
+  "decisions": [
+    {
+      "suggestion_index": 0,
+      "file_path": "internal/github/github.go",
+      "line": 116,
+      "title": "Freshness is decided by review timestamp vs. commit timestamp instead of the reviewed commit SHA",
+      "decision": "confirmed",
+      "confidence": 0.85,
+      "reason": "The added code only compares `latestCopilotReview.SubmittedAt` against `lastCommitDate` and never inspects the review's `commit_id`, so a Copilot review submitted for an older commit after the new head commit's committer date is incorrectly treated as fresh. The failure scenario follows directly from this timestamp-only comparison; the only unshown assumption is that `lastCommitDate` is the head commit's committer date, which is consistent with the variable name and the candidate's description."
+    }
+  ],
+  "request_count": 1,
+  "usage_records": [
+    {
+      "model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 829,
+        "completion_tokens": 2975,
+        "total_tokens": 3804,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 2849
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 829
+      },
+      "request_id": "5313f9f9-2827-49d3-bc76-86ca3ca0bb08",
+      "finish_reason": "stop",
+      "stream_complete": true
+    }
+  ]
+}

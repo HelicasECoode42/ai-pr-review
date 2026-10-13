@@ -1,0 +1,191 @@
+{
+  "model": "deepseek-v4-flash",
+  "latency_seconds": 73.24855016700167,
+  "diff_sha256": "092fbbc4c45e368cfff0149316323c9298d43961e061607371f83bfa2a40b3cb",
+  "strategy": {
+    "evidence": true,
+    "critic": false,
+    "context_pack": true,
+    "two_stage": false,
+    "verify_signals": false,
+    "min_confidence": 0.65,
+    "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "report": {
+    "pr": {
+      "repo": "k1LoW/gh-copilot-review",
+      "number": 9,
+      "title": "feat: skip Copilot review request when existing review is newer than last commit",
+      "author": null,
+      "base_ref": "5f3765a9ef25d9c5a57699418bed105d9ac54691",
+      "head_ref": "f98281938e63acd1d2df9b89d6af98dcf58c9fa8",
+      "head_sha": "f98281938e63acd1d2df9b89d6af98dcf58c9fa8",
+      "html_url": null
+    },
+    "files": [
+      {
+        "filename": "cmd/root.go",
+        "status": "modified",
+        "additions": 9,
+        "deletions": 0,
+        "changes": 9,
+        "previous_filename": null,
+        "patch_sha256": "adb33b4aa4aefb50449b5524ca3a06eb9be2b77b26a57cb68f93a09eae1c169b"
+      },
+      {
+        "filename": "internal/github/github.go",
+        "status": "modified",
+        "additions": 45,
+        "deletions": 0,
+        "changes": 45,
+        "previous_filename": null,
+        "patch_sha256": "7b3ab34f0cc830c8822e7dab26e6c24efde78daea336eacd241c27341aa9b065"
+      }
+    ],
+    "summary": "This PR adds `Client.IsCopilotReviewFresh()` to internal/github/github.go and wires it into cmd/root.go so the tool exits early with \"already up to date\" instead of requesting a Copilot review when Copilot's latest review looks newer than the PR's last commit. The freshness check is implemented by fetching the PR commit list and review list and comparing `submitted_at` with the last commit's `committer.date`, which is a different mechanism than the head-SHA / `commit_id` comparison described in the PR description. Reviewers should focus on whether the commit/review data used is complete and whether timestamp comparison can misclassify a stale review as fresh, since a false \"fresh\" silently suppresses the review request the tool exists to send.",
+    "risk_level": "medium",
+    "rule_findings": [],
+    "suggestions": [
+      {
+        "file_path": "internal/github/github.go",
+        "line": 116,
+        "severity": "medium",
+        "confidence": 0.65,
+        "title": "Freshness is decided by review timestamp vs. commit timestamp instead of the reviewed commit SHA",
+        "reason": "`return latestCopilotReview.After(lastCommitDate), nil` treats a review as fresh whenever its `submitted_at` is later than the head commit's `committer.date`, without checking which commit the review actually covers. The PR description states the check should compare each Copilot review's `commit_id` against the current PR head SHA, which this implementation does not do. Commit timestamps are also not reliable ordering evidence: `git rebase --committer-date-is-author-date`, `GIT_COMMITTER_DATE`, or imported/cherry-picked patches can give the current head commit a `committer.date` older than a review that was submitted for a previous commit.",
+        "recommendation": "Read the PR head SHA (`GET repos/{owner}/{repo}/pulls/{n}` -> `head.sha`) and compare it to the `commit_id` field of the Copilot reviews, e.g. return fresh only when some Copilot review has `commit_id == headSHA`; keep the timestamp only as a fallback when `commit_id` is empty.",
+        "source": "ai",
+        "evidence": [
+          "\treturn latestCopilotReview.After(lastCommitDate), nil"
+        ],
+        "failure_scenario": "Copilot starts reviewing commit A; while it is running, the developer pushes commit B (committer date 10:00); Copilot then submits its review of commit A at 10:05. `latestCopilotReview` (10:05) is after `lastCommitDate` (10:00), so the function reports fresh and cmd/root.go exits early: commit B is never reviewed even though Copilot's review only covered A."
+      }
+    ],
+    "used_ai": true,
+    "ai_failure_reason": null,
+    "analysis_warnings": [
+      "1 suggestion(s) filtered out (low confidence, unchanged line, or duplicate)"
+    ],
+    "context_truncated": false,
+    "context_token_count": 1035,
+    "patch_token_budget": 6000,
+    "context_tokenizer": "cl100k_base",
+    "hidden_suggestions_count": 1,
+    "skipped_context_files": [],
+    "hidden_rule_findings_count": 0,
+    "reviewer_version": "pr-branch",
+    "execution_status": "success",
+    "degradation_reason": null,
+    "report_confidence": "normal",
+    "completeness": [
+      {
+        "item": "PR 元信息获取",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "变更文件获取",
+        "status": "success",
+        "detail": "2 个文件"
+      },
+      {
+        "item": "AI 上下文文件",
+        "status": "success",
+        "detail": "全部文件进入上下文"
+      },
+      {
+        "item": "AI 分析",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "规则扫描",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "Patch 上下文",
+        "status": "success",
+        "detail": "完整"
+      },
+      {
+        "item": "PR head 语法诊断",
+        "status": "success",
+        "detail": "未检测到语法错误"
+      }
+    ],
+    "pr_syntax_check_ok": true,
+    "review_meta": {
+      "reviewed_commit": "f98281938e63acd1d2df9b89d6af98dcf58c9fa8",
+      "trigger_event": null,
+      "workflow_run_url": null,
+      "updated_at": null,
+      "review_mode": "full_pr"
+    },
+    "fix_tracking": [],
+    "confirmed_signals": [],
+    "dismissed_signals": [],
+    "unresolved_signals": [],
+    "unverified_signals": [],
+    "evidence_rejections": [],
+    "critic_decisions": [],
+    "stage_results": [],
+    "metrics": {
+      "raw_signal_count": 0,
+      "main_review_prompt_signal_count": 0,
+      "independent_suggestion_count": 1,
+      "evidence_rejected_suggestion_count": 0,
+      "critic_request_count": 0,
+      "critic_confirmed_count": 0,
+      "critic_dismissed_count": 0,
+      "critic_uncertain_count": 0,
+      "critic_unverified_count": 0,
+      "context_token_count": 1035,
+      "signal_verification_request_count": 0,
+      "telemetry_only_signal_count": 0,
+      "confirmed_signal_count": 0,
+      "dismissed_signal_count": 0,
+      "unresolved_signal_count": 0,
+      "unverified_signal_count": 0
+    }
+  },
+  "input_coverage": {
+    "binary_files": [],
+    "metadata_only_files": [],
+    "context_truncated": false,
+    "skipped_files": []
+  },
+  "request_count": 1,
+  "usage_records": [
+    {
+      "model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 1653,
+        "completion_tokens": 15547,
+        "total_tokens": 17200,
+        "prompt_tokens_details": {
+          "cached_tokens": 1408
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 14439
+        },
+        "prompt_cache_hit_tokens": 1408,
+        "prompt_cache_miss_tokens": 245
+      },
+      "request_id": "a974f281-1249-46d1-89ee-f46105219fab"
+    }
+  ],
+  "token_usage": {
+    "prompt_tokens": 1653,
+    "completion_tokens": 15547,
+    "total_tokens": 17200
+  },
+  "cost_usd": null,
+  "reviewer_commit": "acabdc0fafd67aa7946a451928f8c27e1a571202",
+  "working_tree_dirty": true,
+  "reviewer_source_sha256": "60cb296a54c9e453c85c74e32f03dc75024c44138263e2e885d21c1b315a658a",
+  "retry_transport": "streaming",
+  "timeout_seconds": 180,
+  "total_time_budget_seconds": 300,
+  "max_output_tokens": 32768
+}

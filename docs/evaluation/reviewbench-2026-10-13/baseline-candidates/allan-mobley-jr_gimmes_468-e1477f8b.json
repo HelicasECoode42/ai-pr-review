@@ -1,0 +1,18 @@
+{
+  "pr": {
+    "repo": "https://github.com/allan-mobley-jr/gimmes",
+    "pr_number": 468,
+    "base": "08efd0bbc34fd29de2a4077f07d24f3dc02a63b6",
+    "head": "e1477f8b3f18c1de6ff87dbca9465a7b106dc193"
+  },
+  "agent": "ai-pr-review",
+  "findings": [
+    {
+      "file": "src/gimmes/strategy/staleness.py",
+      "start_line": 79,
+      "end_line": 79,
+      "message": "Volume floor is compared against cumulative fallback volume, so dead markets are never filtered: The new predicate `has_volume = volume >= volume_floor` (line 79) operates on `volume`, which is resolved on the unchanged line `volume = m.volume_24h if m.volume_24h > 0 else m.volume`. When a market has no trading in the last 24h, `m.volume_24h == 0` and `volume` falls back to the lifetime cumulative `m.volume`, which is above the default floor of 10 for essentially any market that ever traded. As a result `has_volume` is True and the count resets, so the staleness filter can no longer detect markets whose current activity has stopped \u2014 the exact case it exists to catch. The new tests never cover this path because `_market` sets `volume_24h=volume`, so the fallback branch is unexercised.\nScenario: A market's last trade was several days ago: `m.volume_24h == 0` but `m.volume == 5000`. The fallback resolves `volume` to 5000, `has_volume` is True, `new_count` resets to 0 every scan, and the market is never added to `skipped` even though price is frozen and nothing is trading \u2014 the stale market silently passes through the filter indefinitely.\nBase the activity check on recent volume only, or treat the cumulative fallback as not active. For example: `has_volume = m.volume_24h >= volume_floor` (keeping `volume` for storage), or if the fallback must be retained, only apply the floor to it when 24h data is genuinely unavailable and use a much higher threshold. Add a test where `volume_24h=0` and total `volume` is large to lock in the intended behavior.",
+      "producer": "ai-pr-review"
+    }
+  ]
+}

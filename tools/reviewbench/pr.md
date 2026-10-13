@@ -7,11 +7,12 @@ Evaluation handling preserves renames, mode/empty-file changes and binary metada
 Validation:
 - All 25 official task mirrors fetched and diff inputs parsed; source benchmark revision and per-input hashes recorded.
 - 135 Python tests passed; new evaluation modules pass Ruff; VS Code extension compiles.
-- Real DeepSeek requests resumed after credit restoration; all 25 official PRs now have successful candidate output, with original failures and changed retry budgets retained. Full local judging and fixed-suggestion Critic ablation are in progress.
-- Original ReviewBench matcher/scorer completed one smoke PR; its candidate matched a golden false positive. This is a failure case, not a quality gain claim.
+- Real DeepSeek requests resumed after credit restoration; all 25 official PRs now have successful candidate output, with original failures and changed retry budgets retained. Full local judging and fixed-suggestion Critic ablation are complete.
+- Original ReviewBench matcher/classifier/scorer completed all 25 PRs, with 0 scoring errors. Baseline: 12 suggestions, micro augmented precision 91.67%, grounded recall 3.98%. Critic: 10 suggestions, precision 90.00%, recall 3.69%. Critic removed two baseline TPs and retained the FP. Fixed baseline labels give Critic recall 3.41%; fresh judging changed one retained match. This is diagnostic evidence, not a general quality gain.
+- Versioned artifacts and limitations: docs/evaluation/reviewbench-2026-10-13/REPORT.md.
 
 Scope and limitations:
-- Still a draft, not ready to merge. Full baseline judging, controlled ablations, independent label audit and broader repository context remain required.
+- Still a draft, not ready to merge. Further Gate/context/two-stage ablations, independent label audit and broader repository context remain required.
 - Successful outputs from earlier transports are retained with their original dirty-tree source hashes and audit provenance; this is an engineering baseline, not a clean-commit effectiveness comparison.
 - Judge currently uses the same DeepSeek model family as the reviewer; local LLM judging does not substitute for independent human review or official leaderboard scoring.
 - Design/contract review schema expansion and autonomous improvement remain deferred. The earlier constrained configuration prototype is not enabled in production.

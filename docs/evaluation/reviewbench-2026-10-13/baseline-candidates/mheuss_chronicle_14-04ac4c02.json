@@ -1,0 +1,10 @@
+{
+  "pr": {
+    "repo": "https://github.com/mheuss/chronicle",
+    "pr_number": 14,
+    "base": "17e33ca1ebf643d47201a8f94b8ab3e88848cf23",
+    "head": "04ac4c02d48083676c14dd3fa70d26ca102bd50e"
+  },
+  "agent": "ai-pr-review",
+  "findings": []
+}

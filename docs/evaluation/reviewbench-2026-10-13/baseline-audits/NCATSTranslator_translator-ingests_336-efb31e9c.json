@@ -1,0 +1,200 @@
+{
+  "model": "deepseek-v4-flash",
+  "latency_seconds": 91.32045329098764,
+  "diff_sha256": "75ef0c89ace2147f2eaec2ba64d977d41b81248bb37faf4a3323a913896417d7",
+  "strategy": {
+    "evidence": true,
+    "critic": false,
+    "context_pack": true,
+    "two_stage": false,
+    "verify_signals": false,
+    "min_confidence": 0.65,
+    "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "report": {
+    "pr": {
+      "repo": "NCATSTranslator/translator-ingests",
+      "number": 336,
+      "title": "Addressing Matt's QA on gtopdb",
+      "author": null,
+      "base_ref": "58d880509f9cf6d37715153b7cf261205dfa0f96",
+      "head_ref": "efb31e9c764865f416230073c6d0b1686a0f44b7",
+      "head_sha": "efb31e9c764865f416230073c6d0b1686a0f44b7",
+      "html_url": null
+    },
+    "files": [
+      {
+        "filename": "src/translator_ingest/ingests/gtopdb/gtopdb.py",
+        "status": "modified",
+        "additions": 569,
+        "deletions": 335,
+        "changes": 904,
+        "previous_filename": null,
+        "patch_sha256": "45bf33e3771f1b0ddeaa7382c97ff8d36d7b9ebf1167188b467781520fa200ea"
+      },
+      {
+        "filename": "src/translator_ingest/ingests/gtopdb/gtopdb_rig.yaml",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 3,
+        "changes": 6,
+        "previous_filename": null,
+        "patch_sha256": "52c4da9931c9cd546d319af942707bba67ef2084134c24ad1991577879c018c4"
+      }
+    ],
+    "summary": "This PR reworks the gtopdb ingest: it subsets the source DataFrame to the needed columns, aggregates rows per (subject, object, Type, Action, Endogenous) key with PubMed IDs joined by '|', switches the object node from Gene to Protein, introduces an Endogenous-driven predicate/direction mapping (affects/increased-decreased vs regulates/upregulated-downregulated), expands the Action→causal mechanism mappings for Activator/Agonist/Allosteric modulator types, and emits biolink:directly_physically_interacts_with partner edges. Reviewers should focus on the new action lookup lists (a typo silently breaks 'Agonist' handling), the `break` statement inside the per-record loop, and the pandas groupby's default NaN-key dropping.",
+    "risk_level": "high",
+    "rule_findings": [],
+    "suggestions": [
+      {
+        "file_path": "src/translator_ingest/ingests/gtopdb/gtopdb.py",
+        "line": 167,
+        "severity": "high",
+        "confidence": 0.8,
+        "title": "Typo 'Agnoist' in action lists makes the 'Agonist' branches unreachable and drops edges",
+        "reason": "The added list `activator_list_with_separate_directly_physically_interacts_with_edge = ['Agnoist', 'Binding', 'Full agonist', 'Partial agonist']` (and the later `agnoist_list_with_separate_directly_physically_interacts_with_edge = ['Activation', 'Agnoist', ...]`) contains the misspelled 'Agnoist' while the inner branches test `if record[\"Action\"] == \"Agonist\":`. The inner 'Agonist' branch can therefore never execute, and rows whose Action is the real value 'Agonist' fail the `in` membership test used by `if record[\"Type\"] == 'Activator' and record[\"Action\"] in activator_list...`. Note the previous version of this file handled `record[\"Action\"] == \"Agonist\"` explicitly, and the deleted `if record[\"Type\"] == 'Agonist' and record[\"Action\"] != \"Binding\":` fallback is gone in this PR.",
+        "recommendation": "Correct the spelling to 'Agonist' in both lists (and keep the inner branch consistent), e.g.\n```python\nactivator_list_with_separate_directly_physically_interacts_with_edge = ['Agonist', 'Binding', 'Full agonist', 'Partial agonist']\nagnoist_list_with_separate_directly_physically_interacts_with_edge = ['Activation', 'Agonist', 'Biased agonist', 'Binding', 'Full agonist', 'Inverse agonist', 'Irreversible agonist', 'Mixed', None, 'Partial agonist', 'Unknown']\n```",
+        "source": "ai",
+        "evidence": [
+          "        activator_list_with_separate_directly_physically_interacts_with_edge = ['Agnoist', 'Binding', 'Full agonist', 'Partial agonist']"
+        ],
+        "failure_scenario": "A gtopdb row with Type='Agonist' and Action='Agonist' no longer matches the action list, and the non-binding fallback branch was deleted in this PR, so the record produces no ChemicalAffectsGeneAssociation and no PairwiseMolecularInteraction at all (silent edge loss). For Type='Activator' with Action='Agonist', the row falls into the `not in` branch where none of the `elif` cases match, producing an association with `causal_mechanism_qualifier=None` instead of agonism."
+      }
+    ],
+    "used_ai": true,
+    "ai_failure_reason": null,
+    "analysis_warnings": [
+      "3 suggestion(s) filtered out (low confidence, unchanged line, or duplicate)",
+      "Patch context was truncated to fit token budget; some files were not analyzed by AI."
+    ],
+    "context_truncated": true,
+    "context_token_count": 6546,
+    "patch_token_budget": 6000,
+    "context_tokenizer": "cl100k_base",
+    "hidden_suggestions_count": 3,
+    "skipped_context_files": [],
+    "hidden_rule_findings_count": 0,
+    "reviewer_version": "pr-branch",
+    "execution_status": "success",
+    "degradation_reason": null,
+    "report_confidence": "normal",
+    "completeness": [
+      {
+        "item": "PR 元信息获取",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "变更文件获取",
+        "status": "success",
+        "detail": "2 个文件"
+      },
+      {
+        "item": "AI 上下文文件",
+        "status": "success",
+        "detail": "全部文件进入上下文"
+      },
+      {
+        "item": "AI 分析",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "规则扫描",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "Patch 上下文",
+        "status": "partial",
+        "detail": "裁剪 — 超出 token 预算"
+      },
+      {
+        "item": "PR head 语法诊断",
+        "status": "success",
+        "detail": "未检测到语法错误"
+      }
+    ],
+    "pr_syntax_check_ok": true,
+    "review_meta": {
+      "reviewed_commit": "efb31e9c764865f416230073c6d0b1686a0f44b7",
+      "trigger_event": null,
+      "workflow_run_url": null,
+      "updated_at": null,
+      "review_mode": "full_pr"
+    },
+    "fix_tracking": [],
+    "confirmed_signals": [],
+    "dismissed_signals": [],
+    "unresolved_signals": [],
+    "unverified_signals": [],
+    "evidence_rejections": [
+      {
+        "file_path": "src/translator_ingest/ingests/gtopdb/gtopdb.py",
+        "line": 410,
+        "title": "`break` terminates the whole record loop for one unsupported allosteric action",
+        "source": "ai",
+        "reason": "None of the AI evidence excerpts appears in the cited changed line."
+      }
+    ],
+    "critic_decisions": [],
+    "stage_results": [],
+    "metrics": {
+      "raw_signal_count": 0,
+      "main_review_prompt_signal_count": 0,
+      "independent_suggestion_count": 1,
+      "evidence_rejected_suggestion_count": 1,
+      "critic_request_count": 0,
+      "critic_confirmed_count": 0,
+      "critic_dismissed_count": 0,
+      "critic_uncertain_count": 0,
+      "critic_unverified_count": 0,
+      "context_token_count": 6546,
+      "signal_verification_request_count": 0,
+      "telemetry_only_signal_count": 0,
+      "confirmed_signal_count": 0,
+      "dismissed_signal_count": 0,
+      "unresolved_signal_count": 0,
+      "unverified_signal_count": 0
+    }
+  },
+  "input_coverage": {
+    "binary_files": [],
+    "metadata_only_files": [],
+    "context_truncated": true,
+    "skipped_files": []
+  },
+  "request_count": 1,
+  "usage_records": [
+    {
+      "model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 7753,
+        "completion_tokens": 20104,
+        "total_tokens": 27857,
+        "prompt_tokens_details": {
+          "cached_tokens": 7552
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 18234
+        },
+        "prompt_cache_hit_tokens": 7552,
+        "prompt_cache_miss_tokens": 201
+      },
+      "request_id": "169f6039-c820-4f38-ac88-33bc12431baf"
+    }
+  ],
+  "token_usage": {
+    "prompt_tokens": 7753,
+    "completion_tokens": 20104,
+    "total_tokens": 27857
+  },
+  "cost_usd": null,
+  "reviewer_commit": "200ab1002c0362761cbcc1cac145bbd7d2ad47b8",
+  "working_tree_dirty": true,
+  "reviewer_source_sha256": "f06d31d67053fc56be31ee3149087d8573a8e08cb382d5a4297313be307c708c",
+  "transport": "streaming",
+  "timeout_seconds": 180,
+  "total_time_budget_seconds": 300,
+  "max_output_tokens": 32768
+}

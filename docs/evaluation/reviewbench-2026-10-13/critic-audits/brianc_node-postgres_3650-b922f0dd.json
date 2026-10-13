@@ -1,0 +1,9 @@
+{
+  "reviewer_commit": "200ab1002c0362761cbcc1cac145bbd7d2ad47b8",
+  "working_tree_dirty": true,
+  "reviewer_source_sha256": "d22560c2d9a3cd28eb8957bde561acf758276bd32ede42392f9b6648b54a5561",
+  "baseline_source": "reports/evaluation/reviewbench-baseline-v2-complete",
+  "decisions": [],
+  "request_count": 0,
+  "usage_records": []
+}

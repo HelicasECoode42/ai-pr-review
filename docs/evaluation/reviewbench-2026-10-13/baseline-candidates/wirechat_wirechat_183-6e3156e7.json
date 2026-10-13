@@ -1,0 +1,10 @@
+{
+  "pr": {
+    "repo": "https://github.com/wirechat/wirechat",
+    "pr_number": 183,
+    "base": "7f645146da1285f3817a9dfcb04be0a53ee50ecd",
+    "head": "6e3156e78da9b47cb4c6d596883b3ef0730b8cf8"
+  },
+  "agent": "ai-pr-review",
+  "findings": []
+}

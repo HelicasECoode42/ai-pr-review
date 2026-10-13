@@ -1,0 +1,10 @@
+{
+  "pr": {
+    "repo": "https://github.com/brexhq/CrabTrap",
+    "pr_number": 15,
+    "base": "b29930e93765700608313c0f0d32c4818734e158",
+    "head": "5ef0884c59b3ee1d5a986dd02686a8232570c80f"
+  },
+  "agent": "ai-pr-review",
+  "findings": []
+}

@@ -1,0 +1,18 @@
+{
+  "pr": {
+    "repo": "https://github.com/superhighfives/pika",
+    "pr_number": 200,
+    "base": "bdda75cbeeb8cd72a2cb197f93623c3e197cf49c",
+    "head": "b227aff048155b8d2a8426b4d84bcec4504e7c01"
+  },
+  "agent": "ai-pr-review",
+  "findings": [
+    {
+      "file": "Pika/Services/Eyedroppers.swift",
+      "start_line": 289,
+      "end_line": 289,
+      "message": "deletePalette only clamps the active index, so deleting a palette before the active one jumps to auto-history: The added body of deletePalette ends with `if Defaults[.activePaletteIndex] >= palettes.count { Defaults[.activePaletteIndex] = 0 }` after `palettes.remove(at: index)`. It never decrements activePaletteIndex when the deleted palette sits before the active one, and it never calls restoreAutoHistorySelection() even though the PR description claims it does. Since the tab bar draws selection from `index == activePaletteIndex`, removing an earlier palette either clamps to 0 (auto-history) or leaves the index pointing at a different palette than the user selected.\nScenario: Palettes are [auto, A, B] with B active (activePaletteIndex == 2). The user right-clicks A and chooses Delete: palettes become [auto, B] and `2 >= 2` sets activePaletteIndex to 0, so the drawer silently switches to the auto-history tab (with activeHistoryID still referencing B's chip), instead of keeping B selected.\nDecrement the active index when index < activePaletteIndex, and re-sync the selection after removal, e.g.:\n\n```swift\nfunc deletePalette(at index: Int) {\n    var palettes = Defaults[.palettes]\n    guard index > 0, index < palettes.count else { return }\n    let wasActive = Defaults[.activePaletteIndex]\n    palettes.remove(at: index)\n    Defaults[.palettes] = palettes\n    if wasActive == index || wasActive >= palettes.count {\n        Defaults[.activePaletteIndex] = 0\n        restoreAutoHistorySelection()\n    } else if wasActive > index {\n        Defaults[.activePaletteIndex] = wasActive - 1\n    }\n}\n```",
+      "producer": "ai-pr-review"
+    }
+  ]
+}

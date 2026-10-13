@@ -1,0 +1,18 @@
+{
+  "pr": {
+    "repo": "https://github.com/NCATSTranslator/translator-ingests",
+    "pr_number": 336,
+    "base": "58d880509f9cf6d37715153b7cf261205dfa0f96",
+    "head": "efb31e9c764865f416230073c6d0b1686a0f44b7"
+  },
+  "agent": "ai-pr-review",
+  "findings": [
+    {
+      "file": "src/translator_ingest/ingests/gtopdb/gtopdb.py",
+      "start_line": 167,
+      "end_line": 167,
+      "message": "Typo 'Agnoist' in action lists makes the 'Agonist' branches unreachable and drops edges: The added list `activator_list_with_separate_directly_physically_interacts_with_edge = ['Agnoist', 'Binding', 'Full agonist', 'Partial agonist']` (and the later `agnoist_list_with_separate_directly_physically_interacts_with_edge = ['Activation', 'Agnoist', ...]`) contains the misspelled 'Agnoist' while the inner branches test `if record[\"Action\"] == \"Agonist\":`. The inner 'Agonist' branch can therefore never execute, and rows whose Action is the real value 'Agonist' fail the `in` membership test used by `if record[\"Type\"] == 'Activator' and record[\"Action\"] in activator_list...`. Note the previous version of this file handled `record[\"Action\"] == \"Agonist\"` explicitly, and the deleted `if record[\"Type\"] == 'Agonist' and record[\"Action\"] != \"Binding\":` fallback is gone in this PR.\nScenario: A gtopdb row with Type='Agonist' and Action='Agonist' no longer matches the action list, and the non-binding fallback branch was deleted in this PR, so the record produces no ChemicalAffectsGeneAssociation and no PairwiseMolecularInteraction at all (silent edge loss). For Type='Activator' with Action='Agonist', the row falls into the `not in` branch where none of the `elif` cases match, producing an association with `causal_mechanism_qualifier=None` instead of agonism.\nCorrect the spelling to 'Agonist' in both lists (and keep the inner branch consistent), e.g.\n```python\nactivator_list_with_separate_directly_physically_interacts_with_edge = ['Agonist', 'Binding', 'Full agonist', 'Partial agonist']\nagnoist_list_with_separate_directly_physically_interacts_with_edge = ['Activation', 'Agonist', 'Biased agonist', 'Binding', 'Full agonist', 'Inverse agonist', 'Irreversible agonist', 'Mixed', None, 'Partial agonist', 'Unknown']\n```",
+      "producer": "ai-pr-review"
+    }
+  ]
+}

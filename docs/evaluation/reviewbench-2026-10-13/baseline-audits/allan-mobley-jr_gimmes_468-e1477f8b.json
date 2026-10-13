@@ -1,0 +1,209 @@
+{
+  "model": "deepseek-v4-flash",
+  "latency_seconds": 39.612872083002,
+  "diff_sha256": "6628d97c750caee1aeb01777c77a9d1608867bdc38fb1420575eef91b9ebde0c",
+  "strategy": {
+    "evidence": true,
+    "critic": false,
+    "context_pack": true,
+    "two_stage": false,
+    "verify_signals": false,
+    "min_confidence": 0.65,
+    "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "report": {
+    "pr": {
+      "repo": "allan-mobley-jr/gimmes",
+      "number": 468,
+      "title": "Fix staleness filter for NO variance strategy",
+      "author": null,
+      "base_ref": "08efd0bbc34fd29de2a4077f07d24f3dc02a63b6",
+      "head_ref": "e1477f8b3f18c1de6ff87dbca9465a7b106dc193",
+      "head_sha": "e1477f8b3f18c1de6ff87dbca9465a7b106dc193",
+      "html_url": null
+    },
+    "files": [
+      {
+        "filename": "src/gimmes/cli.py",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "a46a53296d499ee28f79a303246fb2df9303fa064223bad1b085034dea29f8e9"
+      },
+      {
+        "filename": "src/gimmes/config.py",
+        "status": "modified",
+        "additions": 5,
+        "deletions": 3,
+        "changes": 8,
+        "previous_filename": null,
+        "patch_sha256": "8c160e1ede41d968de8c5fab490b9bf82c3ddb30607310ad33d60e0d5da33255"
+      },
+      {
+        "filename": "src/gimmes/strategy/staleness.py",
+        "status": "modified",
+        "additions": 16,
+        "deletions": 10,
+        "changes": 26,
+        "previous_filename": null,
+        "patch_sha256": "9c07f730ed1225613d3bf7110acd377c1173e4bb12018d627daad0e95390e0a5"
+      },
+      {
+        "filename": "tests/unit/test_staleness.py",
+        "status": "modified",
+        "additions": 107,
+        "deletions": 16,
+        "changes": 123,
+        "previous_filename": null,
+        "patch_sha256": "8374ec61d3c4f342bd6c63cc3f8cab10dafdda6fb67bc8c58976b5078f1cc61b"
+      }
+    ],
+    "summary": "This PR reworks the market staleness filter in src/gimmes/strategy/staleness.py so a market is only considered stale when price is unchanged AND volume is below a new `volume_floor` AND open interest is unchanged, replacing the previous `volume_spike_ratio` heuristic. It also adds `open_interest` to `StalenessEntry`, updates `ScannerConfig` help text and a CLI comment, and adds five unit tests. Reviewers should focus on the new activity predicate: the volume test now runs against the resolved `volume` value (which falls back to lifetime cumulative volume) and the OI comparison defaults missing data to 0, both of which change which markets get filtered.",
+    "risk_level": "medium",
+    "rule_findings": [],
+    "suggestions": [
+      {
+        "file_path": "src/gimmes/strategy/staleness.py",
+        "line": 79,
+        "severity": "medium",
+        "confidence": 0.65,
+        "title": "Volume floor is compared against cumulative fallback volume, so dead markets are never filtered",
+        "reason": "The new predicate `has_volume = volume >= volume_floor` (line 79) operates on `volume`, which is resolved on the unchanged line `volume = m.volume_24h if m.volume_24h > 0 else m.volume`. When a market has no trading in the last 24h, `m.volume_24h == 0` and `volume` falls back to the lifetime cumulative `m.volume`, which is above the default floor of 10 for essentially any market that ever traded. As a result `has_volume` is True and the count resets, so the staleness filter can no longer detect markets whose current activity has stopped — the exact case it exists to catch. The new tests never cover this path because `_market` sets `volume_24h=volume`, so the fallback branch is unexercised.",
+        "recommendation": "Base the activity check on recent volume only, or treat the cumulative fallback as not active. For example: `has_volume = m.volume_24h >= volume_floor` (keeping `volume` for storage), or if the fallback must be retained, only apply the floor to it when 24h data is genuinely unavailable and use a much higher threshold. Add a test where `volume_24h=0` and total `volume` is large to lock in the intended behavior.",
+        "source": "ai",
+        "evidence": [
+          "has_volume = volume >= volume_floor"
+        ],
+        "failure_scenario": "A market's last trade was several days ago: `m.volume_24h == 0` but `m.volume == 5000`. The fallback resolves `volume` to 5000, `has_volume` is True, `new_count` resets to 0 every scan, and the market is never added to `skipped` even though price is frozen and nothing is trading — the stale market silently passes through the filter indefinitely."
+      }
+    ],
+    "used_ai": true,
+    "ai_failure_reason": null,
+    "analysis_warnings": [
+      "1 suggestion(s) filtered out (low confidence, unchanged line, or duplicate)"
+    ],
+    "context_truncated": false,
+    "context_token_count": 3685,
+    "patch_token_budget": 6000,
+    "context_tokenizer": "cl100k_base",
+    "hidden_suggestions_count": 1,
+    "skipped_context_files": [],
+    "hidden_rule_findings_count": 0,
+    "reviewer_version": "pr-branch",
+    "execution_status": "success",
+    "degradation_reason": null,
+    "report_confidence": "normal",
+    "completeness": [
+      {
+        "item": "PR 元信息获取",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "变更文件获取",
+        "status": "success",
+        "detail": "4 个文件"
+      },
+      {
+        "item": "AI 上下文文件",
+        "status": "success",
+        "detail": "全部文件进入上下文"
+      },
+      {
+        "item": "AI 分析",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "规则扫描",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "Patch 上下文",
+        "status": "success",
+        "detail": "完整"
+      },
+      {
+        "item": "PR head 语法诊断",
+        "status": "success",
+        "detail": "未检测到语法错误"
+      }
+    ],
+    "pr_syntax_check_ok": true,
+    "review_meta": {
+      "reviewed_commit": "e1477f8b3f18c1de6ff87dbca9465a7b106dc193",
+      "trigger_event": null,
+      "workflow_run_url": null,
+      "updated_at": null,
+      "review_mode": "full_pr"
+    },
+    "fix_tracking": [],
+    "confirmed_signals": [],
+    "dismissed_signals": [],
+    "unresolved_signals": [],
+    "unverified_signals": [],
+    "evidence_rejections": [],
+    "critic_decisions": [],
+    "stage_results": [],
+    "metrics": {
+      "raw_signal_count": 0,
+      "main_review_prompt_signal_count": 0,
+      "independent_suggestion_count": 1,
+      "evidence_rejected_suggestion_count": 0,
+      "critic_request_count": 0,
+      "critic_confirmed_count": 0,
+      "critic_dismissed_count": 0,
+      "critic_uncertain_count": 0,
+      "critic_unverified_count": 0,
+      "context_token_count": 3685,
+      "signal_verification_request_count": 0,
+      "telemetry_only_signal_count": 0,
+      "confirmed_signal_count": 0,
+      "dismissed_signal_count": 0,
+      "unresolved_signal_count": 0,
+      "unverified_signal_count": 0
+    }
+  },
+  "input_coverage": {
+    "binary_files": [],
+    "metadata_only_files": [],
+    "context_truncated": false,
+    "skipped_files": []
+  },
+  "request_count": 1,
+  "usage_records": [
+    {
+      "model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 4412,
+        "completion_tokens": 7771,
+        "total_tokens": 12183,
+        "prompt_tokens_details": {
+          "cached_tokens": 384
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 6721
+        },
+        "prompt_cache_hit_tokens": 384,
+        "prompt_cache_miss_tokens": 4028
+      },
+      "request_id": "1431112a-2882-481a-9768-8bb907e06db3"
+    }
+  ],
+  "token_usage": {
+    "prompt_tokens": 4412,
+    "completion_tokens": 7771,
+    "total_tokens": 12183
+  },
+  "cost_usd": null,
+  "reviewer_commit": "200ab1002c0362761cbcc1cac145bbd7d2ad47b8",
+  "working_tree_dirty": true,
+  "reviewer_source_sha256": "f06d31d67053fc56be31ee3149087d8573a8e08cb382d5a4297313be307c708c",
+  "transport": "streaming",
+  "timeout_seconds": 180,
+  "total_time_budget_seconds": 300,
+  "max_output_tokens": 32768
+}

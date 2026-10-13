@@ -1,0 +1,10 @@
+{
+  "pr": {
+    "repo": "https://github.com/cmik/apilix",
+    "pr_number": 12,
+    "base": "4fe23e22e3937c38cb859a3b9c00b193bb309aa1",
+    "head": "0c34439aeebedc646d76d90db6b79a5c54b4cb8f"
+  },
+  "agent": "ai-pr-review",
+  "findings": []
+}

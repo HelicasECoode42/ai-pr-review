@@ -1,0 +1,70 @@
+[
+  {
+    "case_id": "DisciplinedSoftware_Codebase-Conversion_1-4b46d68c",
+    "finding": {
+      "file": "fortran_to_rust/test_harness.py",
+      "start_line": 557,
+      "end_line": 557,
+      "message": "Function result printed before array outputs, while the Fortran driver prints it after: The Rust FUNCTION template prints the return value first: line 557 `    println!(\"{{:.15e}}\", _result as f64);` comes before `{rust_prints}` (line 560). In `generate_fortran_driver` the opposite happens: the array WRITE loops are appended to `print_lines` at lines 418-441, and the return value is appended afterwards at line 471 (`print_lines.append(f\"      WRITE(*,'{print_fmt}') {result_var}\")`, comment: `# Print the function result after all array prints`). The two output streams therefore have different element order.\nScenario: Converting `DOUBLE PRECISION FUNCTION DDOT(N,DX,DY)` produces a Fortran driver that writes DX(1..4), DY(1..4) and then RES, while the Rust example prints the dot product and then DX(1..4), DY(1..4). A positional comparison of the two streams pairs the scalar result with DX(1) and reports a huge max error, so a correct conversion is reported as failing (and a wrong conversion can accidentally cancel out).\nMake both sides emit the return value in the same position, e.g. in the FN template move the result print after the array prints (`{rust_prints}` then the `println!`), or in `generate_fortran_driver` build the result write into a separate list and concatenate it *before* `print_lines` when `routine_kind == \"function\"`.",
+      "status": "matched_tp",
+      "matched_golden_index": 43,
+      "covered_golden_indices": [
+        43
+      ],
+      "golden_tp_fp": "tp",
+      "golden_severity": "medium",
+      "golden_category": "correctness",
+      "matched_to_ground_truth": true,
+      "llm_judged_match": true,
+      "match_method": "llm",
+      "matched_truth_label": "tp",
+      "result_severity": "medium",
+      "result_category": "correctness"
+    },
+    "critic_decisions": [
+      {
+        "suggestion_index": 0,
+        "file_path": "fortran_to_rust/test_harness.py",
+        "line": 557,
+        "title": "Function result printed before array outputs, while the Fortran driver prints it after",
+        "decision": "uncertain",
+        "confidence": 0.4,
+        "reason": "The only part of the finding verifiable from the supplied patch is the Rust-side ordering: the FN template in the new file clearly emits `println!(\"{:.15e}\", _result as f64)` (the cited line) BEFORE the `{rust_prints}` array-output block, so the Rust example does print the scalar result first. However, the rest of the failure chain lives in code not present in the shipped patch: `generate_fortran_driver` (the claimed array loops at lines 418-441 and the return-value WRITE at line 471, with the comment '# Print the function result after all array prints') and the actual comparison logic that would pair the two streams positionally are not shown in this hunk. Without seeing that the Fortran driver really appends the result after the arrays and that the comparator is positional (rather than matching by name/label), the asserted mismatch cannot be confirmed nor refuted. The visible code is consistent with the claim but does not by itself establish the bug."
+      }
+    ]
+  },
+  {
+    "case_id": "superyyrrzz_ForgeMap_106-2f3977ed",
+    "finding": {
+      "file": ".github/workflows/docs.yml",
+      "start_line": 26,
+      "end_line": 26,
+      "message": "Pages concurrency key split by ref allows overlapping deployments: The diff replaces the shared Pages lock with a per-ref key and flips cancellation on: `group: \"pages-${{ github.ref }}\"` (docs.yml:26) and `cancel-in-progress: true` (docs.yml:27). Previously every docs run shared the single `pages` group, which serialized deploys to the GitHub Pages environment; including `github.ref` in the key means runs triggered from different refs (e.g. main plus a release/docs branch that also runs this workflow on push) fall into different concurrency groups and are no longer mutually exclusive, so two `deploy` jobs can target the same Pages environment at the same time. `cancel-in-progress: true` additionally allows an in-flight deploy job to be killed mid-publish, which the official Pages starter workflow explicitly avoids (`cancel-in-progress: false`).\nScenario: A push to main starts a Pages deploy; before its `deploy` job finishes, a push to a second ref that triggers the same workflow starts another run. Because the groups now differ, GitHub does not queue or cancel it, and both runs call actions/deploy-pages against the same Pages environment: the newer main content can be replaced by the older ref's artifact, and a run cancelled mid-deploy leaves the docs site stale with a failed deploy job.\nKeep a single lock for the deployment target and let production deploys finish, e.g. restore `group: \"pages\"` with `cancel-in-progress: false`; if you only want to cancel *build* runs, put the cancellation on the build job and leave the deploy job in the shared `pages` group (job-level `concurrency` on the deploy job).",
+      "status": "matched_tp",
+      "matched_golden_index": 0,
+      "covered_golden_indices": [
+        0
+      ],
+      "golden_tp_fp": "tp",
+      "golden_severity": "medium",
+      "golden_category": "reliability",
+      "matched_to_ground_truth": true,
+      "llm_judged_match": true,
+      "match_method": "llm",
+      "matched_truth_label": "tp",
+      "result_severity": "medium",
+      "result_category": "reliability"
+    },
+    "critic_decisions": [
+      {
+        "suggestion_index": 0,
+        "file_path": ".github/workflows/docs.yml",
+        "line": 26,
+        "title": "Pages concurrency key split by ref allows overlapping deployments",
+        "decision": "uncertain",
+        "confidence": 0.55,
+        "reason": "The diff definitely changes the concurrency semantics (group now keyed on github.ref; cancel-in-progress flipped false→true), but the headline failure scenario requires that the same workflow is triggered from two different refs, and the patch only shows lines 23-30 — no `on:` triggers are visible, so it cannot be established that any ref other than the deploy branch (e.g. refs/heads/main) ever runs this workflow. For the normal push-to-main path, github.ref is a constant, so the ref-suffixed group behaves like the old shared `pages` group and the 'different refs bypass mutual exclusion' claim does not follow from the changed lines alone. The one change that is unambiguously evidenced is `cancel-in-progress: true`, which can kill an in-flight `deploy` job on a rapid second push to the same ref; however the resulting impact is a transient failed deploy rather than a persistent bad state, because the superseding run then publishes the newest artifact — contradicting the 'site left stale' part of the scenario. Neither the conflicting `actions/deploy-pages` race (needs multi-ref or PR-triggered deploys) nor a sustained stale site is demonstrable from the supplied hunk, so I cannot confirm the described failure scenario nor fully dismiss the underlying concurrency-hygiene concern."
+      }
+    ]
+  }
+]

@@ -1,0 +1,397 @@
+{
+  "model": "deepseek-v4-flash",
+  "latency_seconds": 36.72328729199944,
+  "diff_sha256": "1360f64ae62262c2ea1c44871b80fb6a4e56973e735700e5486e5ea0a25b53be",
+  "strategy": {
+    "evidence": true,
+    "critic": false,
+    "context_pack": true,
+    "two_stage": false,
+    "verify_signals": false,
+    "min_confidence": 0.65,
+    "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "report": {
+    "pr": {
+      "repo": "gagneurlab/PROTRIDER",
+      "number": 10,
+      "title": "Fix two reviewer-flagged issues: invalid parquet arg & checkpoint opt-in",
+      "author": null,
+      "base_ref": "22740c695315543a1064915930f806abf5b058ce",
+      "head_ref": "b462b109b630dd1e1a9a78088b18429d2baaae9b",
+      "head_sha": "b462b109b630dd1e1a9a78088b18429d2baaae9b",
+      "html_url": null
+    },
+    "files": [
+      {
+        "filename": ".gitignore",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 1,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "96a143b131b87a5543f49edbc73220d9dc2f68147d71f091c95181f4f467b1e2"
+      },
+      {
+        "filename": "README.md",
+        "status": "modified",
+        "additions": 112,
+        "deletions": 81,
+        "changes": 193,
+        "previous_filename": null,
+        "patch_sha256": "dcc31245bfe2f20868fb6bf3bcfab428f9f1ab79115f2b269c2a4d80af421ce8"
+      },
+      {
+        "filename": "config.yaml",
+        "status": "modified",
+        "additions": 12,
+        "deletions": 7,
+        "changes": 19,
+        "previous_filename": null,
+        "patch_sha256": "3170b83c4f7a3f39a8a2ea00e578ff24c321461e1cf5b2270ce5fdf09c5336f7"
+      },
+      {
+        "filename": "pyproject.toml",
+        "status": "modified",
+        "additions": 4,
+        "deletions": 1,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "4ebb07537d8c26b42a43a90f96afbf3a9079ffb296341a65cfec61bda0614757"
+      },
+      {
+        "filename": "src/protrider/cli.py",
+        "status": "modified",
+        "additions": 6,
+        "deletions": 2,
+        "changes": 8,
+        "previous_filename": null,
+        "patch_sha256": "afedc0333882d964a8a8448a806716de6391f5800e6a6a1932cfb080d2354454"
+      },
+      {
+        "filename": "src/protrider/config.py",
+        "status": "modified",
+        "additions": 17,
+        "deletions": 10,
+        "changes": 27,
+        "previous_filename": null,
+        "patch_sha256": "087a051e56aff33bc9cf6299a4d57b9afa23e5371c840823873bbaf523c523ed"
+      },
+      {
+        "filename": "src/protrider/datasets/__init__.py",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 2,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "769e25b7ba676ce4ceb4a1932fa11c448c1ed066d841c04bb82624de0485bf6b"
+      },
+      {
+        "filename": "src/protrider/datasets/cv.py",
+        "status": "removed",
+        "additions": 0,
+        "deletions": 144,
+        "changes": 144,
+        "previous_filename": null,
+        "patch_sha256": "f3937e36e37cdecdf2f7696773617cabc22305f8a14f39550da11ae975f4f9e9"
+      },
+      {
+        "filename": "src/protrider/datasets/protein_intensities.py",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "dda2766c2c80b81c06deada03722d2560f074ae33b8f6bd8a3ecdf45d48f9848"
+      },
+      {
+        "filename": "src/protrider/model/__init__.py",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 2,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "5c38865276d15c954d909bef64b40d96a9c695e58788d4d599a27731b44b509f"
+      },
+      {
+        "filename": "src/protrider/model/model.py",
+        "status": "modified",
+        "additions": 61,
+        "deletions": 89,
+        "changes": 150,
+        "previous_filename": null,
+        "patch_sha256": "7f7b321ae9aca146c68b61910879fa2b441236c31474790e2493513ae0e770c7"
+      },
+      {
+        "filename": "src/protrider/model/model_helper.py",
+        "status": "modified",
+        "additions": 132,
+        "deletions": 49,
+        "changes": 181,
+        "previous_filename": null,
+        "patch_sha256": "00e1ffb750d59a1e4047ddb02ea34dd3dd187bd01d00f48bac925dde2d0d0451"
+      },
+      {
+        "filename": "src/protrider/pipeline.py",
+        "status": "modified",
+        "additions": 181,
+        "deletions": 288,
+        "changes": 469,
+        "previous_filename": null,
+        "patch_sha256": "d3a3f7d70ca2e0a8f8973e8fe8b15d5997bc72b8ac70f01e1ce8e6ff9b92dfbd"
+      },
+      {
+        "filename": "src/protrider/plots.py",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 22,
+        "changes": 23,
+        "previous_filename": null,
+        "patch_sha256": "d9b3ca8ba61d990f44d5eda19fa5018fa2b6284438580a2fe7b820ab85f3d58a"
+      },
+      {
+        "filename": "src/protrider/stats.py",
+        "status": "modified",
+        "additions": 96,
+        "deletions": 50,
+        "changes": 146,
+        "previous_filename": null,
+        "patch_sha256": "0b6aab2e4434a31e1f81b8cbe6f4fa2643cd6837d97edeade513aae83406ad19"
+      },
+      {
+        "filename": "tests/test_config.py",
+        "status": "modified",
+        "additions": 0,
+        "deletions": 5,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "57c977bf05013268fbab417a0cdcdd9a4c2932498c28111004095365c9ad25ac"
+      },
+      {
+        "filename": "tests/test_model_save_load.py",
+        "status": "added",
+        "additions": 189,
+        "deletions": 0,
+        "changes": 189,
+        "previous_filename": null,
+        "patch_sha256": "a6e0799aa3724b434074c00c6c5555ae5cc90f3300e805672cd3e402dfe5766e"
+      },
+      {
+        "filename": "tests/test_pipeline_cv.py",
+        "status": "removed",
+        "additions": 0,
+        "deletions": 136,
+        "changes": 136,
+        "previous_filename": null,
+        "patch_sha256": "36377ac5a1b2c2a6dda21a73c9095444733eccbdf30ab504f0277f8259cff10d"
+      },
+      {
+        "filename": "tests/test_pipeline_features.py",
+        "status": "modified",
+        "additions": 36,
+        "deletions": 15,
+        "changes": 51,
+        "previous_filename": null,
+        "patch_sha256": "eccee31dd25936d851e19fc0064ad650955fafc3000d94c252bb7ca783467f09"
+      },
+      {
+        "filename": "tests/test_pipeline_misc.py",
+        "status": "modified",
+        "additions": 9,
+        "deletions": 9,
+        "changes": 18,
+        "previous_filename": null,
+        "patch_sha256": "f79f168c04035c477f4b67be46cdc23dd0869faee1ecf449986b250407b88bd0"
+      },
+      {
+        "filename": "tests/test_pipeline_standard.py",
+        "status": "modified",
+        "additions": 7,
+        "deletions": 6,
+        "changes": 13,
+        "previous_filename": null,
+        "patch_sha256": "c060bdde63e14634ea34347ac2a9fe2523668f18077ddda98524cedaf4a36162"
+      },
+      {
+        "filename": "uv.lock",
+        "status": "modified",
+        "additions": 455,
+        "deletions": 33,
+        "changes": 488,
+        "previous_filename": null,
+        "patch_sha256": "ccd2c798e21c9a740818f3a8a4f73e5bc181dbac86200f4e2ee4467cceaf0010"
+      }
+    ],
+    "summary": "The PR refactors pipeline.py around a new save_model/load_model checkpoint flow, drops the cross-validation code paths, and changes several public signatures (run now returns a 4-tuple, Result.save no longer returns a DataFrame, stats helpers take fit_params), plus the advertised config.yaml fix to make checkpointing opt-in. Reviewers should focus on the new checkpoint decision logic in run(), which is where the highest-risk behavior lives, and on the removed return values/signatures that other callers may rely on.",
+    "risk_level": "high",
+    "rule_findings": [],
+    "suggestions": [
+      {
+        "file_path": "src/protrider/pipeline.py",
+        "line": 509,
+        "severity": "high",
+        "confidence": 0.85,
+        "title": "model_was_loaded is derived from file existence instead of actual load success, silently skipping training",
+        "reason": "The added line `model_was_loaded = (checkpoint_path and checkpoint_path.exists() and q is not None)` treats a checkpoint file as 'model loaded' purely from its existence plus a non-None q. But `load_model` returns `(None, None)` on any failure (e.g. `model.load_state_dict` raising on a shape mismatch, caught by the broad `except Exception`), and in that case the `if model is None:` branch runs `find_latent_dim`/`init_model`, which sets a non-None q. The file still exists, so model_was_loaded becomes True, `should_train = config.autoencoder_training and not model_was_loaded` is False, and the freshly initialized (untrained) model is used.",
+        "recommendation": "Track the actual load outcome instead of re-deriving it from the filesystem, e.g. `model, q = load_model(...)` and `model_was_loaded = model is not None`, or set a boolean `loaded_from_checkpoint = False` and flip it to True only inside the successful `load_model` path. Delete the state dict from the fresh model path accordingly.",
+        "source": "ai",
+        "evidence": [
+          "    model_was_loaded = (checkpoint_path and checkpoint_path.exists() and q is not None)"
+        ],
+        "failure_scenario": "Run once in `out_dir='out'` on dataset A (writes out/model.pt), then run again in the same out_dir with a different protein panel. `torch.load` succeeds but `model.load_state_dict` raises on the dimension mismatch, `load_model` returns (None, None), `find_latent_dim`+`init_model` produce a new random model, yet model_was_loaded is True, so training is skipped, `final_loss = init_loss`, and all downstream residuals/p-values/z-scores are computed from an untrained autoencoder with no error surfaced."
+      },
+      {
+        "file_path": "src/protrider/pipeline.py",
+        "line": 448,
+        "severity": "medium",
+        "confidence": 0.7,
+        "title": "Checkpointing is silently re-enabled by defaulting to out_dir/model.pt, making results depend on out_dir reuse",
+        "reason": "The added `else: checkpoint_path = Path(config.out_dir) / 'model.pt'` means a checkpoint path always exists, so line 450's `if checkpoint_path and checkpoint_path.exists()` will find and load the model written by the previous run (line in the save block: `save_model(model, str(checkpoint_path), q)`). This contradicts the stated goal of the PR (checkpointing opt-in via a commented-out `checkpoint_path` in config.yaml) and makes the pipeline silently stateful across runs.",
+        "recommendation": "Only load/save when the user explicitly opted in: keep `checkpoint_path = Path(config.checkpoint_path) if config.checkpoint_path else None` and guard both the load block and the save block with `if checkpoint_path:`, or use a distinct, explicitly user-chosen filename rather than reusing out_dir/model.pt implicitly.",
+        "source": "ai",
+        "evidence": [
+          "        checkpoint_path = Path(config.out_dir) / 'model.pt'"
+        ],
+        "failure_scenario": "A user runs PROTRIDER twice with identical config into the same out_dir (a common pattern when re-running after tweaking pval params). The second run finds out/model.pt, skips training entirely, and reports results produced by the first run's weights, so hyperparameters that affect training (n_epochs, lr, h_dim, or changed input data of the same width) are silently ignored."
+      }
+    ],
+    "used_ai": true,
+    "ai_failure_reason": null,
+    "analysis_warnings": [
+      "2 suggestion(s) filtered out (low confidence, unchanged line, or duplicate)",
+      "Patch context was truncated to fit token budget; some files were not analyzed by AI.",
+      "1 file(s) excluded from AI patch context: uv.lock"
+    ],
+    "context_truncated": true,
+    "context_token_count": 6707,
+    "patch_token_budget": 6000,
+    "context_tokenizer": "cl100k_base",
+    "hidden_suggestions_count": 2,
+    "skipped_context_files": [
+      {
+        "file_path": "uv.lock",
+        "reason": "lockfile"
+      }
+    ],
+    "hidden_rule_findings_count": 0,
+    "reviewer_version": "pr-branch",
+    "execution_status": "success",
+    "degradation_reason": null,
+    "report_confidence": "normal",
+    "completeness": [
+      {
+        "item": "PR 元信息获取",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "变更文件获取",
+        "status": "success",
+        "detail": "22 个文件"
+      },
+      {
+        "item": "AI 上下文文件",
+        "status": "partial",
+        "detail": "1 个文件跳过（lockfile / 生成内容）"
+      },
+      {
+        "item": "AI 分析",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "规则扫描",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "Patch 上下文",
+        "status": "partial",
+        "detail": "裁剪 — 超出 token 预算"
+      },
+      {
+        "item": "PR head 语法诊断",
+        "status": "success",
+        "detail": "未检测到语法错误"
+      }
+    ],
+    "pr_syntax_check_ok": true,
+    "review_meta": {
+      "reviewed_commit": "b462b109b630dd1e1a9a78088b18429d2baaae9b",
+      "trigger_event": null,
+      "workflow_run_url": null,
+      "updated_at": null,
+      "review_mode": "full_pr"
+    },
+    "fix_tracking": [],
+    "confirmed_signals": [],
+    "dismissed_signals": [],
+    "unresolved_signals": [],
+    "unverified_signals": [],
+    "evidence_rejections": [],
+    "critic_decisions": [],
+    "stage_results": [],
+    "metrics": {
+      "raw_signal_count": 0,
+      "main_review_prompt_signal_count": 0,
+      "independent_suggestion_count": 2,
+      "evidence_rejected_suggestion_count": 0,
+      "critic_request_count": 0,
+      "critic_confirmed_count": 0,
+      "critic_dismissed_count": 0,
+      "critic_uncertain_count": 0,
+      "critic_unverified_count": 0,
+      "context_token_count": 6707,
+      "signal_verification_request_count": 0,
+      "telemetry_only_signal_count": 0,
+      "confirmed_signal_count": 0,
+      "dismissed_signal_count": 0,
+      "unresolved_signal_count": 0,
+      "unverified_signal_count": 0
+    }
+  },
+  "input_coverage": {
+    "binary_files": [],
+    "metadata_only_files": [],
+    "context_truncated": true,
+    "skipped_files": [
+      {
+        "file_path": "uv.lock",
+        "reason": "lockfile"
+      }
+    ]
+  },
+  "request_count": 1,
+  "usage_records": [
+    {
+      "model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 7841,
+        "completion_tokens": 7294,
+        "total_tokens": 15135,
+        "prompt_tokens_details": {
+          "cached_tokens": 384
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 5748
+        },
+        "prompt_cache_hit_tokens": 384,
+        "prompt_cache_miss_tokens": 7457
+      },
+      "request_id": "d5cb75eb-de21-49fe-8f37-a1fd83f7c950"
+    }
+  ],
+  "token_usage": {
+    "prompt_tokens": 7841,
+    "completion_tokens": 7294,
+    "total_tokens": 15135
+  },
+  "cost_usd": null,
+  "reviewer_commit": "200ab1002c0362761cbcc1cac145bbd7d2ad47b8",
+  "working_tree_dirty": true,
+  "reviewer_source_sha256": "f06d31d67053fc56be31ee3149087d8573a8e08cb382d5a4297313be307c708c",
+  "transport": "streaming",
+  "timeout_seconds": 180,
+  "total_time_budget_seconds": 300,
+  "max_output_tokens": 32768
+}

@@ -1,0 +1,212 @@
+{
+  "model": "deepseek-v4-flash",
+  "latency_seconds": 120.70990820799489,
+  "diff_sha256": "a41c5980bd62a7e7d9113178c3ce968ad23f4ecdc8658c790331d8a32ddada89",
+  "strategy": {
+    "evidence": true,
+    "critic": false,
+    "context_pack": true,
+    "two_stage": false,
+    "verify_signals": false,
+    "min_confidence": 0.65,
+    "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "report": {
+    "pr": {
+      "repo": "brexhq/CrabTrap",
+      "number": 15,
+      "title": "fix: lighten audit log list responses",
+      "author": null,
+      "base_ref": "b29930e93765700608313c0f0d32c4818734e158",
+      "head_ref": "5ef0884c59b3ee1d5a986dd02686a8232570c80f",
+      "head_sha": "5ef0884c59b3ee1d5a986dd02686a8232570c80f",
+      "html_url": null
+    },
+    "files": [
+      {
+        "filename": "internal/admin/api.go",
+        "status": "modified",
+        "additions": 28,
+        "deletions": 11,
+        "changes": 39,
+        "previous_filename": null,
+        "patch_sha256": "617310eba7011ef7e3310891dfccf0d9179779903a280d8321ac304191ff53ad"
+      },
+      {
+        "filename": "internal/admin/api_auth_test.go",
+        "status": "modified",
+        "additions": 8,
+        "deletions": 3,
+        "changes": 11,
+        "previous_filename": null,
+        "patch_sha256": "53ccd5f831515387a6e242d33b4b453d0cf0401fb3ad0f54f79358a9f11802b9"
+      },
+      {
+        "filename": "internal/admin/audit_integration_test.go",
+        "status": "modified",
+        "additions": 74,
+        "deletions": 0,
+        "changes": 74,
+        "previous_filename": null,
+        "patch_sha256": "b6752d62dfefe730b6b5da516f7b5230382d4765117cec5d3897350798432650"
+      },
+      {
+        "filename": "internal/admin/pg_audit_reader.go",
+        "status": "modified",
+        "additions": 24,
+        "deletions": 2,
+        "changes": 26,
+        "previous_filename": null,
+        "patch_sha256": "17ec37b34f0f6c8e03bd4eb740b83f1d5bb5235c458dd1ca7243662788d78154"
+      },
+      {
+        "filename": "web/src/api/client.ts",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "ea8b9ce9cf64dfe6292e1d1dc7eec8857e4180e51db34ceea437ae14ba538026"
+      },
+      {
+        "filename": "web/src/components/AuditTrail.tsx",
+        "status": "modified",
+        "additions": 63,
+        "deletions": 18,
+        "changes": 81,
+        "previous_filename": null,
+        "patch_sha256": "a4ae7a04cb2a81bba46ad205f261da4cb4c232285446f0956e06b6ede7dc49c9"
+      }
+    ],
+    "summary": "This PR trims the GET /admin/audit list endpoint so it returns only lightweight summary rows (request/response headers and bodies are replaced with empty placeholders), adds `total`/`has_more` pagination metadata, and caps the requested page size at 500. The React audit table now lazy-fetches full entries via GET /admin/audit/{id} when a row is expanded and renders from `entryDetails[detailKey] ?? entry`. Reviewers should focus on list/detail field parity in `pg_audit_reader.go` and on the expanded-row rendering in `AuditTrail.tsx`, where the payload-less summary row is used as a fallback source of headers/bodies.",
+    "risk_level": "low",
+    "rule_findings": [],
+    "suggestions": [],
+    "used_ai": true,
+    "ai_failure_reason": null,
+    "analysis_warnings": [
+      "2 suggestion(s) filtered out (low confidence, unchanged line, or duplicate)"
+    ],
+    "context_truncated": false,
+    "context_token_count": 6217,
+    "patch_token_budget": 6000,
+    "context_tokenizer": "cl100k_base",
+    "hidden_suggestions_count": 2,
+    "skipped_context_files": [],
+    "hidden_rule_findings_count": 0,
+    "reviewer_version": "pr-branch",
+    "execution_status": "success",
+    "degradation_reason": null,
+    "report_confidence": "normal",
+    "completeness": [
+      {
+        "item": "PR 元信息获取",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "变更文件获取",
+        "status": "success",
+        "detail": "6 个文件"
+      },
+      {
+        "item": "AI 上下文文件",
+        "status": "success",
+        "detail": "全部文件进入上下文"
+      },
+      {
+        "item": "AI 分析",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "规则扫描",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "Patch 上下文",
+        "status": "success",
+        "detail": "完整"
+      },
+      {
+        "item": "PR head 语法诊断",
+        "status": "success",
+        "detail": "未检测到语法错误"
+      }
+    ],
+    "pr_syntax_check_ok": true,
+    "review_meta": {
+      "reviewed_commit": "5ef0884c59b3ee1d5a986dd02686a8232570c80f",
+      "trigger_event": null,
+      "workflow_run_url": null,
+      "updated_at": null,
+      "review_mode": "full_pr"
+    },
+    "fix_tracking": [],
+    "confirmed_signals": [],
+    "dismissed_signals": [],
+    "unresolved_signals": [],
+    "unverified_signals": [],
+    "evidence_rejections": [],
+    "critic_decisions": [],
+    "stage_results": [],
+    "metrics": {
+      "raw_signal_count": 0,
+      "main_review_prompt_signal_count": 0,
+      "independent_suggestion_count": 0,
+      "evidence_rejected_suggestion_count": 0,
+      "critic_request_count": 0,
+      "critic_confirmed_count": 0,
+      "critic_dismissed_count": 0,
+      "critic_uncertain_count": 0,
+      "critic_unverified_count": 0,
+      "context_token_count": 6217,
+      "signal_verification_request_count": 0,
+      "telemetry_only_signal_count": 0,
+      "confirmed_signal_count": 0,
+      "dismissed_signal_count": 0,
+      "unresolved_signal_count": 0,
+      "unverified_signal_count": 0
+    }
+  },
+  "input_coverage": {
+    "binary_files": [],
+    "metadata_only_files": [],
+    "context_truncated": false,
+    "skipped_files": []
+  },
+  "request_count": 1,
+  "usage_records": [
+    {
+      "model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 7296,
+        "completion_tokens": 23884,
+        "total_tokens": 31180,
+        "prompt_tokens_details": {
+          "cached_tokens": 7040
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 22915
+        },
+        "prompt_cache_hit_tokens": 7040,
+        "prompt_cache_miss_tokens": 256
+      },
+      "request_id": "f80477a6-3d8b-40a9-accd-f901b1ebf08f"
+    }
+  ],
+  "token_usage": {
+    "prompt_tokens": 7296,
+    "completion_tokens": 23884,
+    "total_tokens": 31180
+  },
+  "cost_usd": null,
+  "reviewer_commit": "acabdc0fafd67aa7946a451928f8c27e1a571202",
+  "working_tree_dirty": true,
+  "reviewer_source_sha256": "60cb296a54c9e453c85c74e32f03dc75024c44138263e2e885d21c1b315a658a",
+  "retry_transport": "streaming",
+  "timeout_seconds": 180,
+  "total_time_budget_seconds": 300,
+  "max_output_tokens": 32768
+}

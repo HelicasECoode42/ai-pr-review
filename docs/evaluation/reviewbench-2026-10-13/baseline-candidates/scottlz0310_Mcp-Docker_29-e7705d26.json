@@ -1,0 +1,18 @@
+{
+  "pr": {
+    "repo": "https://github.com/scottlz0310/Mcp-Docker",
+    "pr_number": 29,
+    "base": "63baf3dbbc10d271710706f56150dd8425dd4b4a",
+    "head": "e7705d269ea374d49e7999bdb8bc42e9480a6b37"
+  },
+  "agent": "ai-pr-review",
+  "findings": [
+    {
+      "file": "services/copilot-review-mcp/internal/auth/handler.go",
+      "start_line": 196,
+      "end_line": 196,
+      "message": "Internal error text is returned to clients in the invalid_grant description: The Token handler passes the raw store error into the OAuth error description (`oauthError(w, \"invalid_grant\", err.Error(), http.StatusBadRequest)`). ExchangeCode in session.go produces distinct internal messages such as `fmt.Errorf(\"redirect_uri mismatch\")` and `fmt.Errorf(\"code not found or expired\")`, and verifyPKCE emits `fmt.Errorf(\"PKCE verification failed\")` / `fmt.Errorf(\"invalid_grant\")`. These are leaked verbatim to unauthenticated callers of POST /token.\nScenario: An attacker probing POST /token with guessed codes and redirect_uri values can distinguish 'code not found or expired' from 'redirect_uri mismatch' from 'PKCE verification failed', which reveals whether a code exists, whether it is still live, and which validation step failed, aiding targeted guessing or reconnaissance.\nKeep the detailed reason server-side and return a stable public description: `slog.Warn(\"token exchange rejected\", \"err\", err)` then `oauthError(w, \"invalid_grant\", \"invalid_grant\", http.StatusBadRequest)`. Alternatively define typed errors in session.go and map them to fixed, non-informative descriptions.",
+      "producer": "ai-pr-review"
+    }
+  ]
+}

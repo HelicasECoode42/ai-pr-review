@@ -1,0 +1,355 @@
+[
+  {
+    "pr_key": "AA-Factory_aafactory-prototype_17-a1978cb7",
+    "candidate_findings": []
+  },
+  {
+    "pr_key": "AY2526S2-CS2103T-W14-3_tp_152-e0a9ce03",
+    "candidate_findings": []
+  },
+  {
+    "pr_key": "DisciplinedSoftware_Codebase-Conversion_1-4b46d68c",
+    "candidate_findings": [
+      {
+        "file": "fortran_to_rust/test_harness.py",
+        "start_line": 557,
+        "end_line": 557,
+        "message": "Function result printed before array outputs, while the Fortran driver prints it after: The Rust FUNCTION template prints the return value first: line 557 `    println!(\"{{:.15e}}\", _result as f64);` comes before `{rust_prints}` (line 560). In `generate_fortran_driver` the opposite happens: the array WRITE loops are appended to `print_lines` at lines 418-441, and the return value is appended afterwards at line 471 (`print_lines.append(f\"      WRITE(*,'{print_fmt}') {result_var}\")`, comment: `# Print the function result after all array prints`). The two output streams therefore have different element order.\nScenario: Converting `DOUBLE PRECISION FUNCTION DDOT(N,DX,DY)` produces a Fortran driver that writes DX(1..4), DY(1..4) and then RES, while the Rust example prints the dot product and then DX(1..4), DY(1..4). A positional comparison of the two streams pairs the scalar result with DX(1) and reports a huge max error, so a correct conversion is reported as failing (and a wrong conversion can accidentally cancel out).\nMake both sides emit the return value in the same position, e.g. in the FN template move the result print after the array prints (`{rust_prints}` then the `println!`), or in `generate_fortran_driver` build the result write into a separate list and concatenate it *before* `print_lines` when `routine_kind == \"function\"`.",
+        "status": "matched_tp",
+        "matched_golden_index": 43,
+        "covered_golden_indices": [
+          43
+        ],
+        "golden_tp_fp": "tp",
+        "golden_severity": "medium",
+        "golden_category": "correctness",
+        "matched_to_ground_truth": true,
+        "llm_judged_match": true,
+        "match_method": "llm",
+        "matched_truth_label": "tp",
+        "result_severity": "medium",
+        "result_category": "correctness"
+      }
+    ]
+  },
+  {
+    "pr_key": "Marvell-Consulting_statswales-frontend_626-30ba27a5",
+    "candidate_findings": []
+  },
+  {
+    "pr_key": "NCATSTranslator_translator-ingests_336-efb31e9c",
+    "candidate_findings": [
+      {
+        "file": "src/translator_ingest/ingests/gtopdb/gtopdb.py",
+        "start_line": 167,
+        "end_line": 167,
+        "message": "Typo 'Agnoist' in action lists makes the 'Agonist' branches unreachable and drops edges: The added list `activator_list_with_separate_directly_physically_interacts_with_edge = ['Agnoist', 'Binding', 'Full agonist', 'Partial agonist']` (and the later `agnoist_list_with_separate_directly_physically_interacts_with_edge = ['Activation', 'Agnoist', ...]`) contains the misspelled 'Agnoist' while the inner branches test `if record[\"Action\"] == \"Agonist\":`. The inner 'Agonist' branch can therefore never execute, and rows whose Action is the real value 'Agonist' fail the `in` membership test used by `if record[\"Type\"] == 'Activator' and record[\"Action\"] in activator_list...`. Note the previous version of this file handled `record[\"Action\"] == \"Agonist\"` explicitly, and the deleted `if record[\"Type\"] == 'Agonist' and record[\"Action\"] != \"Binding\":` fallback is gone in this PR.\nScenario: A gtopdb row with Type='Agonist' and Action='Agonist' no longer matches the action list, and the non-binding fallback branch was deleted in this PR, so the record produces no ChemicalAffectsGeneAssociation and no PairwiseMolecularInteraction at all (silent edge loss). For Type='Activator' with Action='Agonist', the row falls into the `not in` branch where none of the `elif` cases match, producing an association with `causal_mechanism_qualifier=None` instead of agonism.\nCorrect the spelling to 'Agonist' in both lists (and keep the inner branch consistent), e.g.\n```python\nactivator_list_with_separate_directly_physically_interacts_with_edge = ['Agonist', 'Binding', 'Full agonist', 'Partial agonist']\nagnoist_list_with_separate_directly_physically_interacts_with_edge = ['Activation', 'Agonist', 'Biased agonist', 'Binding', 'Full agonist', 'Inverse agonist', 'Irreversible agonist', 'Mixed', None, 'Partial agonist', 'Unknown']\n```",
+        "status": "matched_tp",
+        "matched_golden_index": 1,
+        "covered_golden_indices": [
+          1,
+          2
+        ],
+        "golden_tp_fp": "tp",
+        "golden_severity": "medium",
+        "golden_category": "correctness",
+        "matched_to_ground_truth": true,
+        "llm_judged_match": true,
+        "match_method": "llm",
+        "matched_truth_label": "tp",
+        "result_severity": "medium",
+        "result_category": "correctness"
+      }
+    ]
+  },
+  {
+    "pr_key": "PaulStSmith_figlet-comment-generator_32-1d0b6642",
+    "candidate_findings": []
+  },
+  {
+    "pr_key": "PierreJanineh_TechDebtMCP_135-16a54f0f",
+    "candidate_findings": [
+      {
+        "file": "src/core/customRulesEngine.ts",
+        "start_line": 138,
+        "end_line": 138,
+        "message": "Length caps do not mitigate ReDoS (catastrophic backtracking): The PR's stated goal is to prevent ReDoS, but the added guard `if (pattern.pattern.length > MAX_PATTERN_LENGTH)` (and the companion `MAX_CODE_LENGTH` / `MAX_FILE_SIZE_BYTES` caps) only bound input/pattern *size*, not regex execution time. ReDoS is caused by exponential backtracking in short patterns, so the new limits leave the vulnerability exploitable. A pattern far under 1,000 characters still hangs the process.\nScenario: A client calls `add_custom_rule` with a 6-character pattern `(a+)+$` (passes `ALLOWED_FLAGS_RE`, well under 1,000 chars), then calls `execute_custom_rules` with `code` = 'a'.repeat(40) + '!' (under 500,000 chars). Both guards pass, the global regex undergoes catastrophic backtracking, and the server blocks until timeout/OOM instead of returning issues.\nComplement the size caps with an actual ReDoS mitigation: run regex matching in a worker/child process with a hard timeout, or use a linear-time engine such as `re2` (e.g. `new RE2(pattern.pattern, safeFlags)`), or statically reject nested quantifiers / back-references before compiling. Keep the length caps as secondary defenses but do not rely on them to close the ReDoS issue.",
+        "status": "matched_fp",
+        "matched_golden_index": 16,
+        "covered_golden_indices": [
+          16,
+          17
+        ],
+        "golden_tp_fp": "fp",
+        "golden_severity": "medium",
+        "golden_category": "security",
+        "matched_to_ground_truth": true,
+        "llm_judged_match": true,
+        "match_method": "llm",
+        "matched_truth_label": "fp",
+        "result_severity": "medium",
+        "result_category": "security"
+      }
+    ]
+  },
+  {
+    "pr_key": "allan-mobley-jr_gimmes_468-e1477f8b",
+    "candidate_findings": [
+      {
+        "file": "src/gimmes/strategy/staleness.py",
+        "start_line": 79,
+        "end_line": 79,
+        "message": "Volume floor is compared against cumulative fallback volume, so dead markets are never filtered: The new predicate `has_volume = volume >= volume_floor` (line 79) operates on `volume`, which is resolved on the unchanged line `volume = m.volume_24h if m.volume_24h > 0 else m.volume`. When a market has no trading in the last 24h, `m.volume_24h == 0` and `volume` falls back to the lifetime cumulative `m.volume`, which is above the default floor of 10 for essentially any market that ever traded. As a result `has_volume` is True and the count resets, so the staleness filter can no longer detect markets whose current activity has stopped — the exact case it exists to catch. The new tests never cover this path because `_market` sets `volume_24h=volume`, so the fallback branch is unexercised.\nScenario: A market's last trade was several days ago: `m.volume_24h == 0` but `m.volume == 5000`. The fallback resolves `volume` to 5000, `has_volume` is True, `new_count` resets to 0 every scan, and the market is never added to `skipped` even though price is frozen and nothing is trading — the stale market silently passes through the filter indefinitely.\nBase the activity check on recent volume only, or treat the cumulative fallback as not active. For example: `has_volume = m.volume_24h >= volume_floor` (keeping `volume` for storage), or if the fallback must be retained, only apply the floor to it when 24h data is genuinely unavailable and use a much higher threshold. Add a test where `volume_24h=0` and total `volume` is large to lock in the intended behavior.",
+        "status": "matched_tp",
+        "matched_golden_index": 4,
+        "covered_golden_indices": [
+          4
+        ],
+        "golden_tp_fp": "tp",
+        "golden_severity": "medium",
+        "golden_category": "correctness",
+        "matched_to_ground_truth": true,
+        "llm_judged_match": true,
+        "match_method": "llm",
+        "matched_truth_label": "tp",
+        "result_severity": "medium",
+        "result_category": "correctness"
+      }
+    ]
+  },
+  {
+    "pr_key": "ardevd_jadx-collaboration_3-853179dc",
+    "candidate_findings": [
+      {
+        "file": "src/main/kotlin/uk/oshawk/jadx/collaboration/Plugin.kt",
+        "start_line": 44,
+        "end_line": 44,
+        "message": "Menu/key actions spawn a new thread per click instead of submitting to a serializing executor: The diff replaces `uiRun(this::pull)` with `this.context?.guiContext?.addMenuAction(\"Pull\") { kotlin.concurrent.thread { this.pull() } }` (and the same pattern at lines 45, 50 and 54 for Push and both key bindings). This contradicts the stated design of a shared single-thread `backgroundExecutor`: every menu click or key press creates a brand-new thread, so rapid activations still run `pull()`/`push()` concurrently and can interleave repository reads/writes and project mutations — exactly the corruption case this PR claims to fix. Additionally `kotlin.concurrent.thread` defaults to `isDaemon = false`, so the hung/blocked worker also prevents JVM shutdown, contrary to the description's daemon-thread rationale.\nScenario: A user double-clicks the Pull menu item (or presses ctrl+BACK_SLASH twice quickly). Two independent threads enter pull(), both call readLocalRepository()/projectToLocalRepository()/writeLocalRepository() on the same on-disk repository, and interleaved writes leave the local repository in a partially updated or inconsistent state.\nCreate one shared executor and submit all four entry points to it, e.g.:\n\nprivate val backgroundExecutor: ExecutorService = Executors.newSingleThreadExecutor { r ->\n    Thread(r, \"$ID-background\").apply { isDaemon = true }\n}\n\nthis.context?.guiContext?.addMenuAction(\"Pull\") { backgroundExecutor.submit(this::pull) }\nthis.context?.guiContext?.addMenuAction(\"Push\") { backgroundExecutor.submit(this::push) }\n\nand use the same submission for the two registerGlobalKeyBinding callbacks.",
+        "status": "matched_tp",
+        "matched_golden_index": 0,
+        "covered_golden_indices": [
+          0,
+          12,
+          13
+        ],
+        "golden_tp_fp": "tp",
+        "golden_severity": "high",
+        "golden_category": "correctness",
+        "matched_to_ground_truth": true,
+        "llm_judged_match": true,
+        "match_method": "llm",
+        "matched_truth_label": "tp",
+        "result_severity": "high",
+        "result_category": "correctness"
+      }
+    ]
+  },
+  {
+    "pr_key": "brexhq_CrabTrap_15-5ef0884c",
+    "candidate_findings": []
+  },
+  {
+    "pr_key": "brianc_node-postgres_3650-b922f0dd",
+    "candidate_findings": []
+  },
+  {
+    "pr_key": "cmik_apilix_12-0c34439a",
+    "candidate_findings": []
+  },
+  {
+    "pr_key": "gagneurlab_PROTRIDER_10-b462b109",
+    "candidate_findings": [
+      {
+        "file": "src/protrider/pipeline.py",
+        "start_line": 509,
+        "end_line": 509,
+        "message": "model_was_loaded is derived from file existence instead of actual load success, silently skipping training: The added line `model_was_loaded = (checkpoint_path and checkpoint_path.exists() and q is not None)` treats a checkpoint file as 'model loaded' purely from its existence plus a non-None q. But `load_model` returns `(None, None)` on any failure (e.g. `model.load_state_dict` raising on a shape mismatch, caught by the broad `except Exception`), and in that case the `if model is None:` branch runs `find_latent_dim`/`init_model`, which sets a non-None q. The file still exists, so model_was_loaded becomes True, `should_train = config.autoencoder_training and not model_was_loaded` is False, and the freshly initialized (untrained) model is used.\nScenario: Run once in `out_dir='out'` on dataset A (writes out/model.pt), then run again in the same out_dir with a different protein panel. `torch.load` succeeds but `model.load_state_dict` raises on the dimension mismatch, `load_model` returns (None, None), `find_latent_dim`+`init_model` produce a new random model, yet model_was_loaded is True, so training is skipped, `final_loss = init_loss`, and all downstream residuals/p-values/z-scores are computed from an untrained autoencoder with no error surfaced.\nTrack the actual load outcome instead of re-deriving it from the filesystem, e.g. `model, q = load_model(...)` and `model_was_loaded = model is not None`, or set a boolean `loaded_from_checkpoint = False` and flip it to True only inside the successful `load_model` path. Delete the state dict from the fresh model path accordingly.",
+        "status": "matched_tp",
+        "matched_golden_index": 16,
+        "covered_golden_indices": [
+          16
+        ],
+        "golden_tp_fp": "tp",
+        "golden_severity": "medium",
+        "golden_category": "correctness",
+        "matched_to_ground_truth": true,
+        "llm_judged_match": true,
+        "match_method": "llm",
+        "matched_truth_label": "tp",
+        "result_severity": "medium",
+        "result_category": "correctness"
+      },
+      {
+        "file": "src/protrider/pipeline.py",
+        "start_line": 448,
+        "end_line": 448,
+        "message": "Checkpointing is silently re-enabled by defaulting to out_dir/model.pt, making results depend on out_dir reuse: The added `else: checkpoint_path = Path(config.out_dir) / 'model.pt'` means a checkpoint path always exists, so line 450's `if checkpoint_path and checkpoint_path.exists()` will find and load the model written by the previous run (line in the save block: `save_model(model, str(checkpoint_path), q)`). This contradicts the stated goal of the PR (checkpointing opt-in via a commented-out `checkpoint_path` in config.yaml) and makes the pipeline silently stateful across runs.\nScenario: A user runs PROTRIDER twice with identical config into the same out_dir (a common pattern when re-running after tweaking pval params). The second run finds out/model.pt, skips training entirely, and reports results produced by the first run's weights, so hyperparameters that affect training (n_epochs, lr, h_dim, or changed input data of the same width) are silently ignored.\nOnly load/save when the user explicitly opted in: keep `checkpoint_path = Path(config.checkpoint_path) if config.checkpoint_path else None` and guard both the load block and the save block with `if checkpoint_path:`, or use a distinct, explicitly user-chosen filename rather than reusing out_dir/model.pt implicitly.",
+        "status": "matched_tp",
+        "matched_golden_index": 3,
+        "covered_golden_indices": [
+          3
+        ],
+        "golden_tp_fp": "tp",
+        "golden_severity": "medium",
+        "golden_category": "correctness",
+        "matched_to_ground_truth": true,
+        "llm_judged_match": true,
+        "match_method": "llm",
+        "matched_truth_label": "tp",
+        "result_severity": "medium",
+        "result_category": "correctness"
+      }
+    ]
+  },
+  {
+    "pr_key": "k1LoW_gh-copilot-review_9-f9828193",
+    "candidate_findings": [
+      {
+        "file": "internal/github/github.go",
+        "start_line": 116,
+        "end_line": 116,
+        "message": "Freshness is decided by review timestamp vs. commit timestamp instead of the reviewed commit SHA: `return latestCopilotReview.After(lastCommitDate), nil` treats a review as fresh whenever its `submitted_at` is later than the head commit's `committer.date`, without checking which commit the review actually covers. The PR description states the check should compare each Copilot review's `commit_id` against the current PR head SHA, which this implementation does not do. Commit timestamps are also not reliable ordering evidence: `git rebase --committer-date-is-author-date`, `GIT_COMMITTER_DATE`, or imported/cherry-picked patches can give the current head commit a `committer.date` older than a review that was submitted for a previous commit.\nScenario: Copilot starts reviewing commit A; while it is running, the developer pushes commit B (committer date 10:00); Copilot then submits its review of commit A at 10:05. `latestCopilotReview` (10:05) is after `lastCommitDate` (10:00), so the function reports fresh and cmd/root.go exits early: commit B is never reviewed even though Copilot's review only covered A.\nRead the PR head SHA (`GET repos/{owner}/{repo}/pulls/{n}` -> `head.sha`) and compare it to the `commit_id` field of the Copilot reviews, e.g. return fresh only when some Copilot review has `commit_id == headSHA`; keep the timestamp only as a fallback when `commit_id` is empty.",
+        "status": "matched_tp",
+        "matched_golden_index": 2,
+        "covered_golden_indices": [
+          2
+        ],
+        "golden_tp_fp": "tp",
+        "golden_severity": "medium",
+        "golden_category": "correctness",
+        "matched_to_ground_truth": true,
+        "llm_judged_match": true,
+        "match_method": "llm",
+        "matched_truth_label": "tp",
+        "result_severity": "medium",
+        "result_category": "correctness"
+      }
+    ]
+  },
+  {
+    "pr_key": "konturio_disaster-ninja-fe_1230-d169e9da",
+    "candidate_findings": []
+  },
+  {
+    "pr_key": "mheuss_chronicle_14-04ac4c02",
+    "candidate_findings": []
+  },
+  {
+    "pr_key": "renedierking_LANdalf_88-bc1698f4",
+    "candidate_findings": []
+  },
+  {
+    "pr_key": "scotthamilton77_agents-config_1-1fc78970",
+    "candidate_findings": [
+      {
+        "file": "scripts/install.sh",
+        "start_line": 129,
+        "end_line": 129,
+        "message": "Trim whitespace when parsing the --tools list: The new override parsing splits the value on commas only (`IFS=',' read -ra TOOLS <<< \"$TOOLS_OVERRIDE\"`), and the validation loop immediately after rejects any element that is not an exact match for an entry in `ALL_TOOLS` (`err \"Unknown tool: $tool (valid: ${ALL_TOOLS[*]})\"`). A space after a comma — the natural way to write a comma-separated CLI list — therefore produces a hard failure instead of being tolerated.\nScenario: Running `scripts/install.sh --yes --tools=\"claude, codex\"` yields `x Unknown tool:  codex (valid: claude codex gemini)` and exits with status 1, installing nothing, even though both requested tool names are valid.\nNormalize each entry before validating, e.g. inside the validation loop do `tool=\"${tool//[[:space:]]/}\"` (and also strip when building `TOOLS`), or change the parse to `IFS=', ' read -ra TOOLS <<< \"$TOOLS_OVERRIDE\"`.",
+        "status": "novel_tp",
+        "covered_golden_indices": [],
+        "classifier_tp_fp": "tp",
+        "classifier_severity": "low",
+        "classifier_category": "correctness",
+        "matched_to_ground_truth": false,
+        "llm_judged_match": false,
+        "match_method": "none",
+        "llm_classification": "tp",
+        "result_severity": "low",
+        "result_category": "correctness"
+      }
+    ]
+  },
+  {
+    "pr_key": "scottlz0310_Mcp-Docker_29-e7705d26",
+    "candidate_findings": [
+      {
+        "file": "services/copilot-review-mcp/internal/auth/handler.go",
+        "start_line": 196,
+        "end_line": 196,
+        "message": "Internal error text is returned to clients in the invalid_grant description: The Token handler passes the raw store error into the OAuth error description (`oauthError(w, \"invalid_grant\", err.Error(), http.StatusBadRequest)`). ExchangeCode in session.go produces distinct internal messages such as `fmt.Errorf(\"redirect_uri mismatch\")` and `fmt.Errorf(\"code not found or expired\")`, and verifyPKCE emits `fmt.Errorf(\"PKCE verification failed\")` / `fmt.Errorf(\"invalid_grant\")`. These are leaked verbatim to unauthenticated callers of POST /token.\nScenario: An attacker probing POST /token with guessed codes and redirect_uri values can distinguish 'code not found or expired' from 'redirect_uri mismatch' from 'PKCE verification failed', which reveals whether a code exists, whether it is still live, and which validation step failed, aiding targeted guessing or reconnaissance.\nKeep the detailed reason server-side and return a stable public description: `slog.Warn(\"token exchange rejected\", \"err\", err)` then `oauthError(w, \"invalid_grant\", \"invalid_grant\", http.StatusBadRequest)`. Alternatively define typed errors in session.go and map them to fixed, non-informative descriptions.",
+        "status": "matched_tp",
+        "matched_golden_index": 22,
+        "covered_golden_indices": [
+          22
+        ],
+        "golden_tp_fp": "tp",
+        "golden_severity": "low",
+        "golden_category": "security",
+        "matched_to_ground_truth": true,
+        "llm_judged_match": true,
+        "match_method": "llm",
+        "matched_truth_label": "tp",
+        "result_severity": "low",
+        "result_category": "security"
+      }
+    ]
+  },
+  {
+    "pr_key": "sdsykes_fastimage_165-8fc7cd32",
+    "candidate_findings": []
+  },
+  {
+    "pr_key": "simnaut_emdash_2-41d75006",
+    "candidate_findings": []
+  },
+  {
+    "pr_key": "superhighfives_pika_200-b227aff0",
+    "candidate_findings": [
+      {
+        "file": "Pika/Services/Eyedroppers.swift",
+        "start_line": 289,
+        "end_line": 289,
+        "message": "deletePalette only clamps the active index, so deleting a palette before the active one jumps to auto-history: The added body of deletePalette ends with `if Defaults[.activePaletteIndex] >= palettes.count { Defaults[.activePaletteIndex] = 0 }` after `palettes.remove(at: index)`. It never decrements activePaletteIndex when the deleted palette sits before the active one, and it never calls restoreAutoHistorySelection() even though the PR description claims it does. Since the tab bar draws selection from `index == activePaletteIndex`, removing an earlier palette either clamps to 0 (auto-history) or leaves the index pointing at a different palette than the user selected.\nScenario: Palettes are [auto, A, B] with B active (activePaletteIndex == 2). The user right-clicks A and chooses Delete: palettes become [auto, B] and `2 >= 2` sets activePaletteIndex to 0, so the drawer silently switches to the auto-history tab (with activeHistoryID still referencing B's chip), instead of keeping B selected.\nDecrement the active index when index < activePaletteIndex, and re-sync the selection after removal, e.g.:\n\n```swift\nfunc deletePalette(at index: Int) {\n    var palettes = Defaults[.palettes]\n    guard index > 0, index < palettes.count else { return }\n    let wasActive = Defaults[.activePaletteIndex]\n    palettes.remove(at: index)\n    Defaults[.palettes] = palettes\n    if wasActive == index || wasActive >= palettes.count {\n        Defaults[.activePaletteIndex] = 0\n        restoreAutoHistorySelection()\n    } else if wasActive > index {\n        Defaults[.activePaletteIndex] = wasActive - 1\n    }\n}\n```",
+        "status": "matched_tp",
+        "matched_golden_index": 1,
+        "covered_golden_indices": [
+          1,
+          2
+        ],
+        "golden_tp_fp": "tp",
+        "golden_severity": "medium",
+        "golden_category": "correctness",
+        "matched_to_ground_truth": true,
+        "llm_judged_match": true,
+        "match_method": "llm",
+        "matched_truth_label": "tp",
+        "result_severity": "medium",
+        "result_category": "correctness"
+      }
+    ]
+  },
+  {
+    "pr_key": "superyyrrzz_ForgeMap_106-2f3977ed",
+    "candidate_findings": [
+      {
+        "file": ".github/workflows/docs.yml",
+        "start_line": 26,
+        "end_line": 26,
+        "message": "Pages concurrency key split by ref allows overlapping deployments: The diff replaces the shared Pages lock with a per-ref key and flips cancellation on: `group: \"pages-${{ github.ref }}\"` (docs.yml:26) and `cancel-in-progress: true` (docs.yml:27). Previously every docs run shared the single `pages` group, which serialized deploys to the GitHub Pages environment; including `github.ref` in the key means runs triggered from different refs (e.g. main plus a release/docs branch that also runs this workflow on push) fall into different concurrency groups and are no longer mutually exclusive, so two `deploy` jobs can target the same Pages environment at the same time. `cancel-in-progress: true` additionally allows an in-flight deploy job to be killed mid-publish, which the official Pages starter workflow explicitly avoids (`cancel-in-progress: false`).\nScenario: A push to main starts a Pages deploy; before its `deploy` job finishes, a push to a second ref that triggers the same workflow starts another run. Because the groups now differ, GitHub does not queue or cancel it, and both runs call actions/deploy-pages against the same Pages environment: the newer main content can be replaced by the older ref's artifact, and a run cancelled mid-deploy leaves the docs site stale with a failed deploy job.\nKeep a single lock for the deployment target and let production deploys finish, e.g. restore `group: \"pages\"` with `cancel-in-progress: false`; if you only want to cancel *build* runs, put the cancellation on the build job and leave the deploy job in the shared `pages` group (job-level `concurrency` on the deploy job).",
+        "status": "matched_tp",
+        "matched_golden_index": 0,
+        "covered_golden_indices": [
+          0
+        ],
+        "golden_tp_fp": "tp",
+        "golden_severity": "medium",
+        "golden_category": "reliability",
+        "matched_to_ground_truth": true,
+        "llm_judged_match": true,
+        "match_method": "llm",
+        "matched_truth_label": "tp",
+        "result_severity": "medium",
+        "result_category": "reliability"
+      }
+    ]
+  },
+  {
+    "pr_key": "vanyastaff_nebula_224-d5ba86dd",
+    "candidate_findings": []
+  },
+  {
+    "pr_key": "wirechat_wirechat_183-6e3156e7",
+    "candidate_findings": []
+  }
+]

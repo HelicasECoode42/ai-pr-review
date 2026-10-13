@@ -1,0 +1,3841 @@
+{
+  "model": "deepseek-v4-flash",
+  "latency_seconds": 33.962236207997194,
+  "diff_sha256": "cf5d991ce3cdd86e20499f59aa2f3dbb67fc01a686145ec9b5bcb3523107430a",
+  "strategy": {
+    "evidence": true,
+    "critic": false,
+    "context_pack": true,
+    "two_stage": false,
+    "verify_signals": false,
+    "min_confidence": 0.65,
+    "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "report": {
+    "pr": {
+      "repo": "simnaut/emdash",
+      "number": 2,
+      "title": "feat: pluggable auth providers — add AT Protocol, refactor GitHub/Google",
+      "author": null,
+      "base_ref": "5beb0ddc334deb862ba90cedbf03f052b58e4974",
+      "head_ref": "41d750067fc7a39eb29f6a530cf0d4ae0f8bdb41",
+      "head_sha": "41d750067fc7a39eb29f6a530cf0d4ae0f8bdb41",
+      "html_url": null
+    },
+    "files": [
+      {
+        "filename": ".agents/skills",
+        "status": "renamed",
+        "additions": 0,
+        "deletions": 0,
+        "changes": 0,
+        "previous_filename": ".opencode/skills",
+        "patch_sha256": "5b9dd883f0d8732380be9f93f20c67aa9109b47bf03d752c4ad1587a718c61a4"
+      },
+      {
+        "filename": ".changeset/admin-logo-branding.md",
+        "status": "removed",
+        "additions": 0,
+        "deletions": 5,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "e5267f539741735507cc95ded1a9549c0d43bc3f8857e7dac8741898c465cd5c"
+      },
+      {
+        "filename": ".changeset/blue-months-hide.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "ed5e3b6bf90e1be789368d49bf010cc9c56299a3267ce46a7616f03e15ad408b"
+      },
+      {
+        "filename": ".changeset/blue-poems-laugh.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "82fe8921c0ca62b1495b26013c3192599df3ce640f9ae9958227c70f1341d6c7"
+      },
+      {
+        "filename": ".changeset/brave-seals-hydrate.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "4d1fd93710d6d2554cd81d9fe6d91b7b2b804821f0cc79f32849290ed4c3109c"
+      },
+      {
+        "filename": ".changeset/bright-facts-taste.md",
+        "status": "removed",
+        "additions": 0,
+        "deletions": 3,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "c2cda5ab990012c8c50b512da45dac203f469a4460e8c76d77b7046320213f6f"
+      },
+      {
+        "filename": ".changeset/config.json",
+        "status": "modified",
+        "additions": 19,
+        "deletions": 1,
+        "changes": 20,
+        "previous_filename": null,
+        "patch_sha256": "80d3888789d6dc0a75d0a074cd3974cd3b2b43f04e86379b16e5af3eba0b510c"
+      },
+      {
+        "filename": ".changeset/content-list-auto-fetch.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "6b57f26c3820fb241d63757dac61ff7df3f9c8942134adb1dd716ee9ce46a582"
+      },
+      {
+        "filename": ".changeset/cuddly-bugs-hear.md",
+        "status": "removed",
+        "additions": 0,
+        "deletions": 4,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "38b01da4fad0959fece36e3391971c74ee115971a12cbd3bcf9585d8beb603e5"
+      },
+      {
+        "filename": ".changeset/curly-pens-glow.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "7e001775cbaba9a75e8560f0124722ddfc5ee8fa5720018e69fb0e409da8193f"
+      },
+      {
+        "filename": ".changeset/cute-eagles-rescue.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "7fffb932b0c2b4e908ed161093e9df93ee21baeec91649990dc5df8321515b62"
+      },
+      {
+        "filename": ".changeset/every-onions-speak.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "c459210d59651d31dc6230a443c3594f04c517884b8f285d6ace0f31005108cf"
+      },
+      {
+        "filename": ".changeset/few-eels-pick.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "bc61e4b4e9195136369daba64fa20b5e8d36553dbde48f9aaa065ce30e2cceb5"
+      },
+      {
+        "filename": ".changeset/five-rivers-cheer.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "f12856e1c4dd8f90dbf13e882c21540693c7b7173240ea00cd17b1befc3a3601"
+      },
+      {
+        "filename": ".changeset/fix-admin-csp-external-images.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "5de5f3cbd8112e618964d2f0d927b653301d507aa8a5c5e444e34cd2e8df929d"
+      },
+      {
+        "filename": ".changeset/fix-cli-login.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "69ab9e87f2daec76746c69859c73479fcb6dbbfe0c8b805b571db97becf84482"
+      },
+      {
+        "filename": ".changeset/fix-email-settings-route.md",
+        "status": "added",
+        "additions": 6,
+        "deletions": 0,
+        "changes": 6,
+        "previous_filename": null,
+        "patch_sha256": "c7caf89d8b669c51ee255cc7ad7aaadff16b4dfb2b25a511abf978e9bb33baff"
+      },
+      {
+        "filename": ".changeset/fix-github-oauth-user-agent.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "6102f8581372808796bfffd202155cb3b462562302bcc9c46222e623090842f6"
+      },
+      {
+        "filename": ".changeset/fix-image-block-missing-asset.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "5f5b3d30b1f47d06c97809c3ccb97f0c338cf4744b0d317234b794288333e26e"
+      },
+      {
+        "filename": ".changeset/fix-infinite-pagination.md",
+        "status": "removed",
+        "additions": 0,
+        "deletions": 3,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "9e248029baf7f7dbcb68807ad647aa2247e3b7c0f024eb545f375493780d6d4c"
+      },
+      {
+        "filename": ".changeset/fix-manifest-field-options.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "c233ddaa3879f8878db64025968714a6f30ae57e0a9348dd7d134b6d7307ec15"
+      },
+      {
+        "filename": ".changeset/fix-menu-relative-links.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "b9e5c510383f1cf687a95821693b0f1761579021fae955a0a0408697e2fea99f"
+      },
+      {
+        "filename": ".changeset/fix-og-title-page-title.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "c4b217060644bd50c303d70377821776aa0cfe700ee8b33b8f5e382d10b70840"
+      },
+      {
+        "filename": ".changeset/fix-plugin-activate-deactivate-not-called.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "9131a3556a518c5696a928b6c9ee0b6cb051bf7a4b24ebb4431002c3f7adb6c6"
+      },
+      {
+        "filename": ".changeset/fix-plugin-admin-pages.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "ab46faf6875e12a038b294fbdbd8973be2885d22d41160f247921100a004fe8e"
+      },
+      {
+        "filename": ".changeset/fix-plugin-content-seo.md",
+        "status": "added",
+        "additions": 9,
+        "deletions": 0,
+        "changes": 9,
+        "previous_filename": null,
+        "patch_sha256": "f0347f3a1f3e3b8dac8d7c9061b5c89a4024ca3a6dad3fb560576871e35f3e12"
+      },
+      {
+        "filename": ".changeset/fix-preview-url-pattern.md",
+        "status": "removed",
+        "additions": 0,
+        "deletions": 4,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "b517fea5aae85f385895182571021b7992e7217f94045dd7a22fea4202f5cd09"
+      },
+      {
+        "filename": ".changeset/fix-wxr-import-dates.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "a34bd22647883e73805e1715951d47557f3ba22aa05c021afb427d33496b8c32"
+      },
+      {
+        "filename": ".changeset/full-pugs-invent.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "97223d00723e0b091ad24f9aef283ff2640672f7af64b293dd55f0f8c3e5c230"
+      },
+      {
+        "filename": ".changeset/fuzzy-coins-march.md",
+        "status": "removed",
+        "additions": 0,
+        "deletions": 3,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "575c56a7d9307d950d5748789b146b48ccf3999d416d71337f1d5ff4be242c7c"
+      },
+      {
+        "filename": ".changeset/lazy-flowers-create.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "f27bb89120c1c7ade16ceec1bbeb053c5e7f1c52ec59c758c360495948155eb1"
+      },
+      {
+        "filename": ".changeset/light-donuts-reply.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "d12aec98699974f54234c103faee995d1c9e92e99eaf91546ec8b328d9da4d7f"
+      },
+      {
+        "filename": ".changeset/optimize-d1-indexes.md",
+        "status": "removed",
+        "additions": 0,
+        "deletions": 6,
+        "changes": 6,
+        "previous_filename": null,
+        "patch_sha256": "a3bd8d99426775aaf46a615ec8283ccadaaa98ca8979b5588662bcf33e8af582"
+      },
+      {
+        "filename": ".changeset/per-collection-sitemaps.md",
+        "status": "added",
+        "additions": 7,
+        "deletions": 0,
+        "changes": 7,
+        "previous_filename": null,
+        "patch_sha256": "08d7dc6dff9b9edfec0784344e34c7bd49968d439486b8aabbe101cb9e8c4949"
+      },
+      {
+        "filename": ".changeset/plugin-page-hooks-public.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "dc1112a45e17f1c0095c0016fb2b648bf46d2c84b2c9d35c4ca7b8311d90eb15"
+      },
+      {
+        "filename": ".changeset/public-page-context-breadcrumbs.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "890ec1ac236720afb95ca23a19f41c78854f4c82d3f5b714c3a5cb7c89bd49c1"
+      },
+      {
+        "filename": ".changeset/public-search-middleware.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "ffb06e450ef9501215013b99499567e552a30c2f008451a3194f904d68c52178"
+      },
+      {
+        "filename": ".changeset/puny-ducks-prove.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "72786d37a65de8eeb169631922bee6de19a7562b581a1b10c0a358c7ab800efb"
+      },
+      {
+        "filename": ".changeset/repeater-field-type.md",
+        "status": "added",
+        "additions": 6,
+        "deletions": 0,
+        "changes": 6,
+        "previous_filename": null,
+        "patch_sha256": "87e0dcb399ebf51b20c455d67d3d86f1bad519d1b586aeb28385944d613f37fe"
+      },
+      {
+        "filename": ".changeset/ripe-seals-rhyme.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "0c889c949bee7acee0797663a92cc874b6b30d567b5c3951d10bc74a31230799"
+      },
+      {
+        "filename": ".changeset/shaky-berries-stay.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "350d1b6fea040214b2e0bc0433d889cbd43268598182ef2eb695281e60b916bd"
+      },
+      {
+        "filename": ".changeset/site-url-reverse-proxy.md",
+        "status": "added",
+        "additions": 11,
+        "deletions": 0,
+        "changes": 11,
+        "previous_filename": null,
+        "patch_sha256": "428ce33a3e2da7a8c2c7ffcb3bfaac38cf9756291f30b7cc602fdfc31b66e568"
+      },
+      {
+        "filename": ".changeset/six-pugs-juggle.md",
+        "status": "removed",
+        "additions": 0,
+        "deletions": 3,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "a97ce9d2ded4eee5510efeab889e4b14d0e98b46958dd3e0f395d44925bc0e64"
+      },
+      {
+        "filename": ".changeset/stale-knives-fix.md",
+        "status": "added",
+        "additions": 8,
+        "deletions": 0,
+        "changes": 8,
+        "previous_filename": null,
+        "patch_sha256": "0d4e1b080da27df1a78c3a328fc2af44dae065842c8b044b84e0766379fe3106"
+      },
+      {
+        "filename": ".changeset/tired-ways-wonder.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "07b8098a6ea816539594229e08ee21972c221e87b9c2d24bd833f24343726bee"
+      },
+      {
+        "filename": ".changeset/twenty-friends-sell.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "a13e48372a034062763cf14fb1d520c78e0f353008eb7323becb214e00807ea9"
+      },
+      {
+        "filename": ".changeset/upset-rooms-vanish.md",
+        "status": "added",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "8e4133e5e463f856f1fda0c45158c493ae919b4d2367f593f87768a02fe06ecc"
+      },
+      {
+        "filename": ".changeset/warm-bears-kneel.md",
+        "status": "added",
+        "additions": 6,
+        "deletions": 0,
+        "changes": 6,
+        "previous_filename": null,
+        "patch_sha256": "0e3c5829111c42459df69344174b74459242d99fbc9caee47dcf61e128b73bcc"
+      },
+      {
+        "filename": ".dockerignore",
+        "status": "added",
+        "additions": 8,
+        "deletions": 0,
+        "changes": 8,
+        "previous_filename": null,
+        "patch_sha256": "ca159e07567844c2c02d1b0349aec8cc067805b61a668a82bcb77923e02caa45"
+      },
+      {
+        "filename": ".github/workflows/auto-format.yml",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 3,
+        "changes": 6,
+        "previous_filename": null,
+        "patch_sha256": "c1d248238c99215eac1ab731b4d6da4c44f834706a3d9307a3006f140be34e6a"
+      },
+      {
+        "filename": ".github/workflows/bonk.yml",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 2,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "b9b496fff94df875550e8034f65774bd576a3ca7b520f2d41d53b580911f9ffc"
+      },
+      {
+        "filename": ".github/workflows/ci.yml",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "d7247bb07c3b81699ecd3d3e589af188e91119997d6954a4dff6cc91e466253c"
+      },
+      {
+        "filename": ".github/workflows/cla.yml",
+        "status": "modified",
+        "additions": 15,
+        "deletions": 9,
+        "changes": 24,
+        "previous_filename": null,
+        "patch_sha256": "263cdb0e198e17038f2c91e1d7be191c299b9aa1a6b61d87176bacf900454b20"
+      },
+      {
+        "filename": ".github/workflows/dependabot-approve.yml",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "e17140affae3a9262a109ad6dd39e9105d7e9f9c354c05d2ff34b9dd3e0c9f66"
+      },
+      {
+        "filename": ".github/workflows/format-command.yml",
+        "status": "modified",
+        "additions": 5,
+        "deletions": 5,
+        "changes": 10,
+        "previous_filename": null,
+        "patch_sha256": "2683a01959eba16639df63195008603db4525701adc967e46faf426718831063"
+      },
+      {
+        "filename": ".github/workflows/lunaria.yml",
+        "status": "added",
+        "additions": 29,
+        "deletions": 0,
+        "changes": 29,
+        "previous_filename": null,
+        "patch_sha256": "c57c98b8bddcebd788100fa7f9268008759b2a48503306435c4846de88556b09"
+      },
+      {
+        "filename": ".github/workflows/pr-compliance.yml",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "7da441acc6f72a5b565b993ca98471c7486edad3b9fca7d179f0165650219456"
+      },
+      {
+        "filename": ".github/workflows/pr-sweep.yml",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "181a10eb046a86cbb14aab33504183f4b40971ec88186efab63cd3d12008a400"
+      },
+      {
+        "filename": ".github/workflows/pr-triage.yml",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "62b23d54970d9dbcf4094a4692dcac392e62ca6966f3a34218abe2863d746f71"
+      },
+      {
+        "filename": ".github/workflows/release.yml",
+        "status": "modified",
+        "additions": 13,
+        "deletions": 2,
+        "changes": 15,
+        "previous_filename": null,
+        "patch_sha256": "ed702b983a5ed331208c6b1e72ab3a3aa5e7dc45966e97c442dd4ff31969a37a"
+      },
+      {
+        "filename": ".gitignore",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 1,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "792732ae93142c891c470f6394dca6983783524955d2ea8569a5dbcb5adcbc1d"
+      },
+      {
+        "filename": ".oxlintrc.json",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 2,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "62094a529e1946526125858b424173231b9aef5cffca8b8d7df736add7ee9253"
+      },
+      {
+        "filename": "Dockerfile",
+        "status": "added",
+        "additions": 49,
+        "deletions": 0,
+        "changes": 49,
+        "previous_filename": null,
+        "patch_sha256": "421b7dab50375be4ad1fe01c916515642b4ee32bd44499d5fe7a9041e356ac02"
+      },
+      {
+        "filename": "demos/cloudflare/emdash-env.d.ts",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 0,
+        "changes": 1,
+        "previous_filename": null,
+        "patch_sha256": "1cdee7eee230df751bf9407f3019a593e15f209dd051bc2925e0134a278b7ea2"
+      },
+      {
+        "filename": "demos/cloudflare/src/layouts/Base.astro",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 0,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "0735e294dda23f060c89b154a8d07c18677422872b96ff01d0b0f3bf492b9fd0"
+      },
+      {
+        "filename": "demos/cloudflare/src/pages/posts/[slug].astro",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 1,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "f350ddf41fc239208491ffe67319ccbb27a7bc1fbd3b3c6fbc4c622aab6870b5"
+      },
+      {
+        "filename": "demos/cloudflare/src/utils/reading-time.ts",
+        "status": "modified",
+        "additions": 31,
+        "deletions": 9,
+        "changes": 40,
+        "previous_filename": null,
+        "patch_sha256": "bceda8e9bf859853f728cd92afa6feecedcfa471a7fd364cdcd96f0e63014ae8"
+      },
+      {
+        "filename": "demos/playground/src/layouts/Base.astro",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 0,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "a88619bf9f9a073bfb6e7e471fc73178decfc5def6222fa71acce392a674816a"
+      },
+      {
+        "filename": "demos/playground/src/pages/posts/[slug].astro",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 1,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "d30b278ed8a7991bba5a096053e609b14c11e5b099dc3360d8eb763cca66448c"
+      },
+      {
+        "filename": "demos/playground/src/utils/reading-time.ts",
+        "status": "modified",
+        "additions": 31,
+        "deletions": 9,
+        "changes": 40,
+        "previous_filename": null,
+        "patch_sha256": "28509b71248729775a5eaeb4c92400426c0dbd2ac4e19551d5217ac5cdf6536d"
+      },
+      {
+        "filename": "demos/postgres/src/layouts/Base.astro",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 0,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "c3702cccb75828817b3e99c91375bdc3a185472b221946dbd99a417258d2a810"
+      },
+      {
+        "filename": "demos/postgres/src/pages/posts/[slug].astro",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 1,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "cfc92f1db4a11eafd00676e6c534533f78846c23a121e60d90b8c26b31ee471c"
+      },
+      {
+        "filename": "demos/postgres/src/utils/reading-time.ts",
+        "status": "modified",
+        "additions": 31,
+        "deletions": 9,
+        "changes": 40,
+        "previous_filename": null,
+        "patch_sha256": "9e16e528367166c0c87d7a3b77e703bebd17888a2f7257f0522ef813c0bf3581"
+      },
+      {
+        "filename": "demos/preview/src/layouts/Base.astro",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 0,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "41b024b59274d2180770254491007908161d0f667bbbbedc889916c3ef6cb064"
+      },
+      {
+        "filename": "demos/preview/src/pages/posts/[slug].astro",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 1,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "d877a4753e17ee580da4016c5208a8997d675a9f917fbfdbe6cd908dac67ec63"
+      },
+      {
+        "filename": "demos/preview/src/utils/reading-time.ts",
+        "status": "modified",
+        "additions": 31,
+        "deletions": 9,
+        "changes": 40,
+        "previous_filename": null,
+        "patch_sha256": "e09ae332565445158f53f89e34b5a0e0835cb8101e794542471d1b5aeb9727a9"
+      },
+      {
+        "filename": "demos/simple/astro.config.mjs",
+        "status": "modified",
+        "additions": 19,
+        "deletions": 0,
+        "changes": 19,
+        "previous_filename": null,
+        "patch_sha256": "6b1ca4ec1478facb35ce587817395b4d7fe4398100163f13174d7fefa3c0c34b"
+      },
+      {
+        "filename": "demos/simple/package.json",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 0,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "47bccf38ead636b8006c3730688e10353e0435ac8f10c831bf2d9344c5c20e91"
+      },
+      {
+        "filename": "demos/simple/src/layouts/Base.astro",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 0,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "959742425ec64914a1056aa8ae881143ed61493cc7ef287d2f87e8acee7e72af"
+      },
+      {
+        "filename": "demos/simple/src/pages/posts/[slug].astro",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 1,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "9bc2175a619e5467ef555f1240b99d37d2a470978260a7d33f7ecbda0a914019"
+      },
+      {
+        "filename": "demos/simple/src/utils/reading-time.ts",
+        "status": "modified",
+        "additions": 31,
+        "deletions": 9,
+        "changes": 40,
+        "previous_filename": null,
+        "patch_sha256": "bb8bd41cbb0e1058eabc1a868800b2baf77515465d8b3be3e2ea012469447690"
+      },
+      {
+        "filename": "docker-compose.yml",
+        "status": "added",
+        "additions": 13,
+        "deletions": 0,
+        "changes": 13,
+        "previous_filename": null,
+        "patch_sha256": "d8c63dfe32d01d722bd0d3db695084adf39f0158600946fc0dbd6991b8ed3839"
+      },
+      {
+        "filename": "docs/src/content/docs/deployment/nodejs.mdx",
+        "status": "modified",
+        "additions": 33,
+        "deletions": 1,
+        "changes": 34,
+        "previous_filename": null,
+        "patch_sha256": "f7f495ac558e3d1d75805893ca1621d2d4eabf823b2cdc1f52cebb014032dc8f"
+      },
+      {
+        "filename": "docs/src/content/docs/guides/site-settings.mdx",
+        "status": "modified",
+        "additions": 4,
+        "deletions": 3,
+        "changes": 7,
+        "previous_filename": null,
+        "patch_sha256": "c0b0b977ab8cfcf6d2ecf0a5cd9848dfce0019c3de2f35a0029aab8b7f3845f3"
+      },
+      {
+        "filename": "docs/src/content/docs/plugins/hooks.mdx",
+        "status": "modified",
+        "additions": 60,
+        "deletions": 1,
+        "changes": 61,
+        "previous_filename": null,
+        "patch_sha256": "e2c464b35f2bd87125ef2fa72620830f01edf9c9e8e972f952bd81ba2692c3d9"
+      },
+      {
+        "filename": "docs/src/content/docs/reference/configuration.mdx",
+        "status": "modified",
+        "additions": 68,
+        "deletions": 0,
+        "changes": 68,
+        "previous_filename": null,
+        "patch_sha256": "06beb77288339e41bccfb9a61749efdc8b2bb98bf581a7ecb07a7ae69b15a2f8"
+      },
+      {
+        "filename": "e2e/fixture/emdash-env.d.ts",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 1,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "f9657aee836ee97f23f2dcd92d7b585e29ce4ee8b347e4cf8bed6226d63dce0d"
+      },
+      {
+        "filename": "e2e/fixtures/refresh-server-pat.ts",
+        "status": "added",
+        "additions": 24,
+        "deletions": 0,
+        "changes": 24,
+        "previous_filename": null,
+        "patch_sha256": "f0f0190a9d45e4ab293651ee5c4faee07605310e96d1c703e236f7570a9f7841"
+      },
+      {
+        "filename": "e2e/fixtures/virtual-authenticator.ts",
+        "status": "added",
+        "additions": 33,
+        "deletions": 0,
+        "changes": 33,
+        "previous_filename": null,
+        "patch_sha256": "a09aea0bcf0c4f86a233a95740450a3bd00bdab883844ee8146812abce02c94a"
+      },
+      {
+        "filename": "e2e/tests/content-crud.spec.ts",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "34ee67c6670a92b0e2401fd47b528a4ae20b950a734c917fbf11e9758655081f"
+      },
+      {
+        "filename": "e2e/tests/passkey-full-setup-virtual-auth.spec.ts",
+        "status": "added",
+        "additions": 75,
+        "deletions": 0,
+        "changes": 75,
+        "previous_filename": null,
+        "patch_sha256": "6c7abba0006d373d657d4d1e86c7fd8a42c6d2c2d6a39a5dc0bf50a5ae6082b3"
+      },
+      {
+        "filename": "e2e/tests/search.spec.ts",
+        "status": "modified",
+        "additions": 19,
+        "deletions": 4,
+        "changes": 23,
+        "previous_filename": null,
+        "patch_sha256": "a08abe3f75d7dad2c44415edebe8fd2e33ccdb55f179971c06f434e09ebe052f"
+      },
+      {
+        "filename": "e2e/tests/setup-wizard.spec.ts",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 4,
+        "changes": 6,
+        "previous_filename": null,
+        "patch_sha256": "acc9505befafeb30995abaeb70bb4c3806bcc6b17c4a30b40653b91ae2d54dfd"
+      },
+      {
+        "filename": "i18n/.gitignore",
+        "status": "added",
+        "additions": 1,
+        "deletions": 0,
+        "changes": 1,
+        "previous_filename": null,
+        "patch_sha256": "9fe0262aa8ccffc6c233475310a67e5c2300ee9c1ebd4c818badfed65bb1dfce"
+      },
+      {
+        "filename": "i18n/build.ts",
+        "status": "added",
+        "additions": 164,
+        "deletions": 0,
+        "changes": 164,
+        "previous_filename": null,
+        "patch_sha256": "3027dfa35d71a676bf775b78c211fc5299186742fbfb0f231b2a2c4ca3b13e3a"
+      },
+      {
+        "filename": "i18n/package.json",
+        "status": "added",
+        "additions": 13,
+        "deletions": 0,
+        "changes": 13,
+        "previous_filename": null,
+        "patch_sha256": "c8cdc4faf324986937fc45ec9e6de6e2769351757c204731f4b1efc6673b6131"
+      },
+      {
+        "filename": "i18n/tsconfig.json",
+        "status": "added",
+        "additions": 10,
+        "deletions": 0,
+        "changes": 10,
+        "previous_filename": null,
+        "patch_sha256": "18e968a89d111da77dd6d6c7e06217decac263ef60872988488b1ffe869f2a88"
+      },
+      {
+        "filename": "i18n/wrangler.jsonc",
+        "status": "added",
+        "additions": 14,
+        "deletions": 0,
+        "changes": 14,
+        "previous_filename": null,
+        "patch_sha256": "aca30098b6bab3d73955c5ff801991ce4a2fe177a06948fdcb7ecbd997043c22"
+      },
+      {
+        "filename": "lingui.config.ts",
+        "status": "added",
+        "additions": 15,
+        "deletions": 0,
+        "changes": 15,
+        "previous_filename": null,
+        "patch_sha256": "9e03ab35f404847d5aae7f9a6597e668434a39dfae67e777b57f9479434a7612"
+      },
+      {
+        "filename": "lunaria.config.ts",
+        "status": "added",
+        "additions": 25,
+        "deletions": 0,
+        "changes": 25,
+        "previous_filename": null,
+        "patch_sha256": "720937f9677d7ab1cf9ea9e7a6001712f7db826a06bbc1b51ec52929f210f06e"
+      },
+      {
+        "filename": "package.json",
+        "status": "modified",
+        "additions": 4,
+        "deletions": 1,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "2610ba5d7ac9127f006b28e8a2384cb4ddb954b1b27d98f49cd902f978bbebf6"
+      },
+      {
+        "filename": "packages/admin/CHANGELOG.md",
+        "status": "modified",
+        "additions": 24,
+        "deletions": 0,
+        "changes": 24,
+        "previous_filename": null,
+        "patch_sha256": "28c783ea68f5ec6cb2659d1c78692f84fc70e3d510b15fc6f5c96c17096df6a2"
+      },
+      {
+        "filename": "packages/admin/package.json",
+        "status": "modified",
+        "additions": 18,
+        "deletions": 4,
+        "changes": 22,
+        "previous_filename": null,
+        "patch_sha256": "af55032edbe58fe922f0ae15b07ab1add2018832727dab28d693b0fca70543bb"
+      },
+      {
+        "filename": "packages/admin/scripts/copy-locales.js",
+        "status": "added",
+        "additions": 18,
+        "deletions": 0,
+        "changes": 18,
+        "previous_filename": null,
+        "patch_sha256": "2c55a4f7f6d718ff266087ac53df9555b4a875f1c4948801b5e8b1ecf67f34f0"
+      },
+      {
+        "filename": "packages/admin/src/App.tsx",
+        "status": "modified",
+        "additions": 34,
+        "deletions": 8,
+        "changes": 42,
+        "previous_filename": null,
+        "patch_sha256": "b2d84b5fc15837e658bd0bf2022908f71e379279360c7ba3602c224121ceedd7"
+      },
+      {
+        "filename": "packages/admin/src/components/ContentEditor.tsx",
+        "status": "modified",
+        "additions": 158,
+        "deletions": 36,
+        "changes": 194,
+        "previous_filename": null,
+        "patch_sha256": "0d12980bff93955776a4585607de35f332da1a62e8211c4f64a60ba447bb41ce"
+      },
+      {
+        "filename": "packages/admin/src/components/ContentList.tsx",
+        "status": "modified",
+        "additions": 37,
+        "deletions": 2,
+        "changes": 39,
+        "previous_filename": null,
+        "patch_sha256": "d3a76193e9250fbc8c639e7a15b3a32076bdb06df543e6825535e11bb5b4313a"
+      },
+      {
+        "filename": "packages/admin/src/components/ContentPickerModal.tsx",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "c074dc326b746462f49cbe635781cedd28361e0f81d74a5528efb628ce2ef869"
+      },
+      {
+        "filename": "packages/admin/src/components/ContentTypeEditor.tsx",
+        "status": "modified",
+        "additions": 79,
+        "deletions": 14,
+        "changes": 93,
+        "previous_filename": null,
+        "patch_sha256": "08d3a3cd4d26e0f441495c4710898335f858f7a1a3bece9ca2b022149959f0c4"
+      },
+      {
+        "filename": "packages/admin/src/components/FieldEditor.tsx",
+        "status": "modified",
+        "additions": 170,
+        "deletions": 2,
+        "changes": 172,
+        "previous_filename": null,
+        "patch_sha256": "c00f26fe8b91208459a5789ed04ada2488716e29d482c12f24c1c82abc5107fa"
+      },
+      {
+        "filename": "packages/admin/src/components/Header.tsx",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 3,
+        "changes": 6,
+        "previous_filename": null,
+        "patch_sha256": "c39d9010724d52c3ac147e71c2f237ba2a22f4719ee2f60701c92d09a7cc7aac"
+      },
+      {
+        "filename": "packages/admin/src/components/LocaleSwitcher.tsx",
+        "status": "modified",
+        "additions": 8,
+        "deletions": 8,
+        "changes": 16,
+        "previous_filename": null,
+        "patch_sha256": "73426d5d387c56336423848dab75f9bb309dfef92092b02e92db90607797b8db"
+      },
+      {
+        "filename": "packages/admin/src/components/LoginPage.tsx",
+        "status": "modified",
+        "additions": 122,
+        "deletions": 116,
+        "changes": 238,
+        "previous_filename": null,
+        "patch_sha256": "2b9631be3e21b758f4c2e408033644087cb18cebb99bca7e2e71861fa5f494d6"
+      },
+      {
+        "filename": "packages/admin/src/components/MediaPickerModal.tsx",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 2,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "4a8187f73f84c9dca07f81874ebcb27dcea12c69fc2453bfef9d7f8dfedd084d"
+      },
+      {
+        "filename": "packages/admin/src/components/MenuEditor.tsx",
+        "status": "modified",
+        "additions": 7,
+        "deletions": 3,
+        "changes": 10,
+        "previous_filename": null,
+        "patch_sha256": "450036e322960a0a0183a55fce79b477bd8226e59e9911aa3b42e5d73b6f9523"
+      },
+      {
+        "filename": "packages/admin/src/components/RepeaterField.tsx",
+        "status": "added",
+        "additions": 360,
+        "deletions": 0,
+        "changes": 360,
+        "previous_filename": null,
+        "patch_sha256": "ee5fc05cd0624f9e28bfee417afdd57f23e5c9d6a0fea2d0ba0b442bd55049f0"
+      },
+      {
+        "filename": "packages/admin/src/components/SeoImageField.tsx",
+        "status": "added",
+        "additions": 84,
+        "deletions": 0,
+        "changes": 84,
+        "previous_filename": null,
+        "patch_sha256": "085feeb4bd06671b88b52f16119f2c0d1e013038c07995a6612304701cf94283"
+      },
+      {
+        "filename": "packages/admin/src/components/Settings.tsx",
+        "status": "modified",
+        "additions": 56,
+        "deletions": 15,
+        "changes": 71,
+        "previous_filename": null,
+        "patch_sha256": "dd51dd21d3a8ebef5bf296e8d672aacc52b3bee4c54ed29246a65847faa122e9"
+      },
+      {
+        "filename": "packages/admin/src/components/SetupWizard.tsx",
+        "status": "modified",
+        "additions": 103,
+        "deletions": 30,
+        "changes": 133,
+        "previous_filename": null,
+        "patch_sha256": "6ba18159a085df724fcc20c153bced7bf1a0ff55628295d3f4f519112dc9503a"
+      },
+      {
+        "filename": "packages/admin/src/components/Shell.tsx",
+        "status": "modified",
+        "additions": 4,
+        "deletions": 0,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "1548b0d9a45013652d729fb3808c834fe8ab05b6e6519a9822431f3f763c0898"
+      },
+      {
+        "filename": "packages/admin/src/components/Sidebar.tsx",
+        "status": "modified",
+        "additions": 9,
+        "deletions": 12,
+        "changes": 21,
+        "previous_filename": null,
+        "patch_sha256": "7f0a187fc2fd71c6cff88fa89bd7c86b79413e461a03a6c7fc094ae000bca418"
+      },
+      {
+        "filename": "packages/admin/src/components/TaxonomyManager.tsx",
+        "status": "modified",
+        "additions": 10,
+        "deletions": 0,
+        "changes": 10,
+        "previous_filename": null,
+        "patch_sha256": "92c2994232a243c231316436357af792ba38bc09ed94595bf61a389e399cee64"
+      },
+      {
+        "filename": "packages/admin/src/components/ThemeProvider.tsx",
+        "status": "modified",
+        "additions": 13,
+        "deletions": 15,
+        "changes": 28,
+        "previous_filename": null,
+        "patch_sha256": "1e3f84217f17505bc3be84aec7c69407ee0dfff248b4a737a0a9fa466794bf98"
+      },
+      {
+        "filename": "packages/admin/src/components/WelcomeModal.tsx",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "10eef0a4577e4848b55ce512f78542b458f910a1796356f1b6aa51b8fc7cd13c"
+      },
+      {
+        "filename": "packages/admin/src/components/auth/PasskeyLogin.tsx",
+        "status": "modified",
+        "additions": 42,
+        "deletions": 21,
+        "changes": 63,
+        "previous_filename": null,
+        "patch_sha256": "a680e00bf99f1e3c7d5fecb3426b10debc827056d1d2ee23a2efec97489dbdb6"
+      },
+      {
+        "filename": "packages/admin/src/components/auth/PasskeyRegistration.tsx",
+        "status": "modified",
+        "additions": 26,
+        "deletions": 17,
+        "changes": 43,
+        "previous_filename": null,
+        "patch_sha256": "c936273e43e05fa1d314862b1d1bebc87e5f9b065cebc736f903065eb60cf049"
+      },
+      {
+        "filename": "packages/admin/src/components/settings/AllowedDomainsSettings.tsx",
+        "status": "modified",
+        "additions": 22,
+        "deletions": 16,
+        "changes": 38,
+        "previous_filename": null,
+        "patch_sha256": "6530b1ff7ab4c4c2b636461adb8b1e19ea6a13b0cd6d931c6f9bfd851c04ee60"
+      },
+      {
+        "filename": "packages/admin/src/components/settings/ApiTokenSettings.tsx",
+        "status": "modified",
+        "additions": 4,
+        "deletions": 2,
+        "changes": 6,
+        "previous_filename": null,
+        "patch_sha256": "e6fe413f494b5de5d6c18ed57d7adaf0d55daf3f6b98637b2874581f55a07ecc"
+      },
+      {
+        "filename": "packages/admin/src/components/settings/EmailSettings.tsx",
+        "status": "modified",
+        "additions": 24,
+        "deletions": 1,
+        "changes": 25,
+        "previous_filename": null,
+        "patch_sha256": "c379eeda78a929f5f8039349a6450da2c2000034718e5578702f351b3b340a0c"
+      },
+      {
+        "filename": "packages/admin/src/components/settings/SecuritySettings.tsx",
+        "status": "modified",
+        "additions": 22,
+        "deletions": 16,
+        "changes": 38,
+        "previous_filename": null,
+        "patch_sha256": "71bc22a373a8f491547aab73c9b802331fdd6be1b9b8052624e1ebfe44957602"
+      },
+      {
+        "filename": "packages/admin/src/index.ts",
+        "status": "modified",
+        "additions": 19,
+        "deletions": 0,
+        "changes": 19,
+        "previous_filename": null,
+        "patch_sha256": "e9531c40c10194b4e7d10872962f1100f59c2b56de7640abcacd61b20f26b7b8"
+      },
+      {
+        "filename": "packages/admin/src/lib/api/client.ts",
+        "status": "modified",
+        "additions": 28,
+        "deletions": 0,
+        "changes": 28,
+        "previous_filename": null,
+        "patch_sha256": "d9e0adeefc1071ef7cd0d63c5d056ddff880ef40984cfcdea5d4c624b6c43e83"
+      },
+      {
+        "filename": "packages/admin/src/lib/api/index.ts",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 0,
+        "changes": 1,
+        "previous_filename": null,
+        "patch_sha256": "d13bc16fa72c29bbab210fb94988d3b4d61b817e6f14e76cdd73a41edab632bb"
+      },
+      {
+        "filename": "packages/admin/src/lib/api/schema.ts",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 1,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "3e384f8f3b4bdd00f67669aa0dd629ee8bbfb7b5e07cb146169302df9ad39b94"
+      },
+      {
+        "filename": "packages/admin/src/lib/auth-provider-context.tsx",
+        "status": "added",
+        "additions": 62,
+        "deletions": 0,
+        "changes": 62,
+        "previous_filename": null,
+        "patch_sha256": "ae2b9e034d5c0234e06fab87d781720ddd913d1b5772f65248c265514779f3b0"
+      },
+      {
+        "filename": "packages/admin/src/lib/url.ts",
+        "status": "modified",
+        "additions": 13,
+        "deletions": 0,
+        "changes": 13,
+        "previous_filename": null,
+        "patch_sha256": "3df6a8976108ccd79468582e28e1383910a1e9e3b92d512ae4dc83434edcd770"
+      },
+      {
+        "filename": "packages/admin/src/lib/webauthn-environment.ts",
+        "status": "added",
+        "additions": 25,
+        "deletions": 0,
+        "changes": 25,
+        "previous_filename": null,
+        "patch_sha256": "02c7a3693c7534a53901cae18c750d463aced8b032225e6069ceb0bb581aacbb"
+      },
+      {
+        "filename": "packages/admin/src/locales/.gitignore",
+        "status": "added",
+        "additions": 2,
+        "deletions": 0,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "9f183ac0cbd4aaa5db285d72ee69c2832796e64942dfc3c07b041e7047b9691f"
+      },
+      {
+        "filename": "packages/admin/src/locales/config.ts",
+        "status": "added",
+        "additions": 61,
+        "deletions": 0,
+        "changes": 61,
+        "previous_filename": null,
+        "patch_sha256": "ef27ea46b6cbc68a5cfc0cd81cef8abfb61bb9d1090770359034bbb671d495db"
+      },
+      {
+        "filename": "packages/admin/src/locales/de/messages.po",
+        "status": "added",
+        "additions": 176,
+        "deletions": 0,
+        "changes": 176,
+        "previous_filename": null,
+        "patch_sha256": "43140532033bcfda532850489234ead18f2e02cdd6c1c9a50a29884ab4a77f3d"
+      },
+      {
+        "filename": "packages/admin/src/locales/en/messages.po",
+        "status": "added",
+        "additions": 185,
+        "deletions": 0,
+        "changes": 185,
+        "previous_filename": null,
+        "patch_sha256": "934cdb711dec3321adf4fc94ed7c971979460a51d58b20f41362103aa8522079"
+      },
+      {
+        "filename": "packages/admin/src/locales/index.ts",
+        "status": "added",
+        "additions": 9,
+        "deletions": 0,
+        "changes": 9,
+        "previous_filename": null,
+        "patch_sha256": "20b2396dffe5e880f652b8ff70122c65d89c10a38369997b379add8e0cff46e3"
+      },
+      {
+        "filename": "packages/admin/src/locales/useLocale.ts",
+        "status": "added",
+        "additions": 42,
+        "deletions": 0,
+        "changes": 42,
+        "previous_filename": null,
+        "patch_sha256": "f452180bcb247127e55af3dbd6c88a40d13b315e5f0c32cdc634d7d0fe506bc0"
+      },
+      {
+        "filename": "packages/admin/src/router.tsx",
+        "status": "modified",
+        "additions": 61,
+        "deletions": 4,
+        "changes": 65,
+        "previous_filename": null,
+        "patch_sha256": "c426c9a00b1bfec100f1f29c0be2cc37c67f96667e2eafcb9eac3ab35b828d42"
+      },
+      {
+        "filename": "packages/admin/src/styles.css",
+        "status": "modified",
+        "additions": 21,
+        "deletions": 6,
+        "changes": 27,
+        "previous_filename": null,
+        "patch_sha256": "879954138b9324bad5124f58294ce46da456ff62f3a3b311b6cbf5e49c837d6c"
+      },
+      {
+        "filename": "packages/admin/tests/components/ContentEditor.test.tsx",
+        "status": "modified",
+        "additions": 118,
+        "deletions": 0,
+        "changes": 118,
+        "previous_filename": null,
+        "patch_sha256": "f37cd5aa2ad48efe86bc70832ebcb35cbc39aa89822c1e780290aaefc73ba089"
+      },
+      {
+        "filename": "packages/admin/tests/components/ContentList.test.tsx",
+        "status": "modified",
+        "additions": 53,
+        "deletions": 1,
+        "changes": 54,
+        "previous_filename": null,
+        "patch_sha256": "30a1a939c32b1221ddc65279ae200e276541997cebafe9a19225aee31d28440c"
+      },
+      {
+        "filename": "packages/admin/tests/components/LoginPage.test.tsx",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 1,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "a7957198640a8420eee1d22874e593b440a9fa979164ecfbf85ef346616b840e"
+      },
+      {
+        "filename": "packages/admin/tests/components/MenuEditor.test.tsx",
+        "status": "modified",
+        "additions": 37,
+        "deletions": 0,
+        "changes": 37,
+        "previous_filename": null,
+        "patch_sha256": "3b013d7df802aeeb9327aee0d725ca8cb5c63ffc79cf03a399abfd46d65563b6"
+      },
+      {
+        "filename": "packages/admin/tests/components/PluginManager.test.tsx",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 0,
+        "changes": 1,
+        "previous_filename": null,
+        "patch_sha256": "c38d6bf95203475b83543564bdd9605e7f59d47120d81fbf0d713b13cddf623c"
+      },
+      {
+        "filename": "packages/admin/tests/components/Settings.test.tsx",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 1,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "59f5be73fd3bddc71c2fc39c38eb0e8f27ac3df2c3fa57caff8aec8b37786654"
+      },
+      {
+        "filename": "packages/admin/tests/lib/webauthn-environment.test.ts",
+        "status": "added",
+        "additions": 54,
+        "deletions": 0,
+        "changes": 54,
+        "previous_filename": null,
+        "patch_sha256": "bdf91bd7f49e1fece5b80258c51374ad9d3b34e7e54118acce26e55f05057fa3"
+      },
+      {
+        "filename": "packages/admin/tests/router.test.tsx",
+        "status": "added",
+        "additions": 283,
+        "deletions": 0,
+        "changes": 283,
+        "previous_filename": null,
+        "patch_sha256": "54235d941c1bba124018105f4a753e31085d4d0c2d161a518c99ab4875345aa1"
+      },
+      {
+        "filename": "packages/admin/tests/setup.ts",
+        "status": "modified",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "df3b206879fe9077cde6d51e747719a1a32accce0a6a1d858ae59aca4b863083"
+      },
+      {
+        "filename": "packages/admin/tests/utils/render.tsx",
+        "status": "added",
+        "additions": 22,
+        "deletions": 0,
+        "changes": 22,
+        "previous_filename": null,
+        "patch_sha256": "e8ad840bb50e3d0fe8bc8fc21c742ed18e3855301ba64e80a63be738b41bedc4"
+      },
+      {
+        "filename": "packages/admin/tsconfig.json",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 1,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "1971184352147b8f80f6499db7af9032f2693828fbcc2340f8dc066834846410"
+      },
+      {
+        "filename": "packages/admin/tsdown.config.ts",
+        "status": "modified",
+        "additions": 25,
+        "deletions": 1,
+        "changes": 26,
+        "previous_filename": null,
+        "patch_sha256": "ffbcb4b1410fd07138f7de090791c9de78b75a0345b98d6f2dba9248281877f3"
+      },
+      {
+        "filename": "packages/admin/vitest.config.ts",
+        "status": "modified",
+        "additions": 7,
+        "deletions": 1,
+        "changes": 8,
+        "previous_filename": null,
+        "patch_sha256": "f2b1cec03190886eacaa4ca911a74824c5d20b2eb76938181f4ff24a1ec082fd"
+      },
+      {
+        "filename": "packages/auth-atproto/package.json",
+        "status": "added",
+        "additions": 52,
+        "deletions": 0,
+        "changes": 52,
+        "previous_filename": null,
+        "patch_sha256": "d3d9f9bf0eac803c6c0b5edd3f4692223f7762b4eab1781ec80e400b48ffbc72"
+      },
+      {
+        "filename": "packages/auth-atproto/src/admin.tsx",
+        "status": "added",
+        "additions": 186,
+        "deletions": 0,
+        "changes": 186,
+        "previous_filename": null,
+        "patch_sha256": "b155f4a6d3fc8a8ada9421f47a703bcda0e6b49432bd243708d1810495d161a5"
+      },
+      {
+        "filename": "packages/auth-atproto/src/auth.ts",
+        "status": "added",
+        "additions": 104,
+        "deletions": 0,
+        "changes": 104,
+        "previous_filename": null,
+        "patch_sha256": "70902a28e0c778cd04c52cb5ab5bd495017e43ef397528adf857f9ab742e08c4"
+      },
+      {
+        "filename": "packages/auth-atproto/src/db-store.ts",
+        "status": "added",
+        "additions": 67,
+        "deletions": 0,
+        "changes": 67,
+        "previous_filename": null,
+        "patch_sha256": "6b3e07acd6b32fb77342b602d30bd088a690b67d9f551724ff4da4e1c0d2bf95"
+      },
+      {
+        "filename": "packages/auth-atproto/src/env.d.ts",
+        "status": "added",
+        "additions": 1,
+        "deletions": 0,
+        "changes": 1,
+        "previous_filename": null,
+        "patch_sha256": "5e7232095d61d1deff2e71856baa6f3b26800bfb17a32f676c36f0b0af909f73"
+      },
+      {
+        "filename": "packages/auth-atproto/src/oauth-client.ts",
+        "status": "added",
+        "additions": 235,
+        "deletions": 0,
+        "changes": 235,
+        "previous_filename": null,
+        "patch_sha256": "e0b37cc54d3668906a8137d6741d294342f8d02e0403a48744941b90ec58dbee"
+      },
+      {
+        "filename": "packages/auth-atproto/src/resolve-handle.ts",
+        "status": "added",
+        "additions": 52,
+        "deletions": 0,
+        "changes": 52,
+        "previous_filename": null,
+        "patch_sha256": "f0f17431703d5926ae3e356edaf4f838f473a0761662db6eb71d4dc5461d453a"
+      },
+      {
+        "filename": "packages/auth-atproto/src/routes/callback.ts",
+        "status": "added",
+        "additions": 214,
+        "deletions": 0,
+        "changes": 214,
+        "previous_filename": null,
+        "patch_sha256": "0eecf47d76a171d830a84de2494d8a685b1170d2165a21a8d08761ff1c124605"
+      },
+      {
+        "filename": "packages/auth-atproto/src/routes/client-metadata.ts",
+        "status": "added",
+        "additions": 37,
+        "deletions": 0,
+        "changes": 37,
+        "previous_filename": null,
+        "patch_sha256": "72308d8085bbae57179f5c260e0390e640fb6658cbc860919085c5fafde7c6e5"
+      },
+      {
+        "filename": "packages/auth-atproto/src/routes/login.ts",
+        "status": "added",
+        "additions": 43,
+        "deletions": 0,
+        "changes": 43,
+        "previous_filename": null,
+        "patch_sha256": "2af1d4968ffee6153492113cf77d9adeb37c504608bc60123aeedb000199de9c"
+      },
+      {
+        "filename": "packages/auth-atproto/src/routes/setup-admin.ts",
+        "status": "added",
+        "additions": 72,
+        "deletions": 0,
+        "changes": 72,
+        "previous_filename": null,
+        "patch_sha256": "304772e5ff380dfd09b7354802b9cb20c5d6c39c4eca6609b65f460012841216"
+      },
+      {
+        "filename": "packages/auth-atproto/src/storage.ts",
+        "status": "added",
+        "additions": 38,
+        "deletions": 0,
+        "changes": 38,
+        "previous_filename": null,
+        "patch_sha256": "c914f23fe20add59695f7d0aaa87f411d385cfe0bb7922e87defe84f3565df6d"
+      },
+      {
+        "filename": "packages/auth-atproto/tests/auth.test.ts",
+        "status": "added",
+        "additions": 129,
+        "deletions": 0,
+        "changes": 129,
+        "previous_filename": null,
+        "patch_sha256": "591a0d3de62ac6d5271237d291947b7499d0f83e679af1bc856bce9cc85b7693"
+      },
+      {
+        "filename": "packages/auth-atproto/tests/oauth-client.test.ts",
+        "status": "added",
+        "additions": 98,
+        "deletions": 0,
+        "changes": 98,
+        "previous_filename": null,
+        "patch_sha256": "1ff9a49fc4e7db80506078e09a5a27df9f9dd6e6117ced1bdab262874090ea42"
+      },
+      {
+        "filename": "packages/auth-atproto/tests/resolve-handle.test.ts",
+        "status": "added",
+        "additions": 27,
+        "deletions": 0,
+        "changes": 27,
+        "previous_filename": null,
+        "patch_sha256": "cf1733c22019f1a20f4302c0ca70b72cc750d09caa7efdce96faacca63a57cbd"
+      },
+      {
+        "filename": "packages/auth-atproto/tsconfig.json",
+        "status": "added",
+        "additions": 11,
+        "deletions": 0,
+        "changes": 11,
+        "previous_filename": null,
+        "patch_sha256": "c204568c3cb38e2918712ea1d359ba7bbdd3024ff376e73185e7656fad37ab7a"
+      },
+      {
+        "filename": "packages/auth/CHANGELOG.md",
+        "status": "modified",
+        "additions": 6,
+        "deletions": 0,
+        "changes": 6,
+        "previous_filename": null,
+        "patch_sha256": "1a34d67b9402777bad2fa27fce067d4c43097ab3135342bc1c94842da7cc9542"
+      },
+      {
+        "filename": "packages/auth/package.json",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "44f01a7133487d7063099cec69ce2194733d621171028b9f20550a7d45e7d616"
+      },
+      {
+        "filename": "packages/auth/src/index.ts",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 0,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "d48d2d2758528772f5c92a91c4e7307030df4067d5295025918fcd2ebee3db0c"
+      },
+      {
+        "filename": "packages/auth/src/oauth/consumer.ts",
+        "status": "modified",
+        "additions": 19,
+        "deletions": 6,
+        "changes": 25,
+        "previous_filename": null,
+        "patch_sha256": "8b3aae908821bc79f105e34dabc28a2394f60a9083c7e2b853c443dd7c69014a"
+      },
+      {
+        "filename": "packages/auth/src/oauth/providers/github.test.ts",
+        "status": "added",
+        "additions": 65,
+        "deletions": 0,
+        "changes": 65,
+        "previous_filename": null,
+        "patch_sha256": "924dc09d3073d44545f57554489847dfc1d9cbf32bf873e9a78e823bde5bb69e"
+      },
+      {
+        "filename": "packages/auth/src/oauth/providers/github.ts",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 0,
+        "changes": 1,
+        "previous_filename": null,
+        "patch_sha256": "ebbfd1c9e470276ee04631c07d3bb67c8d3801d28eea2168a99ab1a382f714ac"
+      },
+      {
+        "filename": "packages/blocks/src/blocks/fields.tsx",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 1,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "61ed1faf1d75f60f2a228269c505e26336e517f74f4df478609fd4fe5409f403"
+      },
+      {
+        "filename": "packages/blocks/tests/renderer.test.tsx",
+        "status": "modified",
+        "additions": 12,
+        "deletions": 0,
+        "changes": 12,
+        "previous_filename": null,
+        "patch_sha256": "97358f2ae75786b942e8a86797a8b4abc3b190c4f7c81954f6c20e136029c970"
+      },
+      {
+        "filename": "packages/cloudflare/CHANGELOG.md",
+        "status": "modified",
+        "additions": 11,
+        "deletions": 0,
+        "changes": 11,
+        "previous_filename": null,
+        "patch_sha256": "731588e5feb87cc9ac2dc9a1b5a48cb75b5bb05ce987e8ffcf1d34584bc2fb5b"
+      },
+      {
+        "filename": "packages/cloudflare/package.json",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "e9e8cadfdcd63e60629623b8fdd8c505bfbe5a74cd34aa03cdbcd6fc414e14dd"
+      },
+      {
+        "filename": "packages/core/CHANGELOG.md",
+        "status": "modified",
+        "additions": 43,
+        "deletions": 0,
+        "changes": 43,
+        "previous_filename": null,
+        "patch_sha256": "31b6e50cc0d2dcc7c05cc0dce6ef09e4b69b507640d59974dd4a2d0608a1788d"
+      },
+      {
+        "filename": "packages/core/package.json",
+        "status": "modified",
+        "additions": 14,
+        "deletions": 1,
+        "changes": 15,
+        "previous_filename": null,
+        "patch_sha256": "1ff843ec7430e5c9b01e5b0eca01c4d9f8a5424cb25b82ca02a31073522da491"
+      },
+      {
+        "filename": "packages/core/src/api/auth-storage.ts",
+        "status": "added",
+        "additions": 37,
+        "deletions": 0,
+        "changes": 37,
+        "previous_filename": null,
+        "patch_sha256": "b5011292e0085d17bcc39d98b7bdd49bb3de7c051824c95b7112b08f7c4142c0"
+      },
+      {
+        "filename": "packages/core/src/api/csrf.ts",
+        "status": "modified",
+        "additions": 13,
+        "deletions": 2,
+        "changes": 15,
+        "previous_filename": null,
+        "patch_sha256": "ea85eacf72ac354bc96497d76f6d669847d69e1e1e68d1b55571bf431c527f5c"
+      },
+      {
+        "filename": "packages/core/src/api/handlers/content.ts",
+        "status": "modified",
+        "additions": 4,
+        "deletions": 0,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "36e3b24ee9257a9b1013fd4514877571fc01f2c5c7f5c857330c322b593c41a9"
+      },
+      {
+        "filename": "packages/core/src/api/handlers/dashboard.ts",
+        "status": "modified",
+        "additions": 4,
+        "deletions": 8,
+        "changes": 12,
+        "previous_filename": null,
+        "patch_sha256": "c3aa82e6c8af7996cd7b48e43795fda0a91dfeaabee58490c3cc91eb798c533a"
+      },
+      {
+        "filename": "packages/core/src/api/handlers/index.ts",
+        "status": "modified",
+        "additions": 6,
+        "deletions": 1,
+        "changes": 7,
+        "previous_filename": null,
+        "patch_sha256": "62d2c73646ab3e71fa2bb11f7221dad75a34d14d6ca42dde312cd8195093f694"
+      },
+      {
+        "filename": "packages/core/src/api/handlers/marketplace.ts",
+        "status": "modified",
+        "additions": 7,
+        "deletions": 4,
+        "changes": 11,
+        "previous_filename": null,
+        "patch_sha256": "fcb3120881ebbae0c7ed88b68d4ada7d3d0fa158852f479401d6aa9bae4df782"
+      },
+      {
+        "filename": "packages/core/src/api/handlers/seo.ts",
+        "status": "modified",
+        "additions": 48,
+        "deletions": 21,
+        "changes": 69,
+        "previous_filename": null,
+        "patch_sha256": "65451f0795294d57e7e16b35efec86b5960c61d8c79bcda1b01d492708314ef6"
+      },
+      {
+        "filename": "packages/core/src/api/public-url.ts",
+        "status": "added",
+        "additions": 84,
+        "deletions": 0,
+        "changes": 84,
+        "previous_filename": null,
+        "patch_sha256": "183653c18dcd8ad7814bed9a5a306b1c0dc09e6bed65f93b2c2bf05672f044eb"
+      },
+      {
+        "filename": "packages/core/src/api/route-utils.ts",
+        "status": "added",
+        "additions": 13,
+        "deletions": 0,
+        "changes": 13,
+        "previous_filename": null,
+        "patch_sha256": "3bb33f54fd7699822d6ea4fb4aa72172fa971b7ed366caeec912e212235f1a55"
+      },
+      {
+        "filename": "packages/core/src/api/schemas/menus.ts",
+        "status": "modified",
+        "additions": 12,
+        "deletions": 2,
+        "changes": 14,
+        "previous_filename": null,
+        "patch_sha256": "1041545dd1beeb87dd96bae7bdc3ed580e0d8215ad3b2629c3ace2e4fb31c33f"
+      },
+      {
+        "filename": "packages/core/src/api/schemas/schema.ts",
+        "status": "modified",
+        "additions": 12,
+        "deletions": 0,
+        "changes": 12,
+        "previous_filename": null,
+        "patch_sha256": "993cbfb79f47b749426331e94b503f7e33e88eecf636ba2710ad6f4afed55dab"
+      },
+      {
+        "filename": "packages/core/src/api/schemas/setup.ts",
+        "status": "modified",
+        "additions": 8,
+        "deletions": 0,
+        "changes": 8,
+        "previous_filename": null,
+        "patch_sha256": "a8ce835ba8baf16d99fcea9a8983c4212a9dd29c76e95ab073f6b16e01fa3131"
+      },
+      {
+        "filename": "packages/core/src/api/setup-complete.ts",
+        "status": "added",
+        "additions": 40,
+        "deletions": 0,
+        "changes": 40,
+        "previous_filename": null,
+        "patch_sha256": "3a8c3ae27fbac2fe9b50adb2ba170a30ff49c434db0979777fcd3b1b7242f82e"
+      },
+      {
+        "filename": "packages/core/src/astro/integration/index.ts",
+        "status": "modified",
+        "additions": 54,
+        "deletions": 3,
+        "changes": 57,
+        "previous_filename": null,
+        "patch_sha256": "7bb9c2c5ba59c167eadec912736741427b5f1551c8f55c50aba49aa1396f4c01"
+      },
+      {
+        "filename": "packages/core/src/astro/integration/routes.ts",
+        "status": "modified",
+        "additions": 41,
+        "deletions": 2,
+        "changes": 43,
+        "previous_filename": null,
+        "patch_sha256": "9f3f893e08efab4b7d68327bcf704af1417f18d9199b641550f6cc29ed901c16"
+      },
+      {
+        "filename": "packages/core/src/astro/integration/runtime.ts",
+        "status": "modified",
+        "additions": 34,
+        "deletions": 1,
+        "changes": 35,
+        "previous_filename": null,
+        "patch_sha256": "1aaf7ae9eacdbd1031dc37a37b3af78e7b7b508381b58e94f8b5e177f49496a5"
+      },
+      {
+        "filename": "packages/core/src/astro/integration/virtual-modules.ts",
+        "status": "modified",
+        "additions": 54,
+        "deletions": 1,
+        "changes": 55,
+        "previous_filename": null,
+        "patch_sha256": "c71852d1b276a0ab342e6f2da8344947f28b59653a1f31966710268e1b088cb1"
+      },
+      {
+        "filename": "packages/core/src/astro/integration/vite-config.ts",
+        "status": "modified",
+        "additions": 51,
+        "deletions": 9,
+        "changes": 60,
+        "previous_filename": null,
+        "patch_sha256": "fd099e18b0af2cf82faeb3012c7f15f7c7ce014d0ea3e631d848afc4123cdf31"
+      },
+      {
+        "filename": "packages/core/src/astro/middleware.ts",
+        "status": "modified",
+        "additions": 47,
+        "deletions": 3,
+        "changes": 50,
+        "previous_filename": null,
+        "patch_sha256": "897c7b190a84d9d2f9238d31fc050c5a00445d3010e26c745ffb28a1b10fecba"
+      },
+      {
+        "filename": "packages/core/src/astro/middleware/auth.ts",
+        "status": "modified",
+        "additions": 41,
+        "deletions": 40,
+        "changes": 81,
+        "previous_filename": null,
+        "patch_sha256": "0419301cb16e66b0f90916060fb01d97eaa3445ab9d838f23c991feaa5dfbd7e"
+      },
+      {
+        "filename": "packages/core/src/astro/middleware/csp.ts",
+        "status": "added",
+        "additions": 25,
+        "deletions": 0,
+        "changes": 25,
+        "previous_filename": null,
+        "patch_sha256": "03cabd0b0846af86c5763ee445ef3e34b6bede087bddaa4831d1de731a74f649"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/PluginRegistry.tsx",
+        "status": "modified",
+        "additions": 17,
+        "deletions": 2,
+        "changes": 19,
+        "previous_filename": null,
+        "patch_sha256": "24680f9f2776970833e5ea4723ce5f9179264f62d3af868efcd36c9560e5b39f"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/admin.astro",
+        "status": "modified",
+        "additions": 7,
+        "deletions": 2,
+        "changes": 9,
+        "previous_filename": null,
+        "patch_sha256": "d07797b84d07998c8d697400ed654fc0896caa1b3a179f090a4b17325906c731"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/admin/plugins/marketplace/[id]/install.ts",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 1,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "536042416c96f1906a6c47c123288589c694171e0ba4b94537db23ee433da5e1"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/auth/invite/complete.ts",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 1,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "00c9af086be95e03d0653c6479830827cafd42b3bce76d2744cba2c62e97801b"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/auth/mode.ts",
+        "status": "added",
+        "additions": 57,
+        "deletions": 0,
+        "changes": 57,
+        "previous_filename": null,
+        "patch_sha256": "5d63a84f84551ae41e715dece7dff2a7c433e224d051f0e72d322c84d25aa336"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/auth/oauth/[provider].ts",
+        "status": "modified",
+        "additions": 12,
+        "deletions": 5,
+        "changes": 17,
+        "previous_filename": null,
+        "patch_sha256": "8416d2707d5aa30160f83ae656bf1073f022d233c84c1e8d8a706a09a05adf64"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/auth/oauth/[provider]/callback.ts",
+        "status": "modified",
+        "additions": 25,
+        "deletions": 4,
+        "changes": 29,
+        "previous_filename": null,
+        "patch_sha256": "9a8ee3b5caacd48433e68953d73199ee2ddcc44e91916d33f6d57571109c0912"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/auth/passkey/options.ts",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 1,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "ae548f4f80191896ba56a84b5500721429836435264ec42960c25edcd46d083e"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/auth/passkey/register/options.ts",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 1,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "49521953cf3b1399ba8e6088d9a6a3f6858cde140ab7b35a859221a0bf05d028"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/auth/passkey/register/verify.ts",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 1,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "6c9d1fc474125072795566fb8611a4dbe3f8e188bbac92c77191cd704abe6992"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/auth/passkey/verify.ts",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 1,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "26077bf943cb4cce1ab05b1896047f383da51df7062ff857748f313982d95bfc"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/auth/signup/complete.ts",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 1,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "df6af7bdcfa9400060adf671b9e155dbe3e3da00ca91909dd7bfd262c15736cd"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/import/wordpress-plugin/execute.ts",
+        "status": "modified",
+        "additions": 10,
+        "deletions": 0,
+        "changes": 10,
+        "previous_filename": null,
+        "patch_sha256": "af368c1804059d3b33dd3157363b2fdc5be624873bb683453dac555d4b6f8516"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/import/wordpress/analyze.ts",
+        "status": "modified",
+        "additions": 24,
+        "deletions": 3,
+        "changes": 27,
+        "previous_filename": null,
+        "patch_sha256": "c99e30c1a9026ff1924b56ed5983ee5d3e7f32d50dc4175adca4ecd0eef02cb8"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/import/wordpress/execute.ts",
+        "status": "modified",
+        "additions": 14,
+        "deletions": 1,
+        "changes": 15,
+        "previous_filename": null,
+        "patch_sha256": "9b886b522d27b473f6f63f8ea248aa249bbffad0261201e4ea33786530050a64"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/import/wordpress/prepare.ts",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 2,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "959b51e0b530ce6dc77a726f3bcd98aa38cace668c68f6380381c5a6fda2c65c"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/manifest.ts",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 0,
+        "changes": 1,
+        "previous_filename": null,
+        "patch_sha256": "a224880342856faecf6f8174dfdacb77193ae71ea05db15243e1bbd14280eac5"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/media.ts",
+        "status": "modified",
+        "additions": 16,
+        "deletions": 4,
+        "changes": 20,
+        "previous_filename": null,
+        "patch_sha256": "e3b490b8ac56d545c1acafcf7d631ad0a5f795931c2eb3e43f255826bc6e3e37"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/media/file/[...key].ts",
+        "status": "renamed",
+        "additions": 0,
+        "deletions": 0,
+        "changes": 0,
+        "previous_filename": "packages/core/src/astro/routes/api/media/file/[key].ts",
+        "patch_sha256": "62ef2417edda0b3b09245a4cb2c8cea285e9550f229c29f22a07e73fec91d989"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/oauth/authorize.ts",
+        "status": "modified",
+        "additions": 11,
+        "deletions": 6,
+        "changes": 17,
+        "previous_filename": null,
+        "patch_sha256": "a1bdcb90dda86aa11c5bd8175fbe999797497c3a6841c49a83644f79819ed28f"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/oauth/device/code.ts",
+        "status": "modified",
+        "additions": 5,
+        "deletions": 1,
+        "changes": 6,
+        "previous_filename": null,
+        "patch_sha256": "eef76fad8ca61a885ea4d2ce92d1d12f136ff15868237c2e5d9431ecfb73fb22"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/search/index.ts",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 5,
+        "changes": 6,
+        "previous_filename": null,
+        "patch_sha256": "c8b51db299839eedbad455c4d8c98483d0a7184ba50bddefc2e6c8342d7f908b"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/search/suggest.ts",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 5,
+        "changes": 6,
+        "previous_filename": null,
+        "patch_sha256": "6dd017ac33848b9ec970dbcccfb9ad08bc6dbac4c325bedf592c662100a7f766"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/setup/admin-verify.ts",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 1,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "340f116ed1742865d180c66407b92ea48207476701977cbeadd12ce4f22f009a"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/setup/admin.ts",
+        "status": "modified",
+        "additions": 8,
+        "deletions": 3,
+        "changes": 11,
+        "previous_filename": null,
+        "patch_sha256": "db0f1af3c4db5e2b9b53199ee0b183d77ea4c741578658bdb7fd9c4fe1a72678"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/setup/dev-bypass.ts",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 1,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "295a99083e682c2a71047684ba31329418c3c04f3953ecee6045931bd49a195a"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/setup/index.ts",
+        "status": "modified",
+        "additions": 5,
+        "deletions": 4,
+        "changes": 9,
+        "previous_filename": null,
+        "patch_sha256": "4577026bad1f3a93dbbc34b9bd62c59baa05364e6fa16305c46e6e2e0548786a"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/setup/status.ts",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "9b74d3471664bd2c52f7f2c918bad73e56ec01fc88f5880ce6efbb71663847f5"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/snapshot.ts",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 1,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "80ecaa547219fc4f844c4f12c0eaee095a8fb9dced600c5d6dfff1cf8b588b4d"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/themes/preview.ts",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 1,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "75feb9370386fd26c8793df736c4514415b34376990863371d17010c4cfa2239"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/well-known/auth.ts",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 0,
+        "changes": 1,
+        "previous_filename": null,
+        "patch_sha256": "f49534584e16fd3eb1d7b5cc5df52f94f66f29988a632dfaacc7a74218ad6bf6"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/well-known/oauth-authorization-server.ts",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 2,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "2e6f0b7aa91b03a933d5d6c20b67de63550e14eda028097585518440aa10dbcf"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/api/well-known/oauth-protected-resource.ts",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 2,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "06fe6e8c69b9d9b4c18d506f10acd6fda103e937e23f9a13a042bb16be83bf9f"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/robots.txt.ts",
+        "status": "modified",
+        "additions": 5,
+        "deletions": 1,
+        "changes": 6,
+        "previous_filename": null,
+        "patch_sha256": "e629fdc5216ea267395f0665b03d7d82ae61b254ff126e09a53177a724bafff7"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/sitemap-[collection].xml.ts",
+        "status": "added",
+        "additions": 104,
+        "deletions": 0,
+        "changes": 104,
+        "previous_filename": null,
+        "patch_sha256": "4d89f10a4197b47a6b385dfb329f105a1c43a947015603cff4752fbfa63b6c3c"
+      },
+      {
+        "filename": "packages/core/src/astro/routes/sitemap.xml.ts",
+        "status": "modified",
+        "additions": 18,
+        "deletions": 23,
+        "changes": 41,
+        "previous_filename": null,
+        "patch_sha256": "079646f89013a2307a403e7bcd72cddf7fb196315d2bcb8e9bded0a8588bf0c0"
+      },
+      {
+        "filename": "packages/core/src/astro/types.ts",
+        "status": "modified",
+        "additions": 27,
+        "deletions": 1,
+        "changes": 28,
+        "previous_filename": null,
+        "patch_sha256": "7e5bbba35b423e74ad189c4d2eaba8ebf8d89532a72c6c30df42819898f1502b"
+      },
+      {
+        "filename": "packages/core/src/auth/mode.ts",
+        "status": "modified",
+        "additions": 15,
+        "deletions": 3,
+        "changes": 18,
+        "previous_filename": null,
+        "patch_sha256": "76acf826c88114a62a76246189431c4dddce8a4437ce089bc96dc01afa8c026d"
+      },
+      {
+        "filename": "packages/core/src/auth/passkey-config.ts",
+        "status": "modified",
+        "additions": 20,
+        "deletions": 3,
+        "changes": 23,
+        "previous_filename": null,
+        "patch_sha256": "6b1bcfdc518eb1c515b42260ffc047442cfd78777c39865d8acdd52ba465dd3b"
+      },
+      {
+        "filename": "packages/core/src/auth/providers/github-admin.tsx",
+        "status": "added",
+        "additions": 32,
+        "deletions": 0,
+        "changes": 32,
+        "previous_filename": null,
+        "patch_sha256": "f381ffdce0c5d4f575957b186ebcb011c3b7f8b758d55db168650aff7f7b5217"
+      },
+      {
+        "filename": "packages/core/src/auth/providers/github.ts",
+        "status": "added",
+        "additions": 31,
+        "deletions": 0,
+        "changes": 31,
+        "previous_filename": null,
+        "patch_sha256": "4ba17016738ac711857d5345b0bf2ebca8a8acc0dadfeb8ec40cba6df64b7485"
+      },
+      {
+        "filename": "packages/core/src/auth/providers/google-admin.tsx",
+        "status": "added",
+        "additions": 47,
+        "deletions": 0,
+        "changes": 47,
+        "previous_filename": null,
+        "patch_sha256": "5d4a2ee6a2f17b9b6ebfa413f304b02f72dd5f7563c4efe5a7cefe35edc37732"
+      },
+      {
+        "filename": "packages/core/src/auth/providers/google.ts",
+        "status": "added",
+        "additions": 31,
+        "deletions": 0,
+        "changes": 31,
+        "previous_filename": null,
+        "patch_sha256": "a5503f5779d7ba8b56a65626f5321501b7f9707fbc18c0f131b92eb787261181"
+      },
+      {
+        "filename": "packages/core/src/auth/types.ts",
+        "status": "modified",
+        "additions": 114,
+        "deletions": 4,
+        "changes": 118,
+        "previous_filename": null,
+        "patch_sha256": "ef7354eac67736e3a2f729f696d7134f731be0ada9f6d5556d8c26bbd3e55d7b"
+      },
+      {
+        "filename": "packages/core/src/bylines/index.ts",
+        "status": "modified",
+        "additions": 11,
+        "deletions": 8,
+        "changes": 19,
+        "previous_filename": null,
+        "patch_sha256": "364643888661198e0ac7030cac7070d8ccdbd8abf0293e3bfbd8dac12989e012"
+      },
+      {
+        "filename": "packages/core/src/cli/commands/bundle-utils.ts",
+        "status": "modified",
+        "additions": 26,
+        "deletions": 0,
+        "changes": 26,
+        "previous_filename": null,
+        "patch_sha256": "c1ea6527542b815e98a3d6dde837d99363fa0531c537a7ca9c240bfaaf88ffde"
+      },
+      {
+        "filename": "packages/core/src/cli/commands/bundle.ts",
+        "status": "modified",
+        "additions": 18,
+        "deletions": 1,
+        "changes": 19,
+        "previous_filename": null,
+        "patch_sha256": "48746fdd767abaed079fa663ce26e87b91ccf58abfac2a155d60b2d6d5d942e8"
+      },
+      {
+        "filename": "packages/core/src/cli/commands/login.ts",
+        "status": "modified",
+        "additions": 5,
+        "deletions": 2,
+        "changes": 7,
+        "previous_filename": null,
+        "patch_sha256": "a7cbf655e5db7697ac43181cc1a431a030c5a7ceb8ac313fee54b733656fd421"
+      },
+      {
+        "filename": "packages/core/src/components/InlinePortableTextEditor.tsx",
+        "status": "modified",
+        "additions": 39,
+        "deletions": 7,
+        "changes": 46,
+        "previous_filename": null,
+        "patch_sha256": "4c68d34ceaab64b3c6238f28def470ae879f2c8bb30ddf20f8c1e6525c275e97"
+      },
+      {
+        "filename": "packages/core/src/content/converters/portable-text-to-prosemirror.ts",
+        "status": "modified",
+        "additions": 50,
+        "deletions": 2,
+        "changes": 52,
+        "previous_filename": null,
+        "patch_sha256": "e87916ba30e54c9878a165dfc1cb0cd653b75d80f9da309b318f0fe821af4d8f"
+      },
+      {
+        "filename": "packages/core/src/database/migrations/033_optimize_content_indexes.ts",
+        "status": "modified",
+        "additions": 7,
+        "deletions": 7,
+        "changes": 14,
+        "previous_filename": null,
+        "patch_sha256": "9e5def7f7614c8dbd0c6ca8fdc9e8fe048116c46d8e66082d908e07efd559250"
+      },
+      {
+        "filename": "packages/core/src/database/migrations/034_published_at_index.ts",
+        "status": "added",
+        "additions": 29,
+        "deletions": 0,
+        "changes": 29,
+        "previous_filename": null,
+        "patch_sha256": "4cb3431499abf3f17ce877524f9b42808ba3339e1e07b47195d756b6e77e9280"
+      },
+      {
+        "filename": "packages/core/src/database/migrations/runner.ts",
+        "status": "modified",
+        "additions": 42,
+        "deletions": 33,
+        "changes": 75,
+        "previous_filename": null,
+        "patch_sha256": "eeba3b52b82820fe92b28620ea07bf92a737f6081898a00f19da18c44974e18a"
+      },
+      {
+        "filename": "packages/core/src/database/repositories/byline.ts",
+        "status": "modified",
+        "additions": 48,
+        "deletions": 42,
+        "changes": 90,
+        "previous_filename": null,
+        "patch_sha256": "b0055cb65b4400f6f294f1ebfd97dd9acca9ba4fa8c4defd57385dfec92ea0a5"
+      },
+      {
+        "filename": "packages/core/src/database/repositories/content.ts",
+        "status": "modified",
+        "additions": 23,
+        "deletions": 1,
+        "changes": 24,
+        "previous_filename": null,
+        "patch_sha256": "a330f742caeb6e158e991a0b8bff5759c19024989b693e9c533fee85ff768953"
+      },
+      {
+        "filename": "packages/core/src/database/repositories/options.ts",
+        "status": "modified",
+        "additions": 9,
+        "deletions": 3,
+        "changes": 12,
+        "previous_filename": null,
+        "patch_sha256": "17bda751595531098bb4ee9880488fc32e53aa8a2e29adc4a33560cc3622d15c"
+      },
+      {
+        "filename": "packages/core/src/database/repositories/seo.ts",
+        "status": "modified",
+        "additions": 34,
+        "deletions": 17,
+        "changes": 51,
+        "previous_filename": null,
+        "patch_sha256": "0c87b3490f189432873b07900db12b9661a9654ab8ffea3c6c8c67ce51583dd0"
+      },
+      {
+        "filename": "packages/core/src/database/repositories/types.ts",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 0,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "6a3b7fff727e0bd71a4145d156fe60c8183385dc261a4abd70e18c499561e181"
+      },
+      {
+        "filename": "packages/core/src/emdash-runtime.ts",
+        "status": "modified",
+        "additions": 124,
+        "deletions": 20,
+        "changes": 144,
+        "previous_filename": null,
+        "patch_sha256": "a15f0d052cd851190db9f2cd755f647b972001744a1aa537d08b4f7df9a8ad99"
+      },
+      {
+        "filename": "packages/core/src/import/index.ts",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "60e74958383f5748b9e8daf5d7166cf2fd20210fb7ea3a26e37fe608f80c3af9"
+      },
+      {
+        "filename": "packages/core/src/import/sources/wxr.ts",
+        "status": "modified",
+        "additions": 45,
+        "deletions": 2,
+        "changes": 47,
+        "previous_filename": null,
+        "patch_sha256": "f3c996ec4fe54924bea786af2dfc366b7b26f4ef25b9627aea1753283dc25a18"
+      },
+      {
+        "filename": "packages/core/src/index.ts",
+        "status": "modified",
+        "additions": 13,
+        "deletions": 2,
+        "changes": 15,
+        "previous_filename": null,
+        "patch_sha256": "5df151c26e856df7bf0ba9049a323295e39037a104da8454c5575ce65eaec135"
+      },
+      {
+        "filename": "packages/core/src/media/placeholder.ts",
+        "status": "modified",
+        "additions": 31,
+        "deletions": 0,
+        "changes": 31,
+        "previous_filename": null,
+        "patch_sha256": "8c4d2b4a48b66b3fd86e14dc449743ce496a91e8d2c500446a11ff7af395d2a5"
+      },
+      {
+        "filename": "packages/core/src/media/thumbnail.ts",
+        "status": "added",
+        "additions": 32,
+        "deletions": 0,
+        "changes": 32,
+        "previous_filename": null,
+        "patch_sha256": "f6ed1055a860c56635aeb839c76f3df16a27970dbd04a18c678737ce4841d683"
+      },
+      {
+        "filename": "packages/core/src/menus/index.ts",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 1,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "42dd6037f729a4adb502b36713d2cc48ac781210d2d4a651f7faabb7ae942093"
+      },
+      {
+        "filename": "packages/core/src/page/context.ts",
+        "status": "modified",
+        "additions": 13,
+        "deletions": 1,
+        "changes": 14,
+        "previous_filename": null,
+        "patch_sha256": "8583564d316fd66f2d1d35bded0b39097288fec66c4eb0e354cbbf0e51650abe"
+      },
+      {
+        "filename": "packages/core/src/page/jsonld.ts",
+        "status": "modified",
+        "additions": 10,
+        "deletions": 6,
+        "changes": 16,
+        "previous_filename": null,
+        "patch_sha256": "0871d3a376f39ad2749b363b7a72da225661baa34734cccc94818658fd8ef402"
+      },
+      {
+        "filename": "packages/core/src/page/seo-contributions.ts",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "40fed8026fc4f95de6a3aed4c87ce6ba83f15cdcac2e0fb9c09b28d6970e0c7e"
+      },
+      {
+        "filename": "packages/core/src/plugins/context.ts",
+        "status": "modified",
+        "additions": 145,
+        "deletions": 35,
+        "changes": 180,
+        "previous_filename": null,
+        "patch_sha256": "6ecabab299f9e3bc25d13260ff604fba7e67a7091af7d75df62427ca5a02179d"
+      },
+      {
+        "filename": "packages/core/src/plugins/hooks.ts",
+        "status": "modified",
+        "additions": 91,
+        "deletions": 0,
+        "changes": 91,
+        "previous_filename": null,
+        "patch_sha256": "9a8325d0e21d51e28ddc3e3d94456952ff613a80a3136325b4fc58a229c9a3f5"
+      },
+      {
+        "filename": "packages/core/src/plugins/manager.ts",
+        "status": "modified",
+        "additions": 34,
+        "deletions": 0,
+        "changes": 34,
+        "previous_filename": null,
+        "patch_sha256": "6bad54c109c7bb76f7db08c52cca39ef42ac5f4eb299adac15bdc45556183220"
+      },
+      {
+        "filename": "packages/core/src/plugins/manifest-schema.ts",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 0,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "ca66f878579223bd7f50a425ff96ca4cf822893083093d59bf54d0cd3abae76b"
+      },
+      {
+        "filename": "packages/core/src/plugins/marketplace.ts",
+        "status": "modified",
+        "additions": 25,
+        "deletions": 12,
+        "changes": 37,
+        "previous_filename": null,
+        "patch_sha256": "15d436bdce68ff287049822cb8e8f4d26dc5fd5ae1e526e08595e5bb519a3d93"
+      },
+      {
+        "filename": "packages/core/src/plugins/types.ts",
+        "status": "modified",
+        "additions": 104,
+        "deletions": 4,
+        "changes": 108,
+        "previous_filename": null,
+        "patch_sha256": "6c483784f814bb46e3a266c933d8a4ef1ea96e12853488c7783b71928caf9bf4"
+      },
+      {
+        "filename": "packages/core/src/schema/registry.ts",
+        "status": "modified",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "52eaebb18be1f632adc55fdfadcbc332eb49e09ac32b7d75eb420de736e422ca"
+      },
+      {
+        "filename": "packages/core/src/schema/types.ts",
+        "status": "modified",
+        "additions": 27,
+        "deletions": 1,
+        "changes": 28,
+        "previous_filename": null,
+        "patch_sha256": "7258458f806be654b8d8e0f01a548ed0368ff2b7cc84b609209cb2d6622b3131"
+      },
+      {
+        "filename": "packages/core/src/search/fts-manager.ts",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 18,
+        "changes": 19,
+        "previous_filename": null,
+        "patch_sha256": "60cab0a78412325849eef01564fc367f6bd6b82f36a9ed4c71a7998196af49eb"
+      },
+      {
+        "filename": "packages/core/src/settings/index.ts",
+        "status": "modified",
+        "additions": 64,
+        "deletions": 0,
+        "changes": 64,
+        "previous_filename": null,
+        "patch_sha256": "a78533aef84351b475552794886f0b4ef203c6c399670140f46b9b7cf24bf429"
+      },
+      {
+        "filename": "packages/core/src/utils/chunks.ts",
+        "status": "added",
+        "additions": 17,
+        "deletions": 0,
+        "changes": 17,
+        "previous_filename": null,
+        "patch_sha256": "a2f219c37be109d319c5747d7ff7d99f38b7763e06def1a03d333c59b8c843e5"
+      },
+      {
+        "filename": "packages/core/src/virtual-modules.d.ts",
+        "status": "modified",
+        "additions": 21,
+        "deletions": 1,
+        "changes": 22,
+        "previous_filename": null,
+        "patch_sha256": "3ffdbf8bddd914d5b570a8851495f0c3f583bff8f379a31b07e26e418c1e636a"
+      },
+      {
+        "filename": "packages/core/src/visual-editing/toolbar.ts",
+        "status": "modified",
+        "additions": 84,
+        "deletions": 22,
+        "changes": 106,
+        "previous_filename": null,
+        "patch_sha256": "d8bb2253fef08dc9c3f6d847d5cc4a3bfcdf4b92c0478ad787b7fe029f1423e4"
+      },
+      {
+        "filename": "packages/core/tests/database/migrations.test.ts",
+        "status": "modified",
+        "additions": 7,
+        "deletions": 3,
+        "changes": 10,
+        "previous_filename": null,
+        "patch_sha256": "e4273d530e939079fa00caa2ff77474ef5480c556582a99a7a888b2ec46dd6d3"
+      },
+      {
+        "filename": "packages/core/tests/database/repositories/content.test.ts",
+        "status": "modified",
+        "additions": 50,
+        "deletions": 0,
+        "changes": 50,
+        "previous_filename": null,
+        "patch_sha256": "dbe7ef64495b4c617329fadbadadf7b3c8d97edb3ca36ba202ac88010ff238d5"
+      },
+      {
+        "filename": "packages/core/tests/integration/database/dialect-compat.test.ts",
+        "status": "modified",
+        "additions": 7,
+        "deletions": 3,
+        "changes": 10,
+        "previous_filename": null,
+        "patch_sha256": "0ee37fac4a20feaaaa4be0c7800c12c7446ea1aacace1eb4b4d435e17f9fdfc4"
+      },
+      {
+        "filename": "packages/core/tests/integration/database/migrations.test.ts",
+        "status": "modified",
+        "additions": 8,
+        "deletions": 4,
+        "changes": 12,
+        "previous_filename": null,
+        "patch_sha256": "af9bbbf25e75e32849ec3bc14994965b2c01bb0dab1be4e2309911779b6b7177"
+      },
+      {
+        "filename": "packages/core/tests/integration/plugins/capabilities.test.ts",
+        "status": "modified",
+        "additions": 156,
+        "deletions": 0,
+        "changes": 156,
+        "previous_filename": null,
+        "patch_sha256": "114e7c30c8946f2f10adfb0df185d85c40e2ac6ce78b2f2f98cb5d2602c5ddca"
+      },
+      {
+        "filename": "packages/core/tests/integration/seo/seo.test.ts",
+        "status": "modified",
+        "additions": 84,
+        "deletions": 23,
+        "changes": 107,
+        "previous_filename": null,
+        "patch_sha256": "39707379b107180762beb946061e44a870d8457d1cfe5e27a48f67c6f6c9b788"
+      },
+      {
+        "filename": "packages/core/tests/integration/smoke/site-matrix-smoke.test.ts",
+        "status": "modified",
+        "additions": 47,
+        "deletions": 71,
+        "changes": 118,
+        "previous_filename": null,
+        "patch_sha256": "0b49b2753e22dc7f7c6e2fe4e4bf91a256126fc1ccf66a1346b364e467c5eb4e"
+      },
+      {
+        "filename": "packages/core/tests/integration/wordpress-import/fixtures/hyphenated-post-types-export.xml",
+        "status": "added",
+        "additions": 170,
+        "deletions": 0,
+        "changes": 170,
+        "previous_filename": null,
+        "patch_sha256": "739fe1ff00ef668a5273b5b09553995dc77121a3cbc0dc8fc8d6d1952c244b47"
+      },
+      {
+        "filename": "packages/core/tests/unit/api/csrf.test.ts",
+        "status": "modified",
+        "additions": 36,
+        "deletions": 0,
+        "changes": 36,
+        "previous_filename": null,
+        "patch_sha256": "09e85ec26711a37bf49b3a5699c3895715aa934bd7e72a7d630d3b525076ea98"
+      },
+      {
+        "filename": "packages/core/tests/unit/api/email-settings-route.test.ts",
+        "status": "added",
+        "additions": 22,
+        "deletions": 0,
+        "changes": 22,
+        "previous_filename": null,
+        "patch_sha256": "6a848e9b84fc59ff6c14ce523199a6efa90617df1d4d7f6424b58ae187170a44"
+      },
+      {
+        "filename": "packages/core/tests/unit/api/public-url.test.ts",
+        "status": "added",
+        "additions": 125,
+        "deletions": 0,
+        "changes": 125,
+        "previous_filename": null,
+        "patch_sha256": "b7693d011537bdaadba5574f827738af6ce1c940cadd22d7041e8eb5767ff89c"
+      },
+      {
+        "filename": "packages/core/tests/unit/astro/middleware-prerender.test.ts",
+        "status": "added",
+        "additions": 130,
+        "deletions": 0,
+        "changes": 130,
+        "previous_filename": null,
+        "patch_sha256": "a00d5159f616ccbfe8a0bb7b59f70eafae8db3a58cf8a1fc9835a8b399c0a9fd"
+      },
+      {
+        "filename": "packages/core/tests/unit/astro/routes.test.ts",
+        "status": "added",
+        "additions": 61,
+        "deletions": 0,
+        "changes": 61,
+        "previous_filename": null,
+        "patch_sha256": "766f06531bfebc41bc7559b00882b0c0f0a38ac8e8fd32bfd474de303857e74f"
+      },
+      {
+        "filename": "packages/core/tests/unit/astro/virtual-modules-sandbox.test.ts",
+        "status": "added",
+        "additions": 113,
+        "deletions": 0,
+        "changes": 113,
+        "previous_filename": null,
+        "patch_sha256": "f348c8100fd93857d71644a5a777758e75a0d75bad0e1494ce4b694cc465645f"
+      },
+      {
+        "filename": "packages/core/tests/unit/auth/discovery-endpoints.test.ts",
+        "status": "modified",
+        "additions": 4,
+        "deletions": 3,
+        "changes": 7,
+        "previous_filename": null,
+        "patch_sha256": "ea11931f90a48d91425c68ed7d356de41b42f1ef62193449bb93aaaec267a981"
+      },
+      {
+        "filename": "packages/core/tests/unit/auth/passkey-config.test.ts",
+        "status": "modified",
+        "additions": 86,
+        "deletions": 0,
+        "changes": 86,
+        "previous_filename": null,
+        "patch_sha256": "07e1243ba7f9c783cbe2490038b64079b5e6ca81dd1bbb0f21bb8ebdf53d6a9c"
+      },
+      {
+        "filename": "packages/core/tests/unit/bylines/bylines-query.test.ts",
+        "status": "modified",
+        "additions": 65,
+        "deletions": 0,
+        "changes": 65,
+        "previous_filename": null,
+        "patch_sha256": "1557eda8a5c5658f894a25b6a909de2acb9f0ae98d8e73f3eb543ecb7db49044"
+      },
+      {
+        "filename": "packages/core/tests/unit/cli/bundle-utils.test.ts",
+        "status": "modified",
+        "additions": 60,
+        "deletions": 0,
+        "changes": 60,
+        "previous_filename": null,
+        "patch_sha256": "e3cef8b8518e50bf360f11c73bab27b0018e7371f8fd580d295824fdca5bb6fc"
+      },
+      {
+        "filename": "packages/core/tests/unit/converters/image-missing-asset.test.ts",
+        "status": "added",
+        "additions": 92,
+        "deletions": 0,
+        "changes": 92,
+        "previous_filename": null,
+        "patch_sha256": "2319abc05b61cd71e252d9c886df5dfacccaa9aab0dd2a561ad9ba115df3b085"
+      },
+      {
+        "filename": "packages/core/tests/unit/database/repositories/byline.test.ts",
+        "status": "modified",
+        "additions": 91,
+        "deletions": 0,
+        "changes": 91,
+        "previous_filename": null,
+        "patch_sha256": "f7300c643bceb89f3e107f802cb20fbe959f4bf4a34e572f16d1c0b8213e83ea"
+      },
+      {
+        "filename": "packages/core/tests/unit/database/repositories/seo.test.ts",
+        "status": "added",
+        "additions": 114,
+        "deletions": 0,
+        "changes": 114,
+        "previous_filename": null,
+        "patch_sha256": "ef6bf4b03d780d8ee4ceb978d1642c526e05bae90cb9a10b38055f2644675753"
+      },
+      {
+        "filename": "packages/core/tests/unit/import/wordpress-slug-sanitization.test.ts",
+        "status": "added",
+        "additions": 113,
+        "deletions": 0,
+        "changes": 113,
+        "previous_filename": null,
+        "patch_sha256": "bda92fdd499b33f55060ee5df962d15de529e2236bb010b7cf62c496fbc94a33"
+      },
+      {
+        "filename": "packages/core/tests/unit/import/wxr-date-handling.test.ts",
+        "status": "added",
+        "additions": 167,
+        "deletions": 0,
+        "changes": 167,
+        "previous_filename": null,
+        "patch_sha256": "78821be41ec5bc93d1e3cb6a8a3f4d57c214d75ae4ed242e877cf890948e4599"
+      },
+      {
+        "filename": "packages/core/tests/unit/media/placeholder.test.ts",
+        "status": "modified",
+        "additions": 62,
+        "deletions": 0,
+        "changes": 62,
+        "previous_filename": null,
+        "patch_sha256": "c764e6a09baa02ed6b638ceda952cad1dcf543a5caa6efb0566c7bd389f5a4d0"
+      },
+      {
+        "filename": "packages/core/tests/unit/media/thumbnail.test.ts",
+        "status": "added",
+        "additions": 57,
+        "deletions": 0,
+        "changes": 57,
+        "previous_filename": null,
+        "patch_sha256": "3a1bb1276e28630980a78520f030c06282536fb6f072bdc9b65de1f7109119bb"
+      },
+      {
+        "filename": "packages/core/tests/unit/menus/menus.test.ts",
+        "status": "modified",
+        "additions": 213,
+        "deletions": 0,
+        "changes": 213,
+        "previous_filename": null,
+        "patch_sha256": "97f9bb2a85203e6a42374f69e92a16d84e56673fa27aa5c6725a3775bc0eaee6"
+      },
+      {
+        "filename": "packages/core/tests/unit/middleware/csp.test.ts",
+        "status": "added",
+        "additions": 30,
+        "deletions": 0,
+        "changes": 30,
+        "previous_filename": null,
+        "patch_sha256": "f1aba7bd3ba4c8344d0320cbb97eb6489e6f45b30cd6f2e77b0cf5016a708aa3"
+      },
+      {
+        "filename": "packages/core/tests/unit/page/get-page-runtime.test.ts",
+        "status": "added",
+        "additions": 108,
+        "deletions": 0,
+        "changes": 108,
+        "previous_filename": null,
+        "patch_sha256": "1dd638de81112660502d2842fc8e72912bdf2c9939c89885e9de4e6d8aec14ac"
+      },
+      {
+        "filename": "packages/core/tests/unit/plugins/hooks.test.ts",
+        "status": "modified",
+        "additions": 56,
+        "deletions": 0,
+        "changes": 56,
+        "previous_filename": null,
+        "patch_sha256": "ec64082b462b2914791017a3ed3727f5716ab03d910e136faae898887f43db81"
+      },
+      {
+        "filename": "packages/core/tests/unit/plugins/http-credential-stripping.test.ts",
+        "status": "modified",
+        "additions": 29,
+        "deletions": 0,
+        "changes": 29,
+        "previous_filename": null,
+        "patch_sha256": "e1a3e660344dcd9d9664737ecc89f59758b7881729cd563f9c58a46757b2c6ab"
+      },
+      {
+        "filename": "packages/core/tests/unit/plugins/marketplace-client.test.ts",
+        "status": "modified",
+        "additions": 35,
+        "deletions": 0,
+        "changes": 35,
+        "previous_filename": null,
+        "patch_sha256": "6301bfcbbc92ff345212d80bb5c328ae0c03970d1840acbaa2685cbf4a36e6c8"
+      },
+      {
+        "filename": "packages/core/tests/unit/plugins/page-context.test.ts",
+        "status": "modified",
+        "additions": 49,
+        "deletions": 0,
+        "changes": 49,
+        "previous_filename": null,
+        "patch_sha256": "4af74efb5342b7cd8e4ae1dd3b09ca74a61d11ddbd70266e25159b37cc368369"
+      },
+      {
+        "filename": "packages/core/tests/unit/plugins/page-hooks-execution.test.ts",
+        "status": "added",
+        "additions": 318,
+        "deletions": 0,
+        "changes": 318,
+        "previous_filename": null,
+        "patch_sha256": "83ea86f6333454f351857d08719b42bf1195b09116490d91d14859d00fc567dd"
+      },
+      {
+        "filename": "packages/core/tests/unit/plugins/page-seo.test.ts",
+        "status": "added",
+        "additions": 85,
+        "deletions": 0,
+        "changes": 85,
+        "previous_filename": null,
+        "patch_sha256": "7ca74a55c90fb4d85bc2191eb564f88e132fb7c0898caf27471eb0e43cb53b34"
+      },
+      {
+        "filename": "packages/core/tests/unit/plugins/pipeline-rebuild.test.ts",
+        "status": "modified",
+        "additions": 64,
+        "deletions": 0,
+        "changes": 64,
+        "previous_filename": null,
+        "patch_sha256": "365a1df22e3e83720986c7861ee91340a27209039ca3f0848680ee1584f08103"
+      },
+      {
+        "filename": "packages/core/tests/unit/plugins/routes.test.ts",
+        "status": "modified",
+        "additions": 32,
+        "deletions": 0,
+        "changes": 32,
+        "previous_filename": null,
+        "patch_sha256": "9c53431c09b20c2320543b328d1ea9971aaf9ced7e3686a5819b7266aaf4bfad"
+      },
+      {
+        "filename": "packages/core/tests/unit/settings/settings.test.ts",
+        "status": "modified",
+        "additions": 36,
+        "deletions": 0,
+        "changes": 36,
+        "previous_filename": null,
+        "patch_sha256": "68afc4832ac233f6420b7edf1dcacae21a7238293daabeb0cf9afd21d60123ae"
+      },
+      {
+        "filename": "packages/core/tests/unit/taxonomies/taxonomies.test.ts",
+        "status": "modified",
+        "additions": 72,
+        "deletions": 0,
+        "changes": 72,
+        "previous_filename": null,
+        "patch_sha256": "11aff42549bfedffbd8ef73e38f2880c143798c60c3e72e031dca8757e970067"
+      },
+      {
+        "filename": "packages/core/tests/unit/templates/blog-reading-time.test.ts",
+        "status": "added",
+        "additions": 26,
+        "deletions": 0,
+        "changes": 26,
+        "previous_filename": null,
+        "patch_sha256": "a9d1ad6207b652478bc2bbc12e84e362e5318f4f20fa42377f2f4ed5bbfec43a"
+      },
+      {
+        "filename": "packages/core/tests/unit/templates/blog-site-identity.test.ts",
+        "status": "added",
+        "additions": 49,
+        "deletions": 0,
+        "changes": 49,
+        "previous_filename": null,
+        "patch_sha256": "63a0ed04e856e7d9719c293ab585b6b1a0c1b779f57a922fef571eea428678e3"
+      },
+      {
+        "filename": "packages/core/tests/unit/templates/starter-site-identity.test.ts",
+        "status": "added",
+        "additions": 49,
+        "deletions": 0,
+        "changes": 49,
+        "previous_filename": null,
+        "patch_sha256": "a234deba496e2671be65b49b4ddbc04e74a0d5fabcd1fbafa63a606e30b1935e"
+      },
+      {
+        "filename": "packages/core/tests/unit/utils/chunks.test.ts",
+        "status": "added",
+        "additions": 38,
+        "deletions": 0,
+        "changes": 38,
+        "previous_filename": null,
+        "patch_sha256": "682c4a90fae4870949fd7b9eefd39f446775665ea5508acfb4b182f0c8afcf70"
+      },
+      {
+        "filename": "packages/core/tests/unit/visual-editing/toolbar.test.ts",
+        "status": "modified",
+        "additions": 5,
+        "deletions": 0,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "e2c1070b39277d42382e1d9ac99fde07e20df33467c1fcf94fb2e0ee4aa1e304"
+      },
+      {
+        "filename": "packages/core/tsconfig.json",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 1,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "0a671d02326b9ec300586ab91bcbdab90fe159a54f1eca8268abc841518ee818"
+      },
+      {
+        "filename": "packages/gutenberg-to-portable-text/src/index.ts",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "e4a8832321b7371fff0553ce7a246ada513156297531051a04d533baf81eca73"
+      },
+      {
+        "filename": "packages/gutenberg-to-portable-text/src/transformers/core.ts",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 4,
+        "changes": 6,
+        "previous_filename": null,
+        "patch_sha256": "4219926d572cb99672fe3d9cd9f45023e69c61d958ea3a1caa7b16228700ec07"
+      },
+      {
+        "filename": "packages/gutenberg-to-portable-text/tests/converter.test.ts",
+        "status": "modified",
+        "additions": 468,
+        "deletions": 5,
+        "changes": 473,
+        "previous_filename": null,
+        "patch_sha256": "0c467dc0a74524eb245561eaf94fb3ac40c054b45131812b9bd890197ff3fea2"
+      },
+      {
+        "filename": "packages/gutenberg-to-portable-text/tests/inline.test.ts",
+        "status": "modified",
+        "additions": 28,
+        "deletions": 0,
+        "changes": 28,
+        "previous_filename": null,
+        "patch_sha256": "e911dd929734ebdd159040ec63e5b5561aee5ed756f2a337c241d4c892db394e"
+      },
+      {
+        "filename": "packages/gutenberg-to-portable-text/tsconfig.json",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 0,
+        "changes": 1,
+        "previous_filename": null,
+        "patch_sha256": "d1599567439e43ac06f5352d957ae4db0ee709255ca03000a4ed9fca331733ee"
+      },
+      {
+        "filename": "packages/marketplace/src/db/queries.ts",
+        "status": "modified",
+        "additions": 16,
+        "deletions": 17,
+        "changes": 33,
+        "previous_filename": null,
+        "patch_sha256": "01400b521c6351394e9a8177e0c67d6f4ce130130954ea1121545157ce505056"
+      },
+      {
+        "filename": "packages/marketplace/src/db/schema.sql",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 0,
+        "changes": 1,
+        "previous_filename": null,
+        "patch_sha256": "ce3e6baf6303b71b7455b12867bb5ba8911f4257db7d13f68e24fa881b4a2729"
+      },
+      {
+        "filename": "packages/marketplace/src/db/types.ts",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 0,
+        "changes": 1,
+        "previous_filename": null,
+        "patch_sha256": "d3187c07f7df928e1dffd3d6c90f0687570bef0a607ed2cc34a77479bb3fcc0e"
+      },
+      {
+        "filename": "packages/marketplace/src/routes/public.ts",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 2,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "95b693f4271dd763702b5e0f6a247389b585a32c67472fa5c38a3eaf3c69d47a"
+      },
+      {
+        "filename": "packages/plugins/ai-moderation/CHANGELOG.md",
+        "status": "modified",
+        "additions": 7,
+        "deletions": 0,
+        "changes": 7,
+        "previous_filename": null,
+        "patch_sha256": "c1f4a624fa4e8c207e185f9ff87c88efc186d185105716b9f6a2a8536a83de50"
+      },
+      {
+        "filename": "packages/plugins/ai-moderation/package.json",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "49e724ec86b10ee978b3aaf4ed85bff0e073828a98f3af695814bb5e54eb900e"
+      },
+      {
+        "filename": "packages/plugins/atproto/CHANGELOG.md",
+        "status": "modified",
+        "additions": 9,
+        "deletions": 0,
+        "changes": 9,
+        "previous_filename": null,
+        "patch_sha256": "9569ad88cf252c7fcf580bbc05102dc43db0d0ce79345dcd892ba0707c5207cd"
+      },
+      {
+        "filename": "packages/plugins/atproto/package.json",
+        "status": "modified",
+        "additions": 4,
+        "deletions": 2,
+        "changes": 6,
+        "previous_filename": null,
+        "patch_sha256": "7303c82ffedf51a5beadef683610711a842e68346f222af8763add671f1ec3f4"
+      },
+      {
+        "filename": "packages/plugins/atproto/tests/plugin.test.ts",
+        "status": "modified",
+        "additions": 19,
+        "deletions": 62,
+        "changes": 81,
+        "previous_filename": null,
+        "patch_sha256": "2ea99b2c64834165865bea44a6d5c9e5fdd3bc1038a4b98512f04d672d44eb16"
+      },
+      {
+        "filename": "packages/plugins/audit-log/CHANGELOG.md",
+        "status": "modified",
+        "additions": 9,
+        "deletions": 0,
+        "changes": 9,
+        "previous_filename": null,
+        "patch_sha256": "338b7299ff019733fe8a990acb18b006c8d48cb5328cb2656783947a32e604b4"
+      },
+      {
+        "filename": "packages/plugins/audit-log/package.json",
+        "status": "modified",
+        "additions": 14,
+        "deletions": 7,
+        "changes": 21,
+        "previous_filename": null,
+        "patch_sha256": "9b18ccbbc2684fc7ba22fc9d0ea32ec490a1230e2ca7b1e762460c3982e01c7a"
+      },
+      {
+        "filename": "packages/plugins/color/CHANGELOG.md",
+        "status": "modified",
+        "additions": 7,
+        "deletions": 0,
+        "changes": 7,
+        "previous_filename": null,
+        "patch_sha256": "4b9b431b61423eabad2591207a8121ecb6ab813239dc8c419d2eb64505b1aa45"
+      },
+      {
+        "filename": "packages/plugins/color/package.json",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "2b7e55195a9931f99f7f341b30a915611bc4e87f21c554e84a4754d71cfb524a"
+      },
+      {
+        "filename": "packages/plugins/embeds/CHANGELOG.md",
+        "status": "modified",
+        "additions": 7,
+        "deletions": 0,
+        "changes": 7,
+        "previous_filename": null,
+        "patch_sha256": "a4d089489f906aa574698cd3beb718a69ce909380cfa4190eae8487b2847d1fe"
+      },
+      {
+        "filename": "packages/plugins/embeds/package.json",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "64657a802bf01e987685b458259098989199383a6b34fb9f10de5fd497989ef1"
+      },
+      {
+        "filename": "packages/plugins/forms/CHANGELOG.md",
+        "status": "modified",
+        "additions": 9,
+        "deletions": 0,
+        "changes": 9,
+        "previous_filename": null,
+        "patch_sha256": "d98df06d6c6aeca4a20536307ab6d5454b99bd9a423a93d757b14dd97c9db22b"
+      },
+      {
+        "filename": "packages/plugins/forms/package.json",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "b36286e23521150e2a2a3e4d7ebd8d45fff3c12e177738d1b047bcbe16da64af"
+      },
+      {
+        "filename": "packages/plugins/webhook-notifier/CHANGELOG.md",
+        "status": "modified",
+        "additions": 9,
+        "deletions": 0,
+        "changes": 9,
+        "previous_filename": null,
+        "patch_sha256": "803359401ec977f4874c1f6ec83e8c31ec45bc0dac230299466789447f908fe4"
+      },
+      {
+        "filename": "packages/plugins/webhook-notifier/package.json",
+        "status": "modified",
+        "additions": 14,
+        "deletions": 7,
+        "changes": 21,
+        "previous_filename": null,
+        "patch_sha256": "309ce3c30edee0e2825c06b852d69dd6adc12c1ef6130dfc5c1e7fedd8963e69"
+      },
+      {
+        "filename": "pnpm-lock.yaml",
+        "status": "modified",
+        "additions": 1046,
+        "deletions": 21,
+        "changes": 1067,
+        "previous_filename": null,
+        "patch_sha256": "a66383d50677f7bf9f5061acca888ad346f333be0e3e6aaabe5bb610a68f8007"
+      },
+      {
+        "filename": "pnpm-workspace.yaml",
+        "status": "modified",
+        "additions": 8,
+        "deletions": 2,
+        "changes": 10,
+        "previous_filename": null,
+        "patch_sha256": "e051f00c53435831eaf830ebcc699adb9025afd134886c01c2141152bdb0a24c"
+      },
+      {
+        "filename": "skills/building-emdash-site/references/configuration.md",
+        "status": "modified",
+        "additions": 26,
+        "deletions": 0,
+        "changes": 26,
+        "previous_filename": null,
+        "patch_sha256": "d98672e13b214ee677332c5093f613b879a27105226fd6f54c5e60b3abcb3851"
+      },
+      {
+        "filename": "skills/building-emdash-site/references/site-features.md",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 1,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "8a626b14fe4856f2256d9f83caaaecabe593332b40500e430b4dbf491fcc3986"
+      },
+      {
+        "filename": "skills/creating-plugins/references/hooks.md",
+        "status": "modified",
+        "additions": 47,
+        "deletions": 19,
+        "changes": 66,
+        "previous_filename": null,
+        "patch_sha256": "ea295b4626769e33606436c625cab75151e20a4fd667eb418b3f5cef26fd977a"
+      },
+      {
+        "filename": "templates/blank/.agents/skills/building-emdash-site/references/site-features.md",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 1,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "e324d54aa43e6b7921185c50822c967bd8fcbe5b587af5480deb6d829a3211ea"
+      },
+      {
+        "filename": "templates/blank/.agents/skills/creating-plugins/references/hooks.md",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "9e77a29d08b12e8c0b5c1b62807ffc5ba9e7f02c00d5cef846e6fa6f9fa651af"
+      },
+      {
+        "filename": "templates/blog-cloudflare/.agents/skills/building-emdash-site/references/site-features.md",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 1,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "963857f23118cae4fd11916f1cab607e35e63090f15a6f393d189eaa6a1e6888"
+      },
+      {
+        "filename": "templates/blog-cloudflare/.agents/skills/creating-plugins/references/hooks.md",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "9a063bf9850af9090621c4f9abfd48c069ad149193a78a22433483c4ba6c9543"
+      },
+      {
+        "filename": "templates/blog-cloudflare/src/layouts/Base.astro",
+        "status": "modified",
+        "additions": 7,
+        "deletions": 3,
+        "changes": 10,
+        "previous_filename": null,
+        "patch_sha256": "42ef2c9f2cb70e5dd86af8e4e90e077e456b1998984e942c9bd837bc9f7435a3"
+      },
+      {
+        "filename": "templates/blog-cloudflare/src/pages/index.astro",
+        "status": "modified",
+        "additions": 4,
+        "deletions": 2,
+        "changes": 6,
+        "previous_filename": null,
+        "patch_sha256": "d6e9fb200e30f33e9543d30d08b42617bbc2cc09ca3f618ce84d7196a75a4cb2"
+      },
+      {
+        "filename": "templates/blog-cloudflare/src/pages/posts/[slug].astro",
+        "status": "modified",
+        "additions": 6,
+        "deletions": 2,
+        "changes": 8,
+        "previous_filename": null,
+        "patch_sha256": "51d4ac934316a67b9fc03e6f24c78083a5014fec439e27a60b7896c16038ea0f"
+      },
+      {
+        "filename": "templates/blog-cloudflare/src/pages/rss.xml.ts",
+        "status": "modified",
+        "additions": 4,
+        "deletions": 4,
+        "changes": 8,
+        "previous_filename": null,
+        "patch_sha256": "42504784213dc39d9cbd02c27bcb96e56836c3b72b2e2de4c27b40a449774570"
+      },
+      {
+        "filename": "templates/blog-cloudflare/src/utils/reading-time.ts",
+        "status": "modified",
+        "additions": 31,
+        "deletions": 9,
+        "changes": 40,
+        "previous_filename": null,
+        "patch_sha256": "4f6f416f674192fb29189041b5d49d448822e44a2b90dab26350e82e09616df0"
+      },
+      {
+        "filename": "templates/blog-cloudflare/src/utils/site-identity.ts",
+        "status": "added",
+        "additions": 14,
+        "deletions": 0,
+        "changes": 14,
+        "previous_filename": null,
+        "patch_sha256": "435af03e64bdb958670d72f93adfafc867b6f4ea6bf22c8f9ec741494075638c"
+      },
+      {
+        "filename": "templates/blog/.agents/skills/building-emdash-site/references/site-features.md",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 1,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "b77b09d7a466198e82b539ac38fe87d66ffc6219c31aa25fbbfda898cbdc1bf9"
+      },
+      {
+        "filename": "templates/blog/.agents/skills/creating-plugins/references/hooks.md",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "9695c31e128bf07f428cf0c32b06e5399283217f73e7c1f27112cfd482dec6b4"
+      },
+      {
+        "filename": "templates/blog/src/layouts/Base.astro",
+        "status": "modified",
+        "additions": 7,
+        "deletions": 3,
+        "changes": 10,
+        "previous_filename": null,
+        "patch_sha256": "808e383eee6a83fae9c1363034c005a6d55e823b35a79de68ed30569bd60e79e"
+      },
+      {
+        "filename": "templates/blog/src/pages/index.astro",
+        "status": "modified",
+        "additions": 4,
+        "deletions": 2,
+        "changes": 6,
+        "previous_filename": null,
+        "patch_sha256": "8854db2cd2afcdc6009921ac715e6bac9f44da478479e084488a4e05a6d0ea15"
+      },
+      {
+        "filename": "templates/blog/src/pages/posts/[slug].astro",
+        "status": "modified",
+        "additions": 6,
+        "deletions": 2,
+        "changes": 8,
+        "previous_filename": null,
+        "patch_sha256": "8435421e3491b72075d9c2f283289eb995778b974af3a1444aefbb8a257b5eff"
+      },
+      {
+        "filename": "templates/blog/src/pages/rss.xml.ts",
+        "status": "modified",
+        "additions": 4,
+        "deletions": 4,
+        "changes": 8,
+        "previous_filename": null,
+        "patch_sha256": "f13cc6aaaac8920782d7598c288e6450b197009ab49d9c53e09ca1bacb941de9"
+      },
+      {
+        "filename": "templates/blog/src/utils/reading-time.ts",
+        "status": "modified",
+        "additions": 31,
+        "deletions": 9,
+        "changes": 40,
+        "previous_filename": null,
+        "patch_sha256": "afeefcf91b23295b7ebc57f6c9feafe375b5597daf820d5fbc53249e4825f694"
+      },
+      {
+        "filename": "templates/blog/src/utils/site-identity.ts",
+        "status": "added",
+        "additions": 14,
+        "deletions": 0,
+        "changes": 14,
+        "previous_filename": null,
+        "patch_sha256": "810d8097c2c55155c1f432e196c1f28df2d1dbab51273dab90312aad66517d60"
+      },
+      {
+        "filename": "templates/marketing-cloudflare/.agents/skills/building-emdash-site/references/site-features.md",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 1,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "5c563b6afc0361cca42d531babb2be35229bc1bdfcb2812bd585c81d3f4c8a3a"
+      },
+      {
+        "filename": "templates/marketing-cloudflare/.agents/skills/creating-plugins/references/hooks.md",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "5b2c0afe4a8ffa4a93c8a834e1e67eccaba6d28c4b436bdaa183a3668a99cede"
+      },
+      {
+        "filename": "templates/marketing-cloudflare/src/layouts/Base.astro",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 0,
+        "changes": 1,
+        "previous_filename": null,
+        "patch_sha256": "5aa4224c02e166a54d6acbb706e37aa4ca7e0467fa6ff3bb8d59a09f49b0083f"
+      },
+      {
+        "filename": "templates/marketing/.agents/skills/building-emdash-site/references/site-features.md",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 1,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "3876d12df48148d8bd39a8bc5bcac7fdaab59f8fef0d1177b3675a1966a1692d"
+      },
+      {
+        "filename": "templates/marketing/.agents/skills/creating-plugins/references/hooks.md",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "d5e2ebaf93b113dc536623d110e7096d1896656a71a3523b209f3a219356debf"
+      },
+      {
+        "filename": "templates/marketing/emdash-env.d.ts",
+        "status": "modified",
+        "additions": 0,
+        "deletions": 15,
+        "changes": 15,
+        "previous_filename": null,
+        "patch_sha256": "98d0ea92adc77dd3cc7133517c763aaa23f64da2a70e98bac39a39762a6ac9b6"
+      },
+      {
+        "filename": "templates/marketing/src/layouts/Base.astro",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 0,
+        "changes": 1,
+        "previous_filename": null,
+        "patch_sha256": "b61d83f72614d43fd711b84babbb52c54e66fcef28772e3601bebe0bc6b3cbdd"
+      },
+      {
+        "filename": "templates/portfolio-cloudflare/.agents/skills/building-emdash-site/references/site-features.md",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 1,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "0962a13070ebf6d71af40aa662cfcf681b294ea14548e8fff21cffe44676cf7b"
+      },
+      {
+        "filename": "templates/portfolio-cloudflare/.agents/skills/creating-plugins/references/hooks.md",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "01e17b6d96f5c9e55390295a1669405e25da08819c00bb173809c03bf5d5ec5c"
+      },
+      {
+        "filename": "templates/portfolio-cloudflare/emdash-env.d.ts",
+        "status": "modified",
+        "additions": 0,
+        "deletions": 15,
+        "changes": 15,
+        "previous_filename": null,
+        "patch_sha256": "57f87ee6320a1c2ffa73d3448be01e70d4b1a43ce0cadd92b6087b7cc30b7340"
+      },
+      {
+        "filename": "templates/portfolio-cloudflare/src/layouts/Base.astro",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 0,
+        "changes": 1,
+        "previous_filename": null,
+        "patch_sha256": "e21f20c42a3fdecec1ea3fd88509dc113c3fd3449cb0ed02561d3b87cb33d70c"
+      },
+      {
+        "filename": "templates/portfolio/.agents/skills/building-emdash-site/references/site-features.md",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 1,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "27f192079378b97117c28d58fb059b9342b7d23e3fe46780171d84ff2298f0c7"
+      },
+      {
+        "filename": "templates/portfolio/.agents/skills/creating-plugins/references/hooks.md",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "c9c8ee7ec3c2cce3ae1ec368af8e71162792c44ffbb10266fc743a4679f8b553"
+      },
+      {
+        "filename": "templates/portfolio/emdash-env.d.ts",
+        "status": "modified",
+        "additions": 0,
+        "deletions": 15,
+        "changes": 15,
+        "previous_filename": null,
+        "patch_sha256": "14bbb1b4394c418a37b73cf4ab463cc7ce3c6bbc416de52585b4663f4881ff54"
+      },
+      {
+        "filename": "templates/portfolio/src/layouts/Base.astro",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 0,
+        "changes": 1,
+        "previous_filename": null,
+        "patch_sha256": "963b365ae919ca20f7c16e2b0b766b91f818bab91237d54f5272d9b30c0690a9"
+      },
+      {
+        "filename": "templates/starter-cloudflare/.agents/skills/building-emdash-site/references/site-features.md",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 1,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "f59f0962268875fa67fe010f0f4466a404ab06acdb44d752ca00ff69be473c1e"
+      },
+      {
+        "filename": "templates/starter-cloudflare/.agents/skills/creating-plugins/references/hooks.md",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "5c1e2513191ac0c85a397757bb02ad580422d6eb850a681f920bf59138e264b1"
+      },
+      {
+        "filename": "templates/starter-cloudflare/src/layouts/Base.astro",
+        "status": "modified",
+        "additions": 14,
+        "deletions": 7,
+        "changes": 21,
+        "previous_filename": null,
+        "patch_sha256": "7f310c0c27f896a03e2fd294d69526d5ef4dd1efaedb7da68ec1f7e7bce4e05d"
+      },
+      {
+        "filename": "templates/starter-cloudflare/src/pages/[slug].astro",
+        "status": "modified",
+        "additions": 6,
+        "deletions": 5,
+        "changes": 11,
+        "previous_filename": null,
+        "patch_sha256": "f88ccd8069027dbe71d72e36f8263784953ce0039541b49b68e5b0bfb84c63f9"
+      },
+      {
+        "filename": "templates/starter-cloudflare/src/pages/index.astro",
+        "status": "modified",
+        "additions": 4,
+        "deletions": 2,
+        "changes": 6,
+        "previous_filename": null,
+        "patch_sha256": "bc3ae2b10a82b85da2b72c267aff6236e7144b11ef561147e268e5909c5d8ba5"
+      },
+      {
+        "filename": "templates/starter-cloudflare/src/pages/posts/[slug].astro",
+        "status": "modified",
+        "additions": 6,
+        "deletions": 5,
+        "changes": 11,
+        "previous_filename": null,
+        "patch_sha256": "5ea27fab84ecb115f0de022626bfe05190e91ad0b60b2bd6b9f83c9b1b49a147"
+      },
+      {
+        "filename": "templates/starter-cloudflare/src/utils/site-identity.ts",
+        "status": "added",
+        "additions": 14,
+        "deletions": 0,
+        "changes": 14,
+        "previous_filename": null,
+        "patch_sha256": "7c8bd4336912f7399350e3dc01b739b2457e1068e6152b20d61321026037c37b"
+      },
+      {
+        "filename": "templates/starter/.agents/skills/building-emdash-site/references/site-features.md",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 1,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "3d49b4374eead51d8e6b9eb141540b956c6ecb24a4534831d584c9bb928b734a"
+      },
+      {
+        "filename": "templates/starter/.agents/skills/creating-plugins/references/hooks.md",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "fbace4f7023dc978b46c516b5213226eab30e2dcb4a9fb25103c2ee2213bfa54"
+      },
+      {
+        "filename": "templates/starter/src/layouts/Base.astro",
+        "status": "modified",
+        "additions": 14,
+        "deletions": 7,
+        "changes": 21,
+        "previous_filename": null,
+        "patch_sha256": "ad93ebc3e65051793a053f3fb733454144bb7c9112c239da0540102772e82110"
+      },
+      {
+        "filename": "templates/starter/src/pages/[slug].astro",
+        "status": "modified",
+        "additions": 6,
+        "deletions": 5,
+        "changes": 11,
+        "previous_filename": null,
+        "patch_sha256": "c9eab8646aee51bb909125de519dc2ae5260564f3f652e09fa11e67dc10b0ecf"
+      },
+      {
+        "filename": "templates/starter/src/pages/index.astro",
+        "status": "modified",
+        "additions": 4,
+        "deletions": 2,
+        "changes": 6,
+        "previous_filename": null,
+        "patch_sha256": "0939d6e8c6d04ff4a8e734e8042615d95aa43fae2d1616d168d28ef7566ee1cb"
+      },
+      {
+        "filename": "templates/starter/src/pages/posts/[slug].astro",
+        "status": "modified",
+        "additions": 6,
+        "deletions": 5,
+        "changes": 11,
+        "previous_filename": null,
+        "patch_sha256": "375a68d1abb485bd018f9ca4606c0af10dd644da45c06a58c9d3226abd6432ae"
+      },
+      {
+        "filename": "templates/starter/src/utils/site-identity.ts",
+        "status": "added",
+        "additions": 14,
+        "deletions": 0,
+        "changes": 14,
+        "previous_filename": null,
+        "patch_sha256": "632f81747df0397764c62bb30f828690e144f00e7b4a75a308615c9073d1ad14"
+      }
+    ],
+    "summary": "This PR introduces a pluggable auth-provider system (AuthProviderDescriptor, a `virtual:emdash/auth-providers` Vite module, generic route injection, dynamic public routes, and a shared `findOrCreateOAuthUser()` helper) and adds a new `@emdash-cms/plugin-atproto` provider, while refactoring GitHub/Google into descriptors and unifying the login page and setup wizard. It also bundles a large amount of unrelated work (repeater field component, i18n/locale infrastructure, CSP middleware, sitemap/search/media changes, many changesets). Reviewers should focus on the auth flow correctness (callback/setup-admin, allowlist verification, session establishment, signup gating) and on the new admin components such as RepeaterField, since the diff is enormous and mixes many concerns. The patch context provided here only exposes `packages/admin/src/components/RepeaterField.tsx` and its tests, so the findings below are limited to that file.",
+    "risk_level": "low",
+    "rule_findings": [],
+    "suggestions": [],
+    "used_ai": true,
+    "ai_failure_reason": null,
+    "analysis_warnings": [
+      "2 suggestion(s) filtered out (low confidence, unchanged line, or duplicate)",
+      "Patch context was truncated to fit token budget; some files were not analyzed by AI.",
+      "1 file(s) excluded from AI patch context: pnpm-lock.yaml"
+    ],
+    "context_truncated": true,
+    "context_token_count": 16073,
+    "patch_token_budget": 6000,
+    "context_tokenizer": "cl100k_base",
+    "hidden_suggestions_count": 2,
+    "skipped_context_files": [
+      {
+        "file_path": "pnpm-lock.yaml",
+        "reason": "lockfile"
+      }
+    ],
+    "hidden_rule_findings_count": 0,
+    "reviewer_version": "pr-branch",
+    "execution_status": "success",
+    "degradation_reason": null,
+    "report_confidence": "normal",
+    "completeness": [
+      {
+        "item": "PR 元信息获取",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "变更文件获取",
+        "status": "success",
+        "detail": "408 个文件"
+      },
+      {
+        "item": "AI 上下文文件",
+        "status": "partial",
+        "detail": "1 个文件跳过（lockfile / 生成内容）"
+      },
+      {
+        "item": "AI 分析",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "规则扫描",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "Patch 上下文",
+        "status": "partial",
+        "detail": "裁剪 — 超出 token 预算"
+      },
+      {
+        "item": "PR head 语法诊断",
+        "status": "success",
+        "detail": "未检测到语法错误"
+      }
+    ],
+    "pr_syntax_check_ok": true,
+    "review_meta": {
+      "reviewed_commit": "41d750067fc7a39eb29f6a530cf0d4ae0f8bdb41",
+      "trigger_event": null,
+      "workflow_run_url": null,
+      "updated_at": null,
+      "review_mode": "full_pr"
+    },
+    "fix_tracking": [],
+    "confirmed_signals": [],
+    "dismissed_signals": [],
+    "unresolved_signals": [],
+    "unverified_signals": [],
+    "evidence_rejections": [],
+    "critic_decisions": [],
+    "stage_results": [],
+    "metrics": {
+      "raw_signal_count": 0,
+      "main_review_prompt_signal_count": 0,
+      "independent_suggestion_count": 0,
+      "evidence_rejected_suggestion_count": 0,
+      "critic_request_count": 0,
+      "critic_confirmed_count": 0,
+      "critic_dismissed_count": 0,
+      "critic_uncertain_count": 0,
+      "critic_unverified_count": 0,
+      "context_token_count": 16073,
+      "signal_verification_request_count": 0,
+      "telemetry_only_signal_count": 0,
+      "confirmed_signal_count": 0,
+      "dismissed_signal_count": 0,
+      "unresolved_signal_count": 0,
+      "unverified_signal_count": 0
+    }
+  },
+  "input_coverage": {
+    "binary_files": [],
+    "metadata_only_files": [
+      ".agents/skills",
+      "packages/core/src/astro/routes/api/media/file/[...key].ts"
+    ],
+    "context_truncated": true,
+    "skipped_files": [
+      {
+        "file_path": "pnpm-lock.yaml",
+        "reason": "lockfile"
+      }
+    ]
+  },
+  "request_count": 1,
+  "usage_records": [
+    {
+      "model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 18199,
+        "completion_tokens": 6146,
+        "total_tokens": 24345,
+        "prompt_tokens_details": {
+          "cached_tokens": 384
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 5035
+        },
+        "prompt_cache_hit_tokens": 384,
+        "prompt_cache_miss_tokens": 17815
+      },
+      "request_id": "cb3c76ee-4ca4-417b-9bf9-1a2588f4b288"
+    }
+  ],
+  "token_usage": {
+    "prompt_tokens": 18199,
+    "completion_tokens": 6146,
+    "total_tokens": 24345
+  },
+  "cost_usd": null,
+  "reviewer_commit": "acabdc0fafd67aa7946a451928f8c27e1a571202",
+  "working_tree_dirty": true,
+  "reviewer_source_sha256": "ad6bf74b1bac6495265b788ad064fc9b4367a85a0c45ddc4a2a67d5eafd8e757"
+}

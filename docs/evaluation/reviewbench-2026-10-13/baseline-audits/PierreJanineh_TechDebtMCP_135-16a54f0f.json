@@ -1,0 +1,259 @@
+{
+  "model": "deepseek-v4-flash",
+  "latency_seconds": 51.65600504199392,
+  "diff_sha256": "45e636614bf6ae452b8f09c134fdd5dc2e5b5ce6830923c5d46af82fd011c73b",
+  "strategy": {
+    "evidence": true,
+    "critic": false,
+    "context_pack": true,
+    "two_stage": false,
+    "verify_signals": false,
+    "min_confidence": 0.65,
+    "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "report": {
+    "pr": {
+      "repo": "PierreJanineh/TechDebtMCP",
+      "number": 135,
+      "title": "fix: guard against ReDoS via user-controlled regex in custom rules engine",
+      "author": null,
+      "base_ref": "ea0385c7349bbaee04456c57bf0ec3f217d63532",
+      "head_ref": "16a54f0f85a9091f220418850eac6b4122782be5",
+      "head_sha": "16a54f0f85a9091f220418850eac6b4122782be5",
+      "html_url": null
+    },
+    "files": [
+      {
+        "filename": "ARCHITECTURE.md",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "51be3a8f75092d0308a61d242a7b997b6454f23743689ad1057dc46bae663e7b"
+      },
+      {
+        "filename": "CHANGELOG.md",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 0,
+        "changes": 1,
+        "previous_filename": null,
+        "patch_sha256": "977b98313ba6d58e4284730432015ce7ac0dee2cbe4f5bd98d526733abf037a9"
+      },
+      {
+        "filename": "README.md",
+        "status": "modified",
+        "additions": 7,
+        "deletions": 5,
+        "changes": 12,
+        "previous_filename": null,
+        "patch_sha256": "5208c7f111729fbf2bc2938ef08d5698a8c9f55cb9ac7a282967554398e224f4"
+      },
+      {
+        "filename": "src/core/__tests__/customRulesEngine.test.ts",
+        "status": "modified",
+        "additions": 116,
+        "deletions": 0,
+        "changes": 116,
+        "previous_filename": null,
+        "patch_sha256": "a33ddec751b47d36a13ca277eb3af34b9ab9b2034818b342300a8de628a909ad"
+      },
+      {
+        "filename": "src/core/customRulesEngine.ts",
+        "status": "modified",
+        "additions": 60,
+        "deletions": 6,
+        "changes": 66,
+        "previous_filename": null,
+        "patch_sha256": "ce3623342fdbc281e1f0b2b6c4d73f65b0008aed3ec9a59d4d9fbe2810b66033"
+      },
+      {
+        "filename": "src/server/__tests__/handlers.test.ts",
+        "status": "modified",
+        "additions": 72,
+        "deletions": 4,
+        "changes": 76,
+        "previous_filename": null,
+        "patch_sha256": "8e9e3d070d661d58446160e5e7ce727f580d045b1da328b0852a5e3ca2371566"
+      },
+      {
+        "filename": "src/server/__tests__/inputParser.test.ts",
+        "status": "modified",
+        "additions": 11,
+        "deletions": 0,
+        "changes": 11,
+        "previous_filename": null,
+        "patch_sha256": "70b872d53f9133eefb92797090a0b7e4c2dc935562f1e208d8a1ab71b2147fbf"
+      },
+      {
+        "filename": "src/server/handlers.ts",
+        "status": "modified",
+        "additions": 15,
+        "deletions": 2,
+        "changes": 17,
+        "previous_filename": null,
+        "patch_sha256": "e509bc31e93b10d97ccd56e0d51018d33f6b4c73506cb2bdd0ffabcf618fec38"
+      },
+      {
+        "filename": "src/server/inputParser.ts",
+        "status": "modified",
+        "additions": 9,
+        "deletions": 1,
+        "changes": 10,
+        "previous_filename": null,
+        "patch_sha256": "3d794a8406a3c3298c2ca929676e0b9addfd5e72cea11aafed09cb003083c753"
+      },
+      {
+        "filename": "src/server/tools.ts",
+        "status": "modified",
+        "additions": 5,
+        "deletions": 5,
+        "changes": 10,
+        "previous_filename": null,
+        "patch_sha256": "7fdb2edb7ada8d4bdc1999591b8c205cacc39f81a4bd774aa41f4fef1247cdbb"
+      }
+    ],
+    "summary": "This PR attempts to harden the custom-rules engine against ReDoS by capping regex pattern length at 1,000 chars, allowlisting regex flags to gimsuy, stripping/ deduping flags at execution time, capping inline `code` at 500,000 chars, and limiting `path` file size to 500,000 bytes. It touches `src/core/customRulesEngine.ts`, `src/server/handlers.ts`, `src/server/inputParser.ts`, plus docs/tests. Reviewers should verify whether the chosen mitigations actually address catastrophic-backtracking ReDoS, since pattern/input length caps do not bound exponential regex execution.",
+    "risk_level": "high",
+    "rule_findings": [],
+    "suggestions": [
+      {
+        "file_path": "src/core/customRulesEngine.ts",
+        "line": 138,
+        "severity": "high",
+        "confidence": 0.72,
+        "title": "Length caps do not mitigate ReDoS (catastrophic backtracking)",
+        "reason": "The PR's stated goal is to prevent ReDoS, but the added guard `if (pattern.pattern.length > MAX_PATTERN_LENGTH)` (and the companion `MAX_CODE_LENGTH` / `MAX_FILE_SIZE_BYTES` caps) only bound input/pattern *size*, not regex execution time. ReDoS is caused by exponential backtracking in short patterns, so the new limits leave the vulnerability exploitable. A pattern far under 1,000 characters still hangs the process.",
+        "recommendation": "Complement the size caps with an actual ReDoS mitigation: run regex matching in a worker/child process with a hard timeout, or use a linear-time engine such as `re2` (e.g. `new RE2(pattern.pattern, safeFlags)`), or statically reject nested quantifiers / back-references before compiling. Keep the length caps as secondary defenses but do not rely on them to close the ReDoS issue.",
+        "source": "ai",
+        "evidence": [
+          "      if (pattern.pattern.length > MAX_PATTERN_LENGTH) {"
+        ],
+        "failure_scenario": "A client calls `add_custom_rule` with a 6-character pattern `(a+)+$` (passes `ALLOWED_FLAGS_RE`, well under 1,000 chars), then calls `execute_custom_rules` with `code` = 'a'.repeat(40) + '!' (under 500,000 chars). Both guards pass, the global regex undergoes catastrophic backtracking, and the server blocks until timeout/OOM instead of returning issues."
+      }
+    ],
+    "used_ai": true,
+    "ai_failure_reason": null,
+    "analysis_warnings": [],
+    "context_truncated": false,
+    "context_token_count": 5978,
+    "patch_token_budget": 6000,
+    "context_tokenizer": "cl100k_base",
+    "hidden_suggestions_count": 0,
+    "skipped_context_files": [],
+    "hidden_rule_findings_count": 0,
+    "reviewer_version": "pr-branch",
+    "execution_status": "success",
+    "degradation_reason": null,
+    "report_confidence": "normal",
+    "completeness": [
+      {
+        "item": "PR 元信息获取",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "变更文件获取",
+        "status": "success",
+        "detail": "10 个文件"
+      },
+      {
+        "item": "AI 上下文文件",
+        "status": "success",
+        "detail": "全部文件进入上下文"
+      },
+      {
+        "item": "AI 分析",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "规则扫描",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "Patch 上下文",
+        "status": "success",
+        "detail": "完整"
+      },
+      {
+        "item": "PR head 语法诊断",
+        "status": "success",
+        "detail": "未检测到语法错误"
+      }
+    ],
+    "pr_syntax_check_ok": true,
+    "review_meta": {
+      "reviewed_commit": "16a54f0f85a9091f220418850eac6b4122782be5",
+      "trigger_event": null,
+      "workflow_run_url": null,
+      "updated_at": null,
+      "review_mode": "full_pr"
+    },
+    "fix_tracking": [],
+    "confirmed_signals": [],
+    "dismissed_signals": [],
+    "unresolved_signals": [],
+    "unverified_signals": [],
+    "evidence_rejections": [],
+    "critic_decisions": [],
+    "stage_results": [],
+    "metrics": {
+      "raw_signal_count": 0,
+      "main_review_prompt_signal_count": 0,
+      "independent_suggestion_count": 1,
+      "evidence_rejected_suggestion_count": 0,
+      "critic_request_count": 0,
+      "critic_confirmed_count": 0,
+      "critic_dismissed_count": 0,
+      "critic_uncertain_count": 0,
+      "critic_unverified_count": 0,
+      "context_token_count": 5978,
+      "signal_verification_request_count": 0,
+      "telemetry_only_signal_count": 0,
+      "confirmed_signal_count": 0,
+      "dismissed_signal_count": 0,
+      "unresolved_signal_count": 0,
+      "unverified_signal_count": 0
+    }
+  },
+  "input_coverage": {
+    "binary_files": [],
+    "metadata_only_files": [],
+    "context_truncated": false,
+    "skipped_files": []
+  },
+  "request_count": 1,
+  "usage_records": [
+    {
+      "model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 6855,
+        "completion_tokens": 8940,
+        "total_tokens": 15795,
+        "prompt_tokens_details": {
+          "cached_tokens": 6656
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 8391
+        },
+        "prompt_cache_hit_tokens": 6656,
+        "prompt_cache_miss_tokens": 199
+      },
+      "request_id": "42bd17ca-afd2-4125-9f7f-8c74ea6d3bc9"
+    }
+  ],
+  "token_usage": {
+    "prompt_tokens": 6855,
+    "completion_tokens": 8940,
+    "total_tokens": 15795
+  },
+  "cost_usd": null,
+  "reviewer_commit": "acabdc0fafd67aa7946a451928f8c27e1a571202",
+  "working_tree_dirty": true,
+  "reviewer_source_sha256": "6b3c4b810c30d5816064ba29d3be0cb6f1b564b353ef8b7232851b4d80bcd528",
+  "retry_transport": "streaming",
+  "timeout_seconds": 180
+}
