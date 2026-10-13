@@ -1,0 +1,11 @@
+{
+  "input_commit": "a6528207435ff0c785e3698826c020df3038afbf",
+  "protocol": "same frozen PR diff, deterministic rule/context checks; no model quality claim",
+  "before_evaluation_json_hits": 7,
+  "after_evaluation_json_hits": 0,
+  "remaining_unverified_rule_leads": 40,
+  "patch_sections": 9,
+  "context_truncated": true,
+  "explicit_skipped": 116,
+  "budget_omitted": 29
+}

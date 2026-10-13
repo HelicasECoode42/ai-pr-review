@@ -67,7 +67,12 @@ def _build_completeness(
 
     # AI 上下文文件
     skipped_count = len(skipped_ctx)
-    if skipped_count == 0:
+    if ctx_truncated:
+        items.append(CompletenessItem(
+            item="AI 上下文文件", status=StepStatus.PARTIAL,
+            detail="上下文预算不足，部分补丁被裁剪或未进入上下文",
+        ))
+    elif skipped_count == 0:
         items.append(CompletenessItem(
             item="AI 上下文文件",
             status=StepStatus.SUCCESS,
@@ -436,12 +441,25 @@ def review_with_ai(
         evidence_rejections = []
         if enable_evidence_gate:
             suggestions, evidence_rejections = validate_ai_evidence(suggestions, files)
+        pre_critic_suggestions = list(suggestions)
         critic_candidates = select_critic_candidates(suggestions) if enable_critic else []
         critic_batch = critique_batch(critic_provider or provider, critic_candidates, files)
         if enable_critic:
             suggestions, critic_decisions = apply_critic(suggestions, critic_candidates, critic_batch)
         else:
             critic_decisions = []
+        pending_indexes = {
+            item["suggestion_index"] for item in critic_decisions
+            if item["decision"] in {"uncertain", "unverified"}
+        }
+        pending_suggestions = [
+            suggestion.model_copy(update={"source": "ai_needs_context"})
+            for index, suggestion in enumerate(pre_critic_suggestions)
+            if index in pending_indexes
+        ]
+        # Provider outages and insufficient evidence remain visible for follow-up,
+        # but must not be counted or published as verified findings.
+        suggestions = [s for s in suggestions if s.source != "ai_critic_unverified"]
         independent_suggestion_count = sum(
             any((s.file_path, s.line, s.title) == (i.file_path, i.line, i.title)
                 for i in independent_suggestions) for s in suggestions
@@ -459,6 +477,8 @@ def review_with_ai(
                 f"unchanged line, or duplicate)"
             )
         if ctx.truncated:
+            if report_confidence in {"normal", "fallback"}:
+                report_confidence = "partial"
             warnings.append(
                 "Patch context was truncated to fit token budget; "
                 "some files were not analyzed by AI."
@@ -467,6 +487,8 @@ def review_with_ai(
             SkippedContextFile(file_path=fpath, reason=reason)
             for fpath, reason in ctx.skipped_files
         ]
+        if pending_suggestions:
+            warnings.append(f"{len(pending_suggestions)} candidate(s) need additional context; not confirmed defects.")
         if skipped_ctx:
             skipped_names = ", ".join(s.file_path for s in skipped_ctx)
             warnings.append(
@@ -523,6 +545,7 @@ def review_with_ai(
             unverified_signals=[item.model_dump(mode="json") for item in merged.unverified],
             evidence_rejections=evidence_rejections,
             critic_decisions=critic_decisions,
+            pending_suggestions=pending_suggestions,
             stage_results=stage_audit,
             metrics={
                 "raw_signal_count": len(findings),

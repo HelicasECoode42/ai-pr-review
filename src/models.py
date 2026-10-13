@@ -155,5 +155,6 @@ class ReviewReport(BaseModel):
     unverified_signals: list[dict] = Field(default_factory=list)
     evidence_rejections: list[dict] = Field(default_factory=list)
     critic_decisions: list[dict] = Field(default_factory=list)
+    pending_suggestions: list[ReviewSuggestion] = Field(default_factory=list)
     stage_results: list[dict] = Field(default_factory=list)
     metrics: dict[str, int | float] = Field(default_factory=dict)

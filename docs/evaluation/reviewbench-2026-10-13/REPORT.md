@@ -91,3 +91,11 @@ Critic和judge全部调用。不能把它当实际总花费；没有编造美元
 
 工程验证：135项Python测试通过；扩展审计0漏洞、编译及VSIX打包通过；远端Python、
 VS Code build、review三项检查通过。Draft PR #45保持未合并，自改进未启用。
+
+## PR #45 自审暴露的问题与修复
+
+自审运行 38388354570 成功，并非 HTTP 402。报告却同时声明“全部文件进入上下文”与“上下文被裁剪”，把评测 JSON 引用代码的 7 个匹配呈现为高风险规则命中。该工作流实际 checkout 基准分支，不能用其成功结果证明 PR 新版 reviewer 的效果。
+
+新增修复：评测 JSON 排除代码规则及 patch 上下文（Python 源码仍扫描）；源码优先且单文件预算受限；预算遗漏逐文件记录；截断报告标为 partial；规则明确为未验证线索，不再自动发成 GitHub 行内评论；Critic uncertain/unverified 候选保存在 pending_suggestions 并展示，排除确认问题统计及发布。帮助文本检测不再使用会提前关闭管道的 grep -q，固定输出宽度避免旗标折行。
+
+同一 a652820 冻结 diff 的确定性检查见 self-review-reliability-check.json：评测 JSON 命中 7→0；新版上下文包含 9 个补丁段，仍有 29 个文件因预算遗漏。此检查无需模型、不证明 Precision/Recall 提升，也没有把未覆盖文件称为审查成功。真实模型效果需另行运行与独立标注。

@@ -59,3 +59,23 @@ def test_critic_is_not_called_when_disabled() -> None:
     assert len(provider.calls) == 1
     assert len(report.suggestions) == 1
     assert report.metrics["critic_request_count"] == 0
+
+
+def test_uncertain_candidate_survives_separately_without_becoming_confirmed() -> None:
+    class UncertainProvider(ReviewerThenCriticProvider):
+        def complete_json(self, system: str, user: str) -> str:
+            return super().complete_json(system, user).replace('"dismissed"', '"uncertain"')
+
+    report = review_with_ai(
+        PullRequest(repo="demo/repo", number=1, title="Cache profile"),
+        [ChangedFile(filename="src/app.py", status=FileStatus.MODIFIED,
+                     patch="@@ -1 +1 @@\n+cache.set(user_id, profile)\n")],
+        [], UncertainProvider(), max_suggestions=5, enable_critic=True,
+    )
+    assert report.suggestions == []
+    assert len(report.pending_suggestions) == 1
+    assert report.pending_suggestions[0].title == "Cache collision"
+    assert report.pending_suggestions[0].source == "ai_needs_context"
+    assert report.critic_decisions[0]["decision"] == "uncertain"
+    from src.output.markdown import render_markdown
+    assert "Candidates needing context" in render_markdown(report)

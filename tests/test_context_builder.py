@@ -85,3 +85,21 @@ def test_build_review_context_reports_token_usage_and_truncation() -> None:
     assert ctx.patch_token_budget == 80
     assert ctx.token_count == count_tokens(ctx.text)
     assert "[truncated]" in ctx.text
+
+
+def test_budget_omissions_and_evaluation_data_are_explicit() -> None:
+    files = [
+        ChangedFile(filename="docs/evaluation/run/input.json", status=FileStatus.ADDED,
+                    additions=1000, patch='@@ -0,0 +1 @@\n+QUOTED_EXTERNAL_CODE'),
+        ChangedFile(filename="src/first.py", status=FileStatus.ADDED,
+                    additions=100, patch='@@ -0,0 +1 @@\n+' + 'actual_code ' * 100),
+        ChangedFile(filename="src/second.py", status=FileStatus.ADDED,
+                    additions=1, patch='@@ -0,0 +1 @@\n+second_code'),
+    ]
+    ctx = build_review_context(PullRequest(repo="test/repo", number=1, title="Budget"), files, [],
+                               max_patch_tokens=1, allow_remote_file_fetch=False,
+                               include_context_pack=False)
+    assert "QUOTED_EXTERNAL_CODE" not in ctx.text
+    assert ctx.truncated
+    assert ("src/second.py", "patch_budget_exhausted") in ctx.skipped_files
+    assert any(path.endswith("input.json") for path, _ in ctx.skipped_files)

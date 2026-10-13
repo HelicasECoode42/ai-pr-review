@@ -17,7 +17,9 @@ _SKIP_SCAN_PREFIXES = (
 
 
 def _should_skip_scan(filename: str) -> bool:
-    return filename.startswith(_SKIP_SCAN_PREFIXES)
+    return filename.startswith(_SKIP_SCAN_PREFIXES) or (
+        filename.startswith("docs/evaluation/") and filename.endswith(".json")
+    )
 
 
 

@@ -128,7 +128,8 @@ jobs:
           fi
 
           REVIEWER_ARGS=()
-          if uv run python -m src.cli.main --help | grep -q -- "--reviewer-version"; then
+          COLUMNS=240 NO_COLOR=1 uv run python -m src.cli.main --help > /tmp/reviewer-help.txt
+          if grep -q -- "--reviewer-version" /tmp/reviewer-help.txt; then
             REVIEWER_ARGS=(
               --reviewer-version "main-fallback"
               --execution-status "degraded"
@@ -201,19 +202,8 @@ jobs:
                 recommendation: s.recommendation,
                 source: "AI",
               }));
-            const ruleFindings = (report.rule_findings || [])
-              .filter(r => (r.confidence ?? 0.7) >= 0.65 && r.line != null)
-              .map(r => ({
-                file_path: r.file_path,
-                line: r.line,
-                severity: r.severity,
-                confidence: r.confidence ?? 0.7,
-                title: r.title,
-                reason: r.evidence,
-                recommendation: r.recommendation,
-                source: "Rule",
-              }));
-            const inlineComments = [...aiSuggestions, ...ruleFindings].slice(0, 10);
+            // Raw rule hits have no established failure scenario or verified evidence.
+            const inlineComments = aiSuggestions.slice(0, 10);
 
             if (inlineComments.length === 0) {
               core.info("No line-level suggestions or rule findings to post.");

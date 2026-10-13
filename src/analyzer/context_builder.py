@@ -156,6 +156,8 @@ def _patch_has_encoding_issues(filename: str, patch_text: str | None) -> bool:
 
 def _skip_patch_reason(filename: str) -> str | None:
     try:
+        if filename.startswith("docs/evaluation/") and filename.endswith(".json"):
+            return "evaluation data (quoted external code, not executable source)"
         name = filename.split("/")[-1]
         if name in LOCKFILE_NAMES:
             return "lockfile"
@@ -381,7 +383,13 @@ def build_review_context(
     parts.extend(["", "## Patches"])
     patch_budget = max_patch_tokens
     truncated = False
-    ordered_files = sorted(files, key=lambda f: -(f.additions + f.deletions))
+    # Production code comes before tests/docs; a large file cannot monopolize
+    # the entire patch budget. This is deterministic and independent of rule hits.
+    ordered_files = sorted(files, key=lambda f: (
+        not f.filename.startswith(("src/", ".github/", "vscode-extension/src/")),
+        -(f.additions + f.deletions), f.filename,
+    ))
+    per_file_budget = max(1, max_patch_tokens // min(8, max(1, len(files))))
     if prioritize_rule_files:
         ordered_files = sorted(
             ordered_files,
@@ -398,6 +406,12 @@ def build_review_context(
                 skipped_files.append((file.filename, reason))
                 if reason == "lockfile":
                     lockfiles_skipped += 1
+                continue
+
+            if patch_budget <= 0:
+                skipped_files.append((file.filename, "patch_budget_exhausted"))
+                truncated = True
+                partial_flag = True
                 continue
 
             if file.patch and any(line.startswith(("Binary files ", "GIT binary patch"))
@@ -427,12 +441,12 @@ def build_review_context(
                 # For removed files, try base_ref
                 ref_try = None
                 if file.status == FileStatus.ADDED:
-                    ref_try = pr.head_ref
+                    ref_try = pr.head_sha or pr.head_ref
                 elif file.status == FileStatus.REMOVED:
                     ref_try = pr.base_ref
                 else:
                     # try both head then base
-                    ref_try = pr.head_ref or pr.base_ref
+                    ref_try = pr.head_sha or pr.head_ref or pr.base_ref
 
                 file_contents = None
                 if allow_remote_file_fetch:
@@ -443,7 +457,7 @@ def build_review_context(
 
                 if file_contents:
                     file_text, consumed, clipped = truncate_to_token_budget(
-                        file_contents, patch_budget
+                        file_contents, min(patch_budget, per_file_budget)
                     )
                     truncated = truncated or clipped
                     partial_flag = partial_flag or clipped
@@ -453,12 +467,12 @@ def build_review_context(
                         parts.append("\nPatch budget exhausted. Remaining files omitted.")
                         truncated = True
                         partial_flag = True
-                        break
                     continue
                 else:
                     # Couldn't fetch full file; mark partial and continue
                     logger.warning(f"Could not retrieve full contents for {file.filename} during fallback")
                     partial_flag = True
+                    skipped_files.append((file.filename, "patch_unavailable"))
                     continue
 
             if not hunks:
@@ -471,13 +485,13 @@ def build_review_context(
             if allow_remote_file_fetch and total_hunk_lines > 0 and total_added < total_hunk_lines // 2:
                 # Hunk likely truncated; fetch full file — prefer head_ref (current PR code)
                 file_contents = (
-                    _fetch_repo_file_text(pr.repo, file.filename, getattr(pr, "head_ref", None))
+                    _fetch_repo_file_text(pr.repo, file.filename, (pr.head_sha or pr.head_ref))
                     or _fetch_repo_file_text(pr.repo, file.filename, pr.base_ref)
                 )
                 if file_contents:
                     file_text = file_contents
 
-            file_text, consumed, clipped = truncate_to_token_budget(file_text, patch_budget)
+            file_text, consumed, clipped = truncate_to_token_budget(file_text, min(patch_budget, per_file_budget))
             truncated = truncated or clipped
             partial_flag = partial_flag or clipped
             parts.extend(["", f"### {file.filename}", "```diff", file_text, "```"])
@@ -486,7 +500,6 @@ def build_review_context(
                 parts.append("\nPatch budget exhausted. Remaining files omitted.")
                 truncated = True
                 partial_flag = True
-                break
         except Exception as e:
             logger.warning(f"Failed to process patch for {getattr(file, 'filename', '?')}: {e}")
             partial_flag = True

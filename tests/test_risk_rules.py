@@ -34,3 +34,14 @@ def test_login(token):
     assert secret_findings
     assert secret_findings[0].severity == Severity.LOW
     assert secret_findings[0].confidence == 0.4
+
+
+def test_evaluation_quotes_are_not_executable_secret_logging() -> None:
+    patch = '@@ -0,0 +1 @@\n+print("token", token)'
+    files = [
+        ChangedFile(filename="docs/evaluation/run/candidates.json", status=FileStatus.ADDED, patch=patch),
+        ChangedFile(filename="docs/evaluation/check.py", status=FileStatus.ADDED, patch=patch),
+    ]
+    findings = scan_risks(files)
+    assert not any(f.file_path.endswith(".json") for f in findings)
+    assert any(f.file_path.endswith("check.py") and f.rule_id == "secret-logging" for f in findings)
