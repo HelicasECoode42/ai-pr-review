@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 
 from src.analyzer.context_builder import ReviewContext, count_tokens
@@ -25,7 +26,9 @@ Retain plausible candidates for verification even when confidence is low. Never 
 You can ask for repository evidence using context_requests:[{tool:'search',symbol:'name',side:'head|base'},
 {tool:'read',path:'relative/source/path',line:123,side:'head|base'}]. Only read/search are available.
 Search for the specific caller or contract you need, not generic common identifiers.
-Return JSON only, with summary, risk_level, suggestions, and optional context_requests.
+Return a JSON OBJECT only. Context requests are data for this host, NOT native tool calls.
+Never emit DSML/XML tags. If requesting context, return only {"context_requests":[...]}.
+Otherwise return the final object with summary, risk_level and suggestions.
 """
 
 VERIFY_SYSTEM = """You verify code-review candidates using the same frozen source snapshot as discovery.
@@ -59,9 +62,29 @@ class GroundedResult:
 
 
 def _json(provider, system, prompt):
-    value = json.loads(provider.complete_json(system, prompt))
+    raw = provider.complete_json(system, prompt)
+    notice = None
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError:
+        try:
+            # Preserve literal newlines in fully formed strings; do not complete truncated JSON.
+            value = json.loads(raw, strict=False)
+            notice = "literal_control_characters"
+        except json.JSONDecodeError:
+            value, end = json.JSONDecoder().raw_decode(raw.lstrip())
+            tail = raw.lstrip()[end:]
+            if not isinstance(value, list) or not re.fullmatch(r"(?:\s*</[｜A-Za-z_ ]+>)+\s*", tail):
+                raise ValueError("Unsupported model response envelope")
+            notice = "dsml_request_array"
+    if isinstance(value, list):
+        if not value or not all(isinstance(r, dict) and r.get("tool") in {"read", "search"} for r in value):
+            raise ValueError("Only read/search request arrays are supported")
+        value = {"context_requests": value, "response_format_notice": notice or "bare_request_array"}
     if not isinstance(value, dict):
         raise ValueError("Review response must be an object")
+    if notice:
+        value["response_format_notice"] = notice
     return value
 
 
@@ -116,6 +139,7 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
         if not isinstance(requests, list):
             raise ValueError("context_requests must be a list")
         discovery_trace.append({"round": round_index, "context_requests": requests,
+                                "response_format_notice": response.get("response_format_notice"),
                                 "suggestions": response.get("suggestions", [])})
         if requests and round_index < 2:
             bundle.execute(requests)
@@ -194,13 +218,16 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
             chain = all(isinstance(item.get(k), str) and item[k].strip()
                         for k in ("trigger", "expected_behavior", "actual_behavior", "introduced_by", "reason"))
             call_path = item.get("call_path")
+            if isinstance(call_path, str) and call_path.strip():
+                item = {**item, "call_path_original": call_path, "call_path": [call_path]}
+                call_path = item["call_path"]
             chain = chain and isinstance(call_path, list) and bool(call_path) and all(
                 isinstance(step, str) and step.strip() for step in call_path
             )
             confidence = item.get("confidence", 0)
             if isinstance(confidence, bool) or not isinstance(confidence, (int, float)) or not 0 <= confidence <= 1:
                 confidence = 0
-            if decision == "confirmed" and (not validated or not chain or confidence < min_confidence
+            if decision == "confirmed" and (not validated or not chain
                                              or not any(c.get("side") == "head" for c in evidence)):
                 item = {**item, "decision": "needs_context", "validation_reason": "insufficient_behavior_chain_or_source_evidence"}
                 decision = "needs_context"

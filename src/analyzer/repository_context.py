@@ -172,6 +172,29 @@ def function_window(path, text, line):
                 return start, node.end_lineno or node.lineno, node.name, "complete_python_definition"
         except SyntaxError:
             pass
+    # Brace languages: use balanced lexical blocks and a declaration header. Strings
+    # and comments are masked; this remains explicitly heuristic, not a semantic AST.
+    if Path(path).suffix in {".ts", ".tsx", ".js", ".jsx", ".java", ".go", ".rs", ".cs", ".cpp", ".c", ".php", ".swift", ".kt"}:
+        masked = re.sub(r"/\*.*?\*/|//[^\n]*|\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`",
+                        lambda m: "".join("\n" if c == "\n" else " " for c in m[0]), text, flags=re.S)
+        stack, blocks, number = [], [], 1
+        for char in masked:
+            if char == "\n":
+                number += 1
+            elif char == "{":
+                stack.append(number)
+            elif char == "}" and stack:
+                opening = stack.pop()
+                if opening <= line <= number:
+                    header = " ".join(masked.splitlines()[max(0, opening - 4):opening])
+                    matches = list(re.finditer(r"(?:function|fn|func|class|interface)\s+(\w+)|(?:\b(?:public|private|protected|static|async|override|export|const|let|var|final|suspend)\s+)*(\w+)\s*(?:<[^>]*>)?\s*\([^;{}]*\)\s*(?::[^{}]+)?\s*\{|\b(\w+)\s*=\s*(?:async\s*)?\([^;{}]*\)\s*=>\s*\{", header))
+                    match = matches[-1] if matches else None
+                    if match:
+                        name = next(g for g in match.groups() if g)
+                        if name not in {"if", "for", "while", "switch", "catch", "with"}:
+                            blocks.append((max(1, opening - 3), number, name, "heuristic_brace_definition"))
+        if blocks:
+            return min(blocks, key=lambda b: b[1] - b[0])
     # A language-independent source window. Never claim heuristic parsing is a full definition.
     start, end = max(1, line - 25), min(len(lines), line + 55)
     declaration = re.compile(r"(?:def|function|fn|func|class|interface|subroutine)\s+(\w+)|(?:\w+[ \t]+)+(\w+)\s*\(", re.I)
@@ -189,6 +212,7 @@ class EvidenceBundle:
     excerpts: list[dict] = field(default_factory=list)
     requests: list[dict] = field(default_factory=list)
     omitted: list[dict] = field(default_factory=list)
+    evicted: list[dict] = field(default_factory=list)
     tokens: int = 0
 
     def add(self, path, line=1, side="head", kind="related_code"):
@@ -209,6 +233,16 @@ class EvidenceBundle:
                  "start_line": start, "end_line": end, "kind": kind, "symbol": symbol,
                  "extent": extent, "truncated": clipped or (extent == "source_window" and (start > 1 or end < len(lines))), "code": numbered}
         cost = count_tokens(json.dumps(entry, ensure_ascii=False))
+        if kind.startswith(("requested", "candidate")) and cost <= self.budget:
+            while self.tokens + cost > self.budget and self.excerpts:
+                # Explicit questions can replace low-value initial windows; do not
+                # silently declare the displaced code reviewed in the final pass.
+                disposable = next((e for e in self.excerpts if not e["kind"].startswith(("requested", "candidate"))), None)
+                if disposable is None:
+                    break
+                self.excerpts.remove(disposable)
+                self.tokens -= count_tokens(json.dumps(disposable, ensure_ascii=False))
+                self.evicted.append({k: v for k, v in disposable.items() if k != "code"})
         if self.tokens + cost > self.budget:
             self.omitted.append({"path": path, "side": side, "reason": "evidence_budget_exhausted"})
             return
@@ -273,6 +307,6 @@ class EvidenceBundle:
 
     def audit(self):
         return {"snapshot": self.snapshot.audit(), "token_budget": self.budget, "tokens": self.tokens,
-                "requests": self.requests, "omitted": self.omitted,
+                "requests": self.requests, "omitted": self.omitted, "evicted": self.evicted,
                 "excerpts": [{**{k: v for k, v in e.items() if k != "code"},
                               "sha256": hashlib.sha256(e["code"].encode()).hexdigest()} for e in self.excerpts]}

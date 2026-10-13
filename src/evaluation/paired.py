@@ -49,7 +49,8 @@ def paired(prepared, mirrors, output, *, arms=("control", "grounded"), concurren
                 "reviewer": identity, "source_token_budget": 12000,
                 "repository_token_budget": 6000, "max_output_tokens_per_call": 32768,
                 "read_timeout_seconds": 180, "total_timeout_per_call_seconds": 300,
-                "temperature": .1, "max_suggestions": 20, "min_confidence": .65,
+                "temperature": .1, "max_suggestions": 20, "control_min_confidence": .65,
+                "grounded_acceptance": "confirmed causal chain plus validated source citations; confidence is reported, not a calibrated probability",
                 "guidance": True, "concurrency": concurrency, "max_attempts_per_task": 2,
                 "discovery_max_calls": 3, "verification_max_calls": 2,
                 "note": "Same per-call settings and maximum source budget; grounded uses more calls. Report cost and latency, not equal-compute claims."}

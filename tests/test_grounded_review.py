@@ -178,3 +178,43 @@ def test_provider_outage_keeps_candidate_and_marks_partial(repo):
     assert not report.suggestions
     assert len(report.pending_suggestions) == 1
     assert report.behavior_verifications[0]["decision"] == "unverified"
+
+
+def test_explicit_behavior_proof_does_not_depend_on_uncalibrated_confidence(repo):
+    report, _ = run(repo, [candidate(), verdict(confidence=.4, call_path="caller.py:3 -> users.py:2")])
+    assert len(report.suggestions) == 1
+    assert report.suggestions[0].confidence == .4
+    assert report.behavior_verifications[0]["call_path_original"]
+
+
+def test_only_safe_read_search_dsml_arrays_are_adapted():
+    from src.reviewer.grounded_review import _json
+    class Raw:
+        def __init__(self, text): self.text = text
+        def complete_json(self, *_): return self.text
+    suffix = "</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ calls>"
+    value = _json(Raw('[{"tool":"read","path":"caller.py"}]' + suffix), "", "")
+    assert value["response_format_notice"] == "dsml_request_array"
+    with pytest.raises(ValueError):
+        _json(Raw('[{"tool":"exec","command":"rm -rf /"}]' + suffix), "", "")
+    with pytest.raises(ValueError):
+        _json(Raw('{"suggestions":['), "", "")
+
+
+def test_control_character_adapter_does_not_invent_missing_json_fields():
+    from src.reviewer.grounded_review import _json
+    class Raw:
+        def complete_json(self, *_): return '{"summary":"first\nsecond","suggestions":[]}'
+    result = _json(Raw(), "", "")
+    assert result["summary"] == "first\nsecond"
+    assert result["response_format_notice"] == "literal_control_characters"
+
+
+def test_brace_window_contains_full_ts_method_beyond_default_window():
+    from src.analyzer.repository_context import function_window
+    source = "class Service {\n  async check(input: string) {\n" + "    input = input.trim();\n" * 70 + "    return input;\n  }\n}\n"
+    start, end, symbol, extent = function_window("service.ts", source, 3)
+    assert start <= 2
+    assert end >= 74
+    assert symbol == "check"
+    assert extent == "heuristic_brace_definition"
