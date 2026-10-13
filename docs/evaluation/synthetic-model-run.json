@@ -1,0 +1,112 @@
+{
+  "quality_status": "unadjudicated",
+  "model": "deepseek-v4-flash",
+  "reviewer_commit": "d99524db818494ac31afd06f9a40560808de7176",
+  "dataset_sha256": "b8371704d87a76714606dc27c654b20323d30724f08a51568689fc45dc0c7c24",
+  "records": [
+    {
+      "case_id": "division",
+      "variant": "baseline",
+      "status": "failed",
+      "error": "RuntimeError"
+    },
+    {
+      "case_id": "division",
+      "variant": "no_evidence",
+      "status": "failed",
+      "error": "RuntimeError"
+    },
+    {
+      "case_id": "division",
+      "variant": "with_critic",
+      "status": "failed",
+      "error": "RuntimeError"
+    },
+    {
+      "case_id": "division",
+      "variant": "no_context",
+      "status": "failed",
+      "error": "RuntimeError"
+    },
+    {
+      "case_id": "negative-index",
+      "variant": "baseline",
+      "status": "failed",
+      "error": "RuntimeError"
+    },
+    {
+      "case_id": "negative-index",
+      "variant": "no_evidence",
+      "status": "failed",
+      "error": "RuntimeError"
+    },
+    {
+      "case_id": "negative-index",
+      "variant": "with_critic",
+      "status": "failed",
+      "error": "RuntimeError"
+    },
+    {
+      "case_id": "negative-index",
+      "variant": "no_context",
+      "status": "failed",
+      "error": "RuntimeError"
+    },
+    {
+      "case_id": "safe-division",
+      "variant": "baseline",
+      "status": "failed",
+      "error": "RuntimeError"
+    },
+    {
+      "case_id": "safe-division",
+      "variant": "no_evidence",
+      "status": "failed",
+      "error": "RuntimeError"
+    },
+    {
+      "case_id": "safe-division",
+      "variant": "with_critic",
+      "status": "failed",
+      "error": "RuntimeError"
+    },
+    {
+      "case_id": "safe-division",
+      "variant": "no_context",
+      "status": "failed",
+      "error": "RuntimeError"
+    },
+    {
+      "case_id": "safe-index",
+      "variant": "baseline",
+      "status": "failed",
+      "error": "RuntimeError"
+    },
+    {
+      "case_id": "safe-index",
+      "variant": "no_evidence",
+      "status": "failed",
+      "error": "RuntimeError"
+    },
+    {
+      "case_id": "safe-index",
+      "variant": "with_critic",
+      "status": "failed",
+      "error": "RuntimeError"
+    },
+    {
+      "case_id": "safe-index",
+      "variant": "no_context",
+      "status": "failed",
+      "error": "RuntimeError"
+    }
+  ],
+  "working_tree_dirty": true,
+  "failure_context": {
+    "observation_source": "provider errors captured in experiment console output",
+    "http_status": 402,
+    "provider_message": "Insufficient Balance",
+    "successful_cases": 0,
+    "failed_variant_runs": 16
+  }
+}

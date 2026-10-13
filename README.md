@@ -424,3 +424,9 @@ OpenAI-compatible 接口允许用户指向自托管模型（如通过 Ollama 或
 - [Web Console Demo-First 方案](docs/web-console-demo-first-plan.md)：离线演示、零配置开箱体验。
 - [未来扩展](docs/future-extensions.md)：VS Code 扩展、服务化、Context Pack、Web UI 等路线图。
 - [协作与提交规范](docs/contribution-guide.md)：分支、commit、PR 和合并前检查规范。
+
+## 可复现评测（Draft）
+
+新增 ReviewBench 挂载输入适配、内部缺陷级计分和 Evidence Gate / Critic /
+Context Pack 消融入口，详见 [评测说明](docs/evaluation-driven-review.md)。
+当前真实模型实验因服务余额不足失败，尚无 Precision、Recall 或质量提升结论。

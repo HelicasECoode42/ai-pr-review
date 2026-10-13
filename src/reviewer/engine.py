@@ -5,7 +5,7 @@ import re
 
 from pydantic import ValidationError
 
-from src.analyzer.context_builder import build_review_context, tokenizer_name
+from src.analyzer.context_builder import ReviewContext, build_review_context, tokenizer_name
 from src.analyzer.signal_selection import select_verifiable_signals
 from typing import TYPE_CHECKING
 
@@ -380,11 +380,14 @@ def review_with_ai(
     enable_critic: bool = False,
     critic_provider: ReviewModelProvider | None = None,
     gh_client: "GitHubClient | None" = None,
+    enable_evidence_gate: bool = True,
+    review_context: "ReviewContext | None" = None,
+    prompt_addendum: str = "",
 ) -> ReviewReport:
     try:
         # The main review must start from the PR text and diff alone. Rule
         # results are retained as audit signals, not injected as conclusions.
-        ctx = build_review_context(pr, files)
+        ctx = review_context if review_context is not None else build_review_context(pr, files)
         if two_stage:
             from src.reviewer.two_stage import two_stage_review
             summary, risk_level, suggestions = two_stage_review(
@@ -402,7 +405,8 @@ def review_with_ai(
             total_from_model = len(suggestions)
         else:
             raw = provider.complete_json(
-                SYSTEM_PROMPT, build_user_prompt(ctx.text, max_suggestions, language)
+                SYSTEM_PROMPT + ("\n" + prompt_addendum if prompt_addendum else ""),
+                build_user_prompt(ctx.text, max_suggestions, language)
             )
             payload = parse_model_payload(raw)
             total_from_model = len(payload.suggestions)
@@ -410,7 +414,9 @@ def review_with_ai(
             payload.suggestions, files, max_suggestions, min_confidence,
             max_suggestions_per_file,
         )
-        suggestions, evidence_rejections = validate_ai_evidence(suggestions, files)
+        evidence_rejections = []
+        if enable_evidence_gate:
+            suggestions, evidence_rejections = validate_ai_evidence(suggestions, files)
         critic_candidates = select_critic_candidates(suggestions) if enable_critic else []
         critic_batch = critique_batch(critic_provider or provider, critic_candidates, files)
         if enable_critic:
