@@ -1,22 +1,26 @@
-"""Two-stage AI review: triage → deep-dive on hotspots.
-
-This module is the entry point that orchestrates stage 1 (triage) and
-stage 2 (deep-dive).  Individual stages are implemented in triage.py
-and deep_review.py for testability and reuse.
-"""
+"""Bounded triage/deep review with explicit coverage and failure states."""
 
 from __future__ import annotations
 
-import logging
+from dataclasses import dataclass, field
 
-from src.analyzer.context_builder import build_review_context
+from src.analyzer.context_builder import ReviewContext, build_review_context
 from src.models import ChangedFile, PullRequest, ReviewSuggestion, RiskFinding, Severity
-from src.reviewer.provider import ProviderError, ReviewModelProvider
+from src.reviewer.deep_review import run_deep_review
+from src.reviewer.model_payload import parse_model_payload
+from src.reviewer.prompt import SYSTEM_PROMPT, build_user_prompt
+from src.reviewer.provider import ReviewModelProvider
 from src.reviewer.suggestion_filter import filter_suggestions
 from src.reviewer.triage import run_triage
-from src.reviewer.deep_review import run_deep_review
 
-logger = logging.getLogger(__name__)
+
+@dataclass
+class TwoStageResult:
+    summary: str
+    risk_level: Severity
+    suggestions: list[ReviewSuggestion]
+    status: str = "success"
+    stages: list[dict] = field(default_factory=list)
 
 
 def two_stage_review(
@@ -28,107 +32,58 @@ def two_stage_review(
     min_confidence: float = 0.0,
     max_suggestions_per_file: int = 5,
     language: str = "en",
-) -> tuple[str, Severity, list[ReviewSuggestion]]:
-    """Run two-stage AI review: triage → deep-dive on hotspots.
-
-    Returns (summary, risk_level, suggestions).
-    Falls back to one-shot if stage 1 returns no hotspots.
-    """
-    # ── Stage 1: Triage ───────────────────────────────────
+    review_context: ReviewContext | None = None,
+    prompt_addendum: str = "",
+) -> TwoStageResult:
+    # Rule conclusions never enter primary review, including triage or fallback.
+    ctx = review_context if review_context is not None else build_review_context(pr, files)
+    stages = []
     try:
-        hotspots = run_triage(pr, files, findings, provider)
-    except (ProviderError, Exception) as exc:
-        logger.warning("Two-stage: triage failed (%s), fallback to one-shot", exc)
-        return _fallback_one_shot(pr, files, findings, provider,
-                                  max_suggestions, min_confidence,
-                                  max_suggestions_per_file, language)
-
+        hotspots = run_triage(pr, files, [], provider, ctx.text)
+        stages.append({"stage": "triage", "status": "success"})
+    except Exception as exc:
+        hotspots = []
+        stages.append({"stage": "triage", "status": "failed", "error_type": type(exc).__name__})
     if not hotspots:
-        logger.info("Two-stage: triage found no hotspots — clean PR")
-        return (
-            f"PR #{pr.number}: {pr.title} — no high-risk areas identified. "
-            f"{len(findings)} rule-based finding(s).",
-            _highest_severity(findings),
-            [],
+        # No high-risk hotspot does not imply no medium/low issues. Perform
+        # the general review; recovery from a failed triage is traceable.
+        raw = provider.complete_json(
+            SYSTEM_PROMPT + ("\n" + prompt_addendum if prompt_addendum else ""),
+            build_user_prompt(ctx.text, max_suggestions, language),
         )
-
-    logger.info("Two-stage: %d hotspot(s) identified for deep review", len(hotspots))
-
-    # ── Stage 2: Deep-dive per hotspot ────────────────────
-    all_suggestions: list[ReviewSuggestion] = []
-    ctx = build_review_context(pr, files)
-
-    for i, hotspot in enumerate(hotspots[:5]):
-        suggestions = run_deep_review(hotspot, ctx.text, provider, language)
-        all_suggestions.extend(suggestions)
-        if not suggestions:
-            logger.info("Deep-dive #%d on %s returned no suggestions",
-                        i, hotspot.get("file_path", "?"))
-
-    # ── Merge & deduplicate ────────────────────────────────
+        payload = parse_model_payload(raw)
+        suggestions = filter_suggestions(
+            payload.suggestions, files, max_suggestions, min_confidence, max_suggestions_per_file
+        )
+        stages.append({"stage": "one_shot_fallback", "status": "success"})
+        return TwoStageResult(payload.summary, payload.risk_level, suggestions, stages=stages)
+    suggestions = []
+    for hotspot in hotspots[:5]:
+        result = run_deep_review(hotspot, ctx.text, provider, language, prompt_addendum)
+        suggestions.extend(result.suggestions)
+        stages.append(
+            {
+                "stage": "deep_review",
+                "file_path": hotspot["file_path"],
+                "status": result.status,
+                "error_type": result.error_type,
+            }
+        )
     final = filter_suggestions(
-        all_suggestions, files, max_suggestions, min_confidence,
-        max_suggestions_per_file,
+        suggestions, files, max_suggestions, min_confidence, max_suggestions_per_file
     )
-
+    deep_stages = stages[1:]
+    failed = sum(s["status"] != "success" for s in deep_stages)
+    status = (
+        "failed"
+        if all(s["status"] == "failed" for s in deep_stages)
+        else ("partial" if failed else "success")
+    )
+    risk = max(
+        (s.severity for s in final), key=lambda s: list(Severity).index(s), default=Severity.LOW
+    )
     summary = (
-        f"Two-stage review of PR #{pr.number}: {pr.title}. "
-        f"Stage 1 identified {len(hotspots)} hotspot(s); "
-        f"stage 2 produced {len(all_suggestions)} suggestion(s) "
-        f"({len(final)} after filtering). "
-        f"{len(findings)} rule-based finding(s) also present."
+        f"Two-stage review of PR #{pr.number}: {len(deep_stages)} hotspots reviewed; "
+        f"{failed} incomplete; {len(final)} suggestions. Coverage status: {status}."
     )
-
-    risk = _compute_risk(final, findings)
-    return summary, risk, final
-
-
-# ── Helpers ────────────────────────────────────────────────
-
-def _highest_severity(findings: list[RiskFinding]) -> Severity:
-    sevs = {f.severity for f in findings}
-    for s in (Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM):
-        if s in sevs:
-            return s
-    return Severity.LOW
-
-
-def _compute_risk(
-    suggestions: list[ReviewSuggestion],
-    findings: list[RiskFinding],
-) -> Severity:
-    sevs = set()
-    for s in suggestions:
-        sevs.add(s.severity)
-    for f in findings:
-        sevs.add(f.severity)
-    for s in (Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM):
-        if s in sevs:
-            return s
-    return Severity.LOW
-
-
-def _fallback_one_shot(
-    pr: PullRequest,
-    files: list[ChangedFile],
-    findings: list[RiskFinding],
-    provider: ReviewModelProvider,
-    max_suggestions: int,
-    min_confidence: float,
-    max_suggestions_per_file: int,
-    language: str,
-) -> tuple[str, Severity, list[ReviewSuggestion]]:
-    """Fallback to one-shot review when triage fails."""
-    from src.reviewer.model_payload import parse_model_payload
-    from src.reviewer.prompt import SYSTEM_PROMPT, build_user_prompt
-
-    ctx = build_review_context(pr, files)
-    raw = provider.complete_json(
-        SYSTEM_PROMPT, build_user_prompt(ctx.text, max_suggestions, language)
-    )
-    payload = parse_model_payload(raw)
-    suggestions = filter_suggestions(
-        payload.suggestions, files, max_suggestions,
-        min_confidence, max_suggestions_per_file,
-    )
-    return payload.summary, payload.risk_level, suggestions
+    return TwoStageResult(summary, risk, final, status, stages)

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass, field
 
 from src.models import ReviewSuggestion, Severity
 from src.reviewer.provider import ReviewModelProvider
@@ -25,9 +26,9 @@ def _build_deep_prompt(hotspot: dict, ctx_text: str, language: str) -> str:
     lang_note = "Output in Chinese (Simplified)." if language == "zh" else "Output in English."
     return f"""Review this risk hotspot in detail.
 
-Hotspot: {hotspot['file_path']} (lines ~{hotspot['start_line']}-{hotspot['end_line']})
-Risk category: {hotspot.get('risk_category', 'unknown')}
-Triage reason: {hotspot['reason']}
+Hotspot: {hotspot["file_path"]} (lines ~{hotspot["start_line"]}-{hotspot["end_line"]})
+Risk category: {hotspot.get("risk_category", "unknown")}
+Triage reason: {hotspot["reason"]}
 
 {lang_note}
 
@@ -62,21 +63,28 @@ def _safe_severity(s: object) -> Severity:
         return Severity.MEDIUM
 
 
+@dataclass
+class DeepReviewResult:
+    suggestions: list[ReviewSuggestion] = field(default_factory=list)
+    status: str = "success"
+    error_type: str | None = None
+
+
 def run_deep_review(
     hotspot: dict,
     ctx_text: str,
     provider: ReviewModelProvider,
     language: str = "en",
-) -> list[ReviewSuggestion]:
+    prompt_addendum: str = "",
+) -> DeepReviewResult:
     """Deep-dive a single hotspot, returning 0-3 suggestions.
 
-    Does NOT raise on failure — returns empty list instead,
-    so one failed hotspot doesn't block others.
+    Failed analysis is explicit and cannot masquerade as a clean hotspot.
     """
     hotspot_path = hotspot.get("file_path", "?") if isinstance(hotspot, dict) else "?"
     try:
         raw = provider.complete_json(
-            DEEP_SYSTEM,
+            DEEP_SYSTEM + ("\n" + prompt_addendum if prompt_addendum else ""),
             _build_deep_prompt(hotspot, ctx_text, language),
         )
         result = json.loads(raw)
@@ -84,15 +92,17 @@ def run_deep_review(
             raise TypeError(f"Expected JSON object, got {type(result).__name__}")
     except Exception as exc:
         logger.warning("Deep-dive on %s failed: %s", hotspot_path, exc)
-        return []
+        return DeepReviewResult(status="failed", error_type=type(exc).__name__)
 
     suggestions: list[ReviewSuggestion] = []
     raw_suggestions = result.get("suggestions", [])
     if not isinstance(raw_suggestions, list):
-        return suggestions
+        return DeepReviewResult(status="failed", error_type="InvalidSuggestions")
+    malformed = 0
     for s in raw_suggestions:
         try:
             if not isinstance(s, dict):
+                malformed += 1
                 continue
             confidence = s.get("confidence", 0.5)
             try:
@@ -102,17 +112,24 @@ def run_deep_review(
             evidence = s.get("evidence")
             if not isinstance(evidence, list):
                 evidence = []
-            suggestions.append(ReviewSuggestion(
-                file_path=str(s.get("file_path", hotspot["file_path"])),
-                line=s.get("line"),
-                severity=_safe_severity(s.get("severity", "medium")),
-                confidence=confidence,
-                title=str(s.get("title", "Issue")),
-                reason=str(s.get("reason", "")),
-                recommendation=str(s.get("recommendation", "")),
-                evidence=[str(item) for item in evidence],
-                failure_scenario=str(s.get("failure_scenario", "")),
-            ))
+            suggestions.append(
+                ReviewSuggestion(
+                    file_path=str(s.get("file_path", hotspot["file_path"])),
+                    line=s.get("line"),
+                    severity=_safe_severity(s.get("severity", "medium")),
+                    confidence=confidence,
+                    title=str(s.get("title", "Issue")),
+                    reason=str(s.get("reason", "")),
+                    recommendation=str(s.get("recommendation", "")),
+                    evidence=[str(item) for item in evidence],
+                    failure_scenario=str(s.get("failure_scenario", "")),
+                )
+            )
         except Exception:
+            malformed += 1
             logger.warning("Skipping malformed suggestion in %s", hotspot_path)
-    return suggestions
+    return DeepReviewResult(
+        suggestions,
+        "partial" if malformed else "success",
+        "InvalidSuggestions" if malformed else None,
+    )

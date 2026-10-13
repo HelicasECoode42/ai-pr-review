@@ -83,6 +83,8 @@ def _build_hunk(
 
     for raw_line in lines:
         try:
+            if raw_line.startswith("\\"):
+                continue  # Git newline markers do not consume source line numbers.
             if raw_line.startswith("+") and not raw_line.startswith("+++"):
                 added_lines.append(
                     ChangedLine(file_path=file_path, line=new_line, content=raw_line[1:])

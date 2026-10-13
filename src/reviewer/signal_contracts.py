@@ -57,6 +57,8 @@ class SignalVerification(BaseModel):
     adjusted_severity: Severity | None = None
     confidence: float = Field(ge=0.0, le=1.0)
     reason: str
+    evidence: list[str] = Field(default_factory=list)
+    failure_scenario: str = ""
 
 
 class SignalVerificationBatch(BaseModel):

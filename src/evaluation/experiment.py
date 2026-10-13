@@ -5,10 +5,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import subprocess
 from pathlib import Path
 
 from src.evaluation.reviewbench import run_review
+from src.evaluation.runtime import EvaluationFailure, source_identity
 from src.evaluation.scoring import GoldenCase, validate_splits
 from src.reviewer.provider import OpenAICompatibleProvider
 from src.utils.config import get_settings
@@ -24,9 +24,20 @@ VARIANTS = {
 def run(cases: list[GoldenCase], provider, model: str, project_root=None) -> dict:
     validate_splits(cases)
     records = []
+    stopped = False
     # Identical cases, model, confidence and suggestion budgets across variants.
     for case in cases:
         for variant, config in VARIANTS.items():
+            if stopped:
+                records.append(
+                    {
+                        "case_id": case.case_id,
+                        "variant": variant,
+                        "status": "not_run",
+                        "reason": "fatal_provider_error",
+                    }
+                )
+                continue
             try:
                 output, audit = run_review(
                     case.metadata,
@@ -53,12 +64,14 @@ def run(cases: list[GoldenCase], provider, model: str, project_root=None) -> dic
                         "variant": variant,
                         "status": "failed",
                         "error": type(exc).__name__,
+                        "failure": exc.record() if isinstance(exc, EvaluationFailure) else None,
                     }
                 )
+                stopped = isinstance(exc, EvaluationFailure) and exc.fatal
     return {
+        **source_identity(),
         "quality_status": "unadjudicated",
         "model": model,
-        "reviewer_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
         "dataset_sha256": hashlib.sha256(
             json.dumps([c.model_dump() for c in cases], sort_keys=True).encode()
         ).hexdigest(),

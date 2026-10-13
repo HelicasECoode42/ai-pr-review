@@ -19,7 +19,8 @@ def merge_review_results(
 ) -> ReviewMergeResult:
     by_key = {item.key: item for item in verification.items}
     result = ReviewMergeResult(suggestions=list(independent_suggestions))
-    occupied = {(item.file_path, item.line) for item in result.suggestions}
+    occupied = {(item.file_path, item.line, item.title.casefold())
+                for item in result.suggestions}
     for signal in signals:
         item = by_key.get(SignalKey.from_finding(signal))
         if item is None:
@@ -29,7 +30,7 @@ def merge_review_results(
             )
         if item.decision == SignalDecision.CONFIRMED:
             result.confirmed.append(item)
-            location = (signal.file_path, signal.line)
+            location = (signal.file_path, signal.line, signal.title.casefold())
             if location not in occupied:
                 result.suggestions.append(ReviewSuggestion(
                     file_path=signal.file_path, line=signal.line,
@@ -38,7 +39,7 @@ def merge_review_results(
                               else signal.severity),
                     confidence=item.confidence, title=signal.title, reason=item.reason,
                     recommendation=signal.recommendation, source="rule_confirmed",
-                    evidence=[signal.evidence], failure_scenario=item.reason,
+                    evidence=item.evidence, failure_scenario=item.failure_scenario,
                 ))
                 occupied.add(location)
         elif item.decision == SignalDecision.DISMISSED:

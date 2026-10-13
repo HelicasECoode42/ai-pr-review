@@ -54,3 +54,55 @@ def test_provider_preserves_safe_http_error_detail() -> None:
 
     assert exc_info.value.status_code == 400
     assert route.call_count == 1
+
+
+@respx.mock
+def test_streaming_provider_collects_content_and_actual_usage() -> None:
+    events = (
+        'data: {"id":"req","model":"served-model",'
+        '"choices":[{"delta":{"content":"{\\"ok\\":"}}]}\n\n'
+        'data: {"choices":[{"delta":{"content":"true}"}}]}\n\n'
+        'data: {"choices":[],"usage":{"prompt_tokens":8,'
+        '"completion_tokens":4,"total_tokens":12}}\n\n'
+        "data: [DONE]\n\n"
+    )
+    route = respx.post("https://provider.test/v1/chat/completions").mock(
+        return_value=httpx.Response(200, text=events)
+    )
+    with OpenAICompatibleProvider(
+        "test-key", "alias", "https://provider.test/v1", stream=True
+    ) as provider:
+        assert provider.complete_json("system", "user") == '{"ok":true}'
+        assert provider.usage_records[0]["model"] == "served-model"
+        assert provider.usage_records[0]["usage"]["total_tokens"] == 12
+    assert b'"stream":true' in route.calls[0].request.content
+
+
+@respx.mock
+def test_streaming_provider_rejects_unfinished_content() -> None:
+    respx.post("https://provider.test/v1/chat/completions").mock(
+        return_value=httpx.Response(200, text='data: {"choices":[{"delta":{"content":"{}"}}]}\n\n')
+    )
+    with OpenAICompatibleProvider(
+        "key", "model", "https://provider.test/v1", stream=True
+    ) as provider:
+        with pytest.raises(ProviderError, match="Incomplete streaming"):
+            provider.complete_json("system", "user")
+        assert provider.usage_records == []
+
+
+@respx.mock
+def test_output_budget_exhaustion_is_failure_not_repaired_success() -> None:
+    respx.post("https://provider.test/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200,
+            text='data: {"choices":[{"delta":{"content":"{}"},"finish_reason":"length"}]}\n\n'
+            'data: {"choices":[],"usage":{"total_tokens":10}}\n\ndata: [DONE]\n\n',
+        )
+    )
+    with OpenAICompatibleProvider(
+        "key", "model", "https://provider.test/v1", stream=True, max_output_tokens=4
+    ) as provider:
+        with pytest.raises(ProviderError, match="output token budget"):
+            provider.complete_json("system", "user")
+        assert provider.usage_records[0]["usage"]["total_tokens"] == 10

@@ -21,7 +21,8 @@ class ConfirmingProvider:
             '{"items":[{"key":{"rule_id":"secret-logging",'
             '"file_path":"src/app.py","line":1},"decision":"confirmed",'
             '"adjusted_severity":"medium","confidence":0.9,'
-            '"reason":"The changed line logs the token."}]}'
+            '"reason":"The changed line logs the token.","evidence":["print(token)"],'
+            '"failure_scenario":"Calling with a secret token writes it to stdout."}]}'
         )
 
 

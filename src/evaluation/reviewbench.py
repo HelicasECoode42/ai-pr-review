@@ -12,6 +12,7 @@ from pathlib import Path, PurePosixPath
 
 from src.analyzer.context_builder import build_review_context, truncate_to_token_budget
 from src.analyzer.diff_parser import parse_file_hunks
+from src.evaluation.runtime import EvaluationFailure, ObservedProvider
 from src.models import ChangedFile, FileStatus, PullRequest, ReviewMeta
 from src.reviewer.engine import review_with_ai
 from src.reviewer.provider import OpenAICompatibleProvider
@@ -27,8 +28,6 @@ def parse_diff(diff: str) -> list[ChangedFile]:
         lines = block.splitlines()
         old = next((x[4:] for x in lines if x.startswith("--- ")), None)
         new = next((x[4:] for x in lines if x.startswith("+++ ")), None)
-        if old is None or new is None:
-            raise ValueError("Binary or header-only diff is unsupported; review incomplete")
 
         def decode(value: str) -> str:
             if value.startswith('"'):
@@ -38,6 +37,33 @@ def parse_diff(diff: str) -> list[ChangedFile]:
                 value = ast.literal_eval("b" + value).decode("utf-8")
             return value
 
+        if old is None or new is None:
+            # Git omits ---/+++ for pure renames, mode-only and empty files.
+            header = re.fullmatch(
+                r'diff --git ("(?:\\.|[^"\\])*"|a/.*?) ("(?:\\.|[^"\\])*"|b/.*)', lines[0]
+            )
+            if header is None:
+                raise ValueError("Invalid git diff header")
+            old, new = header.groups()
+            if any(x.startswith("new file mode ") for x in lines):
+                old = "/dev/null"
+            if any(x.startswith("deleted file mode ") for x in lines):
+                new = "/dev/null"
+            known_metadata = any(
+                x.startswith(
+                    (
+                        "rename from ",
+                        "old mode ",
+                        "new file mode ",
+                        "deleted file mode ",
+                        "Binary files ",
+                        "GIT binary patch",
+                    )
+                )
+                for x in lines
+            )
+            if not known_metadata:
+                raise ValueError("Incomplete diff headers")
         old, new = decode(old), decode(new)
         raw_path = old if new == "/dev/null" else new
         if not raw_path.startswith(("a/", "b/")):
@@ -82,6 +108,8 @@ def run_review(
     prompt_addendum="",
     min_confidence=0.65,
     model="unknown",
+    two_stage=False,
+    verify_signals=False,
 ) -> tuple[dict, dict]:
     files = parse_diff(diff)
     pr = PullRequest(
@@ -108,12 +136,18 @@ def run_review(
 
         context.token_count = count_tokens(context.text)
     started = time.perf_counter()
+    observed = ObservedProvider(provider)
+    usage_start = len(getattr(provider, "usage_records", []))
+    from src.analyzer.risk_rules import collect_signals
+
     report = review_with_ai(
         pr,
         files,
-        [],
-        provider,
+        collect_signals(files) if verify_signals else [],
+        observed,
         max_suggestions=20,
+        two_stage=two_stage,
+        verify_rule_signals=verify_signals,
         min_confidence=min_confidence,
         enable_critic=critic,
         enable_evidence_gate=evidence,
@@ -121,10 +155,12 @@ def run_review(
         prompt_addendum=prompt_addendum,
         review_meta=ReviewMeta(reviewed_commit=metadata["head"]),
     )
+    if observed.errors:
+        raise EvaluationFailure("provider", status_code=observed.errors[-1].status_code)
     if not report.used_ai or report.ai_failure_reason or report.execution_status != "success":
-        raise RuntimeError("AI review failed or degraded; refusing successful benchmark output")
+        raise EvaluationFailure("review_failed_or_degraded", outputs=observed.outputs)
     if critic and any(d.get("decision") == "unverified" for d in report.critic_decisions):
-        raise RuntimeError("Critic degraded; refusing successful ablation output")
+        raise EvaluationFailure("critic_degraded")
     agent = metadata.get("agent", "ai-pr-review")
     findings = [
         {
@@ -156,21 +192,44 @@ def run_review(
             "evidence": evidence,
             "critic": critic,
             "context_pack": context_pack,
+            "two_stage": two_stage,
+            "verify_signals": verify_signals,
             "min_confidence": min_confidence,
             "prompt_sha256": hashlib.sha256(prompt_addendum.encode()).hexdigest(),
         },
         "report": report.model_dump(mode="json"),
-        "token_usage": None,
+        "input_coverage": {
+            "binary_files": [
+                f.filename
+                for f in files
+                if f.patch and re.search(r"(?m)^(Binary files |GIT binary patch)", f.patch)
+            ],
+            "metadata_only_files": [f.filename for f in files if not parse_file_hunks(f)],
+            "context_truncated": report.context_truncated,
+            "skipped_files": [f.model_dump() for f in report.skipped_context_files],
+        },
+        "request_count": observed.calls,
+        "usage_records": getattr(provider, "usage_records", [])[usage_start:],
+        "token_usage": _usage_total(getattr(provider, "usage_records", [])[usage_start:]),
         "cost_usd": None,
     }
     return output, audit
+
+
+def _usage_total(records: list[dict]) -> dict | None:
+    if not records or any(not isinstance(r.get("usage"), dict) for r in records):
+        return None
+    keys = ("prompt_tokens", "completion_tokens", "total_tokens")
+    if any(type(r["usage"].get(k)) is not int for r in records for k in keys):
+        return None
+    return {k: sum(r["usage"][k] for r in records) for k in keys}
 
 
 def main() -> None:
     output_path = Path(os.environ["RB_OUT"])
     # Remove stale artifacts before any input or provider failure.
     output_path.unlink(missing_ok=True)
-    audit_path = output_path.with_suffix(".audit.json")
+    audit_path = output_path.with_suffix(".audit")
     audit_path.unlink(missing_ok=True)
     settings = get_settings()
     if not settings.openai_api_key:
@@ -214,6 +273,8 @@ def main() -> None:
             context_pack=pack,
             project_root=Path("/work/repo"),
             model=model,
+            two_stage=flag("TWO_STAGE", "false"),
+            verify_signals=flag("VERIFY_SIGNALS", "false"),
         )
     audit["reviewer_commit"] = (
         os.environ.get("REVIEWER_COMMIT")

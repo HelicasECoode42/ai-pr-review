@@ -44,8 +44,9 @@ def test_diff_paths_and_counts():
     assert (file.filename, file.additions, file.deletions) == ("app.py", 1, 1)
     with pytest.raises(ValueError):
         parse_diff(DIFF.replace("b/app.py", "b/../app.py"))
-    with pytest.raises(ValueError):
-        parse_diff("diff --git a/logo.png b/logo.png\nBinary files differ")
+    binary = parse_diff("diff --git a/logo.png b/logo.png\nBinary files differ")[0]
+    assert binary.filename == "logo.png"
+    assert binary.additions == 0
     quoted = DIFF.replace("--- a/app.py", '--- "a/\\303\\251.py"').replace(
         "+++ b/app.py", '+++ "b/\\303\\251.py"'
     )
@@ -66,7 +67,7 @@ def test_failure_is_not_empty_success():
         def complete_json(self, *args):
             raise RuntimeError("unavailable")
 
-    with pytest.raises(RuntimeError, match="failed or degraded"):
+    with pytest.raises(RuntimeError, match="review_failed_or_degraded"):
         run_review(META, DIFF, Broken())
 
 
@@ -161,7 +162,7 @@ def test_critic_unverified_is_failed_experiment():
             self.calls += 1
             return json.dumps(payload if self.calls == 1 else {"items": []})
 
-    with pytest.raises(RuntimeError, match="Critic degraded"):
+    with pytest.raises(RuntimeError, match="critic_degraded"):
         run_review(META, DIFF, MissingCritic(), critic=True)
 
 

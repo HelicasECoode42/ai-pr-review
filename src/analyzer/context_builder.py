@@ -400,6 +400,12 @@ def build_review_context(
                     lockfiles_skipped += 1
                 continue
 
+            if file.patch and any(line.startswith(("Binary files ", "GIT binary patch"))
+                                  for line in file.patch.splitlines()):
+                skipped_files.append((file.filename, "binary_content_not_analyzed"))
+                partial_flag = True
+                continue
+
             # Check for binary or encoding issues before processing
             if _has_binary_extension(file.filename) or _patch_has_encoding_issues(file.filename, file.patch):
                 skipped_files.append((file.filename, "encoding_skipped"))

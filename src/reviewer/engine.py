@@ -388,18 +388,27 @@ def review_with_ai(
         # The main review must start from the PR text and diff alone. Rule
         # results are retained as audit signals, not injected as conclusions.
         ctx = review_context if review_context is not None else build_review_context(pr, files)
+        stage_audit = []
         if two_stage:
             from src.reviewer.two_stage import two_stage_review
-            summary, risk_level, suggestions = two_stage_review(
+            stage_result = two_stage_review(
                 pr, files, [], provider,
                 max_suggestions=max_suggestions,
                 min_confidence=min_confidence,
                 max_suggestions_per_file=max_suggestions_per_file,
                 language=language,
+                review_context=ctx,
+                prompt_addendum=prompt_addendum,
             )
+            stage_audit = stage_result.stages
+            if stage_result.status != "success":
+                execution_status = stage_result.status
+                report_confidence = "partial" if execution_status == "partial" else "failed"
+                degradation_reason = "Two-stage review contains incomplete hotspots"
+            suggestions = stage_result.suggestions
             payload = ModelReviewPayload(
-                summary=summary,
-                risk_level=risk_level,
+                summary=stage_result.summary,
+                risk_level=stage_result.risk_level,
                 suggestions=suggestions,
             )
             total_from_model = len(suggestions)
@@ -414,6 +423,16 @@ def review_with_ai(
             payload.suggestions, files, max_suggestions, min_confidence,
             max_suggestions_per_file,
         )
+        independent_suggestions = list(suggestions)
+        verifiable_signals = select_verifiable_signals(findings) if verify_rule_signals else []
+        verification = ProviderSignalVerifier(provider).verify_batch(
+            build_signal_envelopes(verifiable_signals, files)
+        )
+        merged = merge_review_results(suggestions, verifiable_signals, verification)
+        suggestions = filter_suggestions(
+            merged.suggestions, files, max_suggestions, min_confidence, max_suggestions_per_file
+        )
+        # Every origin passes the same output-integrity and Critic policy.
         evidence_rejections = []
         if enable_evidence_gate:
             suggestions, evidence_rejections = validate_ai_evidence(suggestions, files)
@@ -423,19 +442,16 @@ def review_with_ai(
             suggestions, critic_decisions = apply_critic(suggestions, critic_candidates, critic_batch)
         else:
             critic_decisions = []
-        independent_suggestion_count = len(suggestions)
-        verifiable_signals = select_verifiable_signals(findings) if verify_rule_signals else []
-        verification = ProviderSignalVerifier(provider).verify_batch(
-            build_signal_envelopes(verifiable_signals, files)
-        )
-        merged = merge_review_results(suggestions, verifiable_signals, verification)
-        suggestions = filter_suggestions(
-            merged.suggestions, files, max_suggestions, min_confidence, max_suggestions_per_file
+        independent_suggestion_count = sum(
+            any((s.file_path, s.line, s.title) == (i.file_path, i.line, i.title)
+                for i in independent_suggestions) for s in suggestions
         )
         # The visible risk level must describe the final, evidence-gated
         # suggestions rather than an unfiltered model draft.
         risk_level = _max_severity([suggestion.severity for suggestion in suggestions])
         warnings: list[str] = []
+        if stage_audit and any(s["status"] != "success" for s in stage_audit):
+            warnings.append("Two-stage failures recorded; inspect stage_results for coverage.")
         hidden = total_from_model - independent_suggestion_count
         if hidden > 0:
             warnings.append(
@@ -476,7 +492,7 @@ def review_with_ai(
         completeness = _build_completeness(
             pr=pr, files=files,
             skipped_ctx=skipped_ctx, ctx_truncated=ctx.truncated,
-            used_ai=True, ai_failed=False,
+            used_ai=True, ai_failed=(execution_status == "failed"),
             pr_syntax_ok=pr_syntax_ok,
         )
         report = ReviewReport(
@@ -507,6 +523,7 @@ def review_with_ai(
             unverified_signals=[item.model_dump(mode="json") for item in merged.unverified],
             evidence_rejections=evidence_rejections,
             critic_decisions=critic_decisions,
+            stage_results=stage_audit,
             metrics={
                 "raw_signal_count": len(findings),
                 "main_review_prompt_signal_count": 0,

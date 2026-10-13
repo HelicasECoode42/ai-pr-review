@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import time
 from typing import Protocol
 
 import httpx
@@ -14,8 +16,7 @@ class ProviderError(Exception):
 
 
 class ReviewModelProvider(Protocol):
-    def complete_json(self, system_prompt: str, user_prompt: str) -> str:
-        ...
+    def complete_json(self, system_prompt: str, user_prompt: str) -> str: ...
 
 
 class OpenAICompatibleProvider:
@@ -25,8 +26,15 @@ class OpenAICompatibleProvider:
         model: str,
         base_url: str = "https://api.openai.com/v1",
         timeout: float = 45.0,
+        stream: bool = False,
+        max_output_tokens: int | None = None,
+        total_timeout: float | None = None,
     ) -> None:
         self._model = model
+        self._stream = stream
+        self._max_output_tokens = max_output_tokens
+        self._total_timeout = total_timeout
+        self.usage_records: list[dict] = []
         self._client = httpx.Client(
             base_url=base_url.rstrip("/"),
             headers={"Authorization": f"Bearer {api_key}"},
@@ -43,7 +51,11 @@ class OpenAICompatibleProvider:
             "temperature": 0.1,
             "response_format": {"type": "json_object"},
         }
+        if self._max_output_tokens is not None:
+            payload["max_tokens"] = self._max_output_tokens
         try:
+            if self._stream:
+                return self._complete_stream(payload)
             response = self._client.post("/chat/completions", json=payload)
             # Some OpenAI-compatible providers accept the chat API but reject
             # response_format. Retry once without it so the downstream JSON
@@ -78,12 +90,87 @@ class OpenAICompatibleProvider:
                 status_code=status,
             ) from exc
         except httpx.RequestError as exc:
-            raise ProviderError(
-                f"Failed to reach model provider: {exc}"
-            ) from exc
+            raise ProviderError(f"Failed to reach model provider: {exc}") from exc
 
-        data = response.json()
-        return data["choices"][0]["message"]["content"]
+        try:
+            data = response.json()
+            content = data["choices"][0]["message"]["content"]
+            if not isinstance(content, str):
+                raise TypeError("Content is not text")
+        except (ValueError, KeyError, IndexError, TypeError) as exc:
+            raise ProviderError("Malformed model response") from exc
+        self.usage_records.append(
+            {
+                "model": data.get("model", self._model),
+                "usage": data.get("usage"),
+                "request_id": data.get("id"),
+            }
+        )
+        return content
+
+    def _complete_stream(self, payload: dict) -> str:
+        started = time.perf_counter()
+        payload = {**payload, "stream": True, "stream_options": {"include_usage": True}}
+        # SSE keeps the connection active while the model reasons. It changes
+        # transport only; model, temperature and review prompts stay identical.
+        for attempt in range(2):
+            with self._client.stream("POST", "/chat/completions", json=payload) as response:
+                if response.status_code >= 400:
+                    response.read()
+                    if (
+                        attempt == 0
+                        and response.status_code == 400
+                        and _rejects_response_format(response)
+                    ):
+                        payload.pop("response_format", None)
+                        continue
+                    response.raise_for_status()
+                content = []
+                usage = None
+                model = self._model
+                request_id = None
+                done = False
+                exhausted = False
+                total = 0
+                for line in response.iter_lines():
+                    if self._total_timeout and time.perf_counter() - started > self._total_timeout:
+                        raise ProviderError("Model call exceeded total time budget")
+                    if not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if data == "[DONE]":
+                        done = True
+                        break
+                    try:
+                        event = json.loads(data)
+                        model = event.get("model", model)
+                        request_id = event.get("id", request_id)
+                        if event.get("usage") is not None:
+                            usage = event["usage"]
+                        for choice in event.get("choices", []):
+                            if choice.get("finish_reason") == "length":
+                                exhausted = True
+                            text = choice.get("delta", {}).get("content")
+                            if text:
+                                if not isinstance(text, str):
+                                    raise ValueError("Non-text content")
+                                content.append(text)
+                                total += len(text)
+                                if total > 2_000_000:
+                                    raise ProviderError(
+                                        "Model output exceeded bounded response size"
+                                    )
+                    except (ValueError, AttributeError, TypeError) as exc:
+                        raise ProviderError("Malformed streaming model response") from exc
+                if not done or not content:
+                    raise ProviderError("Incomplete streaming model response")
+                self.usage_records.append(
+                    {"model": model, "usage": usage, "request_id": request_id}
+                )
+                if exhausted:
+                    raise ProviderError("Model exhausted output token budget")
+                return "".join(content)
+        raise ProviderError("Model rejected structured response format")
 
     def close(self) -> None:
         self._client.close()

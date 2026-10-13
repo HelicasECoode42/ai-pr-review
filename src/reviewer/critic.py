@@ -7,6 +7,7 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
+from src.analyzer.diff_parser import parse_file_hunks
 from src.models import ChangedFile, ReviewSuggestion, Severity
 from src.reviewer.provider import ProviderError, ReviewModelProvider
 
@@ -49,12 +50,12 @@ def critique_batch(
 ) -> CriticBatch:
     if not candidates:
         return CriticBatch()
-    patches = {file.filename: file.patch or "" for file in files}
+    by_path = {file.filename: file for file in files}
     items = [
         {
             "suggestion_index": index,
             "candidate": suggestion.model_dump(mode="json"),
-            "patch": patches.get(suggestion.file_path, "")[:3000],
+            "patch": _candidate_window(by_path.get(suggestion.file_path), suggestion.line),
         }
         for index, suggestion in candidates
     ]
@@ -103,17 +104,39 @@ def apply_critic(
             decision = verdict.decision
             reason = verdict.reason
             confidence = verdict.confidence
-        audit.append({
-            "suggestion_index": index,
-            "file_path": suggestion.file_path,
-            "line": suggestion.line,
-            "title": suggestion.title,
-            "decision": decision.value,
-            "confidence": confidence,
-            "reason": reason,
-        })
+        audit.append(
+            {
+                "suggestion_index": index,
+                "file_path": suggestion.file_path,
+                "line": suggestion.line,
+                "title": suggestion.title,
+                "decision": decision.value,
+                "confidence": confidence,
+                "reason": reason,
+            }
+        )
         if decision == CriticDecision.CONFIRMED:
             kept.append(suggestion.model_copy(update={"source": "ai_critic_confirmed"}))
         elif decision == CriticDecision.UNVERIFIED:
             kept.append(suggestion.model_copy(update={"source": "ai_critic_unverified"}))
     return kept, audit
+
+
+def _candidate_window(file: ChangedFile | None, line: int | None, budget: int = 3000) -> str:
+    """Use the candidate's hunk, not the beginning of a possibly huge file diff."""
+    if file is None or line is None:
+        return ""
+    for hunk in parse_file_hunks(file):
+        if not hunk.new_start <= line < hunk.new_start + max(hunk.new_count, 1):
+            continue
+        lines = hunk.raw.splitlines()[1:]
+        current = hunk.new_start
+        for index, raw in enumerate(lines):
+            if not raw.startswith(("-", "\\")):
+                if current == line:
+                    # Preserve cited line first; then include bounded nearby code.
+                    anchor = raw[: budget // 2]
+                    nearby = "\n".join(lines[max(0, index - 15) : index + 16])
+                    return (f"{hunk.header}\nCited head line {line}: {anchor}\n" + nearby)[:budget]
+                current += 1
+    return ""

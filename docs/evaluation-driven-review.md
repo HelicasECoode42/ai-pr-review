@@ -34,8 +34,8 @@ onboarding are required for published reproducibility. The adapter reads
 RB_CONFIG_MODEL, RB_CONFIG_EVIDENCE, RB_CONFIG_CRITIC, RB_CONFIG_CONTEXT_PACK
 and RB_MODEL_BASE_URL. Configuration booleans must be true or false.
 It removes stale output before running and writes findings only after successful
-AI review. Critic failure also fails the experiment. Binary/header-only patches
-fail explicitly rather than silently excluding changes. Deleted files cannot
+AI review. Critic failure also fails the experiment. Pure renames, mode changes, empty files and binary metadata are now preserved.
+Binary content is explicitly listed as unanalysed in context and audit coverage. Deleted files cannot
 produce head-line findings. Remote context fetch is disabled.
 
 Target Context Pack reads only AGENTS.md and docs/review-guide.md inside the
@@ -76,7 +76,7 @@ claims. Latency is wall time; token usage and dollar cost are null until provide
 usage instrumentation is added. Never confuse context token estimates with billed
 model token counts.
 
-Recorded real attempt: `docs/evaluation/synthetic-model-run.json`, model
+Historical failed attempt: `docs/evaluation/synthetic-model-run.json`, model
 `deepseek-v4-flash`, 16 failed runs, provider HTTP 402 / insufficient balance.
 No semantic metrics were computed. `reviewbench-input-smoke.json` records one
 real mirror task's parsed diff and benchmark revision without model calls.
@@ -110,7 +110,7 @@ by these papers are treated as expected code-review gains.
 
 ## Delivery and resume boundary
 
-After restoring model credit: run frozen external development tasks, independently
+Model credit was restored during this session. Continue frozen external tasks, independently
 adjudicate findings, establish baseline, repeat ablations, freeze validation and
 final test sets, then exercise the candidate loop. Add Langfuse afterward.
 Keep the draft unmerged until these acceptance conditions are met.
@@ -132,3 +132,53 @@ means all predictions were adjudicated as unmatched. Failed or unadjudicated run
 make a variant's quality metrics null. Do not use partial aggregates to accept a
 candidate. The initial model attempt used an uncommitted working tree; its commit
 field identifies the base only, which is explicitly recorded in its artifact.
+
+## Official corpus execution (current implementation)
+
+```sh
+python -m src.evaluation.corpus prepare --benchmark /path/to/ReviewBench \
+  --cache reports/evaluation/mirrors --output reports/evaluation/official --fetch
+python -m src.evaluation.corpus run reports/evaluation/official/prepared.json \
+  --output reports/evaluation/baseline
+python -m src.evaluation.retry reports/evaluation/official/prepared.json \
+  reports/evaluation/baseline --output reports/evaluation/baseline-retry
+```
+
+Preparation reads only the manifest, not golden labels. All 25 official tasks
+were fetched and parsed; preparation provenance is saved under
+`docs/evaluation/reviewbench-2026-10-13/`. This does not mean model evaluation
+or judging is complete. Actual model runs are saved separately under reports.
+Retry uses streaming and 180s timeout, preserves successful candidates with their
+original audit and does not reissue their model calls. Its results explicitly
+record transport differences and all earlier failed attempts. Three consecutive
+failures or a fatal HTTP error stop the remaining retries. Output directories
+must be fresh to prevent stale findings from contaminating evaluation.
+
+Official local judging (after `npm ci` in the benchmark checkout):
+
+```sh
+python -m src.evaluation.corpus judge --benchmark /path/to/ReviewBench \
+  --candidates reports/evaluation/baseline-retry/candidates \
+  --provider deepseek --model deepseek-v4-flash \
+  --output reports/evaluation/judge/results.json \
+  --repo-cache reports/evaluation/judge-repos
+```
+
+Set DEEPSEEK_API_KEY in the child environment; keys never belong in task files
+or command arguments. This invokes the original matcher/classifier/scorer,
+not the internal one-to-one scoring approximation. Local judge results remain
+local experiments, not official leaderboard submissions. Using the same model
+family for reviewer and judge does not constitute independent human verification.
+SDK token-price estimates may be stale; preserve usage and do not claim actual
+dollar spend from them. Candidate files and audit files live in separate trees
+because the official judge recursively reads JSON candidates. The container
+entrypoint's JSON audit uses `.audit` extension for the same reason.
+
+Reliability changes: confirmed rule candidates now pass the same Evidence Gate
+and Critic as independent findings. Verifier output needs independent evidence
+and failure_scenario; copying reason is no longer sufficient. Two-stage returns
+explicit stage results, partial/failed coverage and a general-review fallback
+when triage finds no hotspots. Triage sees actual context while rule conclusions
+stay isolated. Critic reads the candidate-centred hunk rather than the first
+3000 characters. These improve failure/contract handling; semantic gains still
+require controlled experiments. No autonomous optimization has been enabled.
