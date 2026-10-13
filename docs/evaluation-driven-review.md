@@ -182,3 +182,30 @@ when triage finds no hotspots. Triage sees actual context while rule conclusions
 stay isolated. Critic reads the candidate-centred hunk rather than the first
 3000 characters. These improve failure/contract handling; semantic gains still
 require controlled experiments. No autonomous optimization has been enabled.
+
+Fixed-suggestion Critic ablation:
+
+```sh
+python -m src.evaluation.critic_replay reports/evaluation/official/prepared.json \
+  reports/evaluation/baseline-retry --output reports/evaluation/critic-replay
+```
+
+This reuses exact baseline comments and varies only the post-hoc Critic decision.
+It does not estimate Evidence Gate removal or new context strategy effects,
+which require additional experiments with raw reviewer drafts or fresh runs.
+Critic failures do not become successful empty predictions. Original wording
+is preserved so semantic judging compares the same retained findings.
+
+Bounded parallel retry is available as `python -m src.evaluation.parallel_retry`
+with the same prepared/previous/output arguments and `--concurrency 2`. Each
+task has its own provider and usage records; successful candidate/audit files
+are reused. Fatal provider errors halt queued tasks. Source identity is captured
+at run start. HTTP failures, transport errors, timeouts, malformed responses and
+budget exhaustion now have distinct diagnostic kinds. Raw model output on JSON
+validation failure is retained for diagnosis rather than recast as no findings.
+
+Output ceilings are 32768 tokens; read-idle timeout is 180s, and streamed events
+are checked against a 300s total budget. A silent read may exceed that total
+check until its idle timeout expires; this is not a hard external process kill.
+Interrupted calls may be billed without returning usage, so accepted-response
+usage totals are a lower bound and must not be reported as complete spending.

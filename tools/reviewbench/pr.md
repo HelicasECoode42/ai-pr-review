@@ -1,13 +1,22 @@
-The current reviewer lacks a reproducible external benchmark entrypoint. This adds a ReviewBench mounted-input adapter, synthetic development fixtures with executable label checks, independently adjudicated finding-level scoring, controlled ablation orchestration and a constrained configuration proposal prototype.
+The reviewer had no complete external evaluation input path, and confirmed rule candidates bypassed the evidence/Critic checks applied to independent findings. Two-stage review could also present failed hotspot calls as empty successful results.
 
-Existing CLI, GitHub Actions, Web and VS Code defaults are preserved. The adapter never supplies golden labels to the reviewer, refuses degraded model/critic results, and avoids loading this project's Context Pack when reviewing another repository.
+This draft integrates all 25 official ReviewBench task inputs and its original local judging CLI, then fixes those verification and coverage contracts. Rule conclusions stay isolated from primary review. Confirmed signal candidates now require their own evidence/failure scenario and pass the shared gates. Triage sees actual diff context, empty triage falls back to general review, and deep review returns explicit partial/failed stage records. Critic context centres on the candidate hunk.
+
+Evaluation handling preserves renames, mode/empty-file changes and binary metadata, captures actual usage and served model names, separates audit JSON from candidate JSON, rejects stale output directories, and stops on fatal provider errors. Streaming retries preserve earlier successful outputs and impose explicit time/token budgets.
 
 Validation:
-- Full Python regression suite: 122 passed; VS Code extension compiles successfully.
-- New evaluation modules pass Ruff checks.
-- One real ReviewBench mirror PR parsed successfully (10 changed files), with input hash and benchmark revision recorded.
-- Real DeepSeek model experiment attempted: 16/16 calls failed with HTTP 402 due to insufficient balance. No precision, recall or improvement claims.
+- All 25 official task mirrors fetched and diff inputs parsed; source benchmark revision and per-input hashes recorded.
+- 135 Python tests passed; new evaluation modules pass Ruff; VS Code extension compiles.
+- Real DeepSeek requests resumed after credit restoration; all 25 official PRs now have successful candidate output, with original failures and changed retry budgets retained. Full local judging and fixed-suggestion Critic ablation are in progress.
+- Original ReviewBench matcher/scorer completed one smoke PR; its candidate matched a golden false positive. This is a failure case, not a quality gain claim.
 
-This draft is deliberately not ready to merge. Semantic evaluation and official ReviewBench judging require usable model credit and independent adjudication. The improvement loop is an offline configuration prototype, not production autonomous code modification. Docker image build is blocked because the local Docker daemon is not running. ReviewBench artifacts and local synthetic cases are explicitly distinguished.
+Scope and limitations:
+- Still a draft, not ready to merge. Full baseline judging, controlled ablations, independent label audit and broader repository context remain required.
+- Successful outputs from earlier transports are retained with their original dirty-tree source hashes and audit provenance; this is an engineering baseline, not a clean-commit effectiveness comparison.
+- Judge currently uses the same DeepSeek model family as the reviewer; local LLM judging does not substitute for independent human review or official leaderboard scoring.
+- Design/contract review schema expansion and autonomous improvement remain deferred. The earlier constrained configuration prototype is not enabled in production.
+- Docker build remains unverified because the local daemon is not running.
 
-Tracking issue: #44.
+Tracking: #44; existing semantic-quality work: #40 and #41. Research and development standard: docs/review-research-and-development-standard.md.
+
+CI dependency maintenance: update vsce to 4.0.0, build with Node 22, and refresh the lockfile. Local npm audit reports 0 vulnerabilities; compile and actual VSIX packaging pass.

@@ -10,9 +10,12 @@ import httpx
 class ProviderError(Exception):
     """Raised when the model provider fails."""
 
-    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+    def __init__(
+        self, message: str, *, status_code: int | None = None, kind: str = "provider_error"
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
+        self.kind = "http_error" if status_code is not None else kind
 
 
 class ReviewModelProvider(Protocol):
@@ -66,7 +69,7 @@ class OpenAICompatibleProvider:
                 response = self._client.post("/chat/completions", json=fallback_payload)
             response.raise_for_status()
         except httpx.TimeoutException:
-            raise ProviderError("AI model request timed out") from None
+            raise ProviderError("AI model request timed out", kind="timeout") from None
         except httpx.HTTPStatusError as exc:
             status = exc.response.status_code
             detail = _safe_error_detail(exc.response)
@@ -98,7 +101,7 @@ class OpenAICompatibleProvider:
             if not isinstance(content, str):
                 raise TypeError("Content is not text")
         except (ValueError, KeyError, IndexError, TypeError) as exc:
-            raise ProviderError("Malformed model response") from exc
+            raise ProviderError("Malformed model response", kind="malformed_response") from exc
         self.usage_records.append(
             {
                 "model": data.get("model", self._model),
@@ -132,9 +135,12 @@ class OpenAICompatibleProvider:
                 done = False
                 exhausted = False
                 total = 0
+                finish_reason = None
                 for line in response.iter_lines():
                     if self._total_timeout and time.perf_counter() - started > self._total_timeout:
-                        raise ProviderError("Model call exceeded total time budget")
+                        raise ProviderError(
+                            "Model call exceeded total time budget", kind="budget_exhausted"
+                        )
                     if not line.startswith("data:"):
                         continue
                     data = line[5:].strip()
@@ -148,6 +154,7 @@ class OpenAICompatibleProvider:
                         if event.get("usage") is not None:
                             usage = event["usage"]
                         for choice in event.get("choices", []):
+                            finish_reason = choice.get("finish_reason") or finish_reason
                             if choice.get("finish_reason") == "length":
                                 exhausted = True
                             text = choice.get("delta", {}).get("content")
@@ -162,13 +169,23 @@ class OpenAICompatibleProvider:
                                     )
                     except (ValueError, AttributeError, TypeError) as exc:
                         raise ProviderError("Malformed streaming model response") from exc
-                if not done or not content:
-                    raise ProviderError("Incomplete streaming model response")
                 self.usage_records.append(
-                    {"model": model, "usage": usage, "request_id": request_id}
+                    {
+                        "model": model,
+                        "usage": usage,
+                        "request_id": request_id,
+                        "finish_reason": finish_reason,
+                        "stream_complete": done,
+                    }
                 )
                 if exhausted:
-                    raise ProviderError("Model exhausted output token budget")
+                    raise ProviderError(
+                        "Model exhausted output token budget", kind="budget_exhausted"
+                    )
+                if not done or not content:
+                    raise ProviderError(
+                        "Incomplete streaming model response", kind="incomplete_response"
+                    )
                 return "".join(content)
         raise ProviderError("Model rejected structured response format")
 

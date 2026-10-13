@@ -177,3 +177,124 @@ def test_metadata_only_and_newline_marker_are_real_git_changes():
         }
     )
     assert parse_file_hunks(file)[0].added_lines[0].line == 1
+
+
+def test_critic_replay_keeps_main_output_fixed(tmp_path):
+    import hashlib
+
+    from src.evaluation.corpus import write_json
+    from src.evaluation.critic_replay import replay
+    from src.models import ReviewSuggestion
+
+    work = tmp_path / "input"
+    work.mkdir()
+    diff = "diff --git a/app.py b/app.py\n--- a/app.py\n+++ b/app.py\n" + FILE.patch
+    (work / "diff.patch").write_text(diff)
+    digest = hashlib.sha256(diff.encode()).hexdigest()
+    suggestion = ReviewSuggestion(
+        file_path="app.py",
+        line=1,
+        severity=Severity.HIGH,
+        confidence=0.9,
+        title="Leak",
+        reason="Token printed",
+        recommendation="Mask",
+        evidence=["print(token)"],
+        failure_scenario="Credential leaks",
+    )
+    baseline = tmp_path / "baseline"
+    write_json(
+        baseline / "run.json",
+        {"benchmark_commit": "revision", "records": [{"case_id": "one", "status": "success"}]},
+    )
+    write_json(
+        baseline / "audits/one.json",
+        {"diff_sha256": digest, "report": {"suggestions": [suggestion.model_dump(mode="json")]}},
+    )
+    write_json(
+        baseline / "candidates/one.json", {"pr": {}, "findings": [{"message": "Original text"}]}
+    )
+    prepared = {
+        "benchmark_commit": "revision",
+        "records": [{"case_id": "one", "input_dir": str(work), "diff_sha256": digest}],
+    }
+    provider = SequenceProvider(
+        [
+            {
+                "items": [
+                    {
+                        "suggestion_index": 0,
+                        "decision": "dismissed",
+                        "confidence": 0.9,
+                        "reason": "Not a credential",
+                    }
+                ]
+            }
+        ]
+    )
+    result = replay(prepared, baseline, tmp_path / "critic", provider)
+    assert len(provider.calls) == 1  # no main reviewer re-generation
+    assert result["records"][0]["before_count"] == 1
+    assert result["records"][0]["after_count"] == 0
+    assert json.loads((tmp_path / "critic/candidates/one.json").read_text())["findings"] == []
+
+
+def test_parallel_retry_does_not_call_model_for_successful_tasks(tmp_path):
+    import hashlib
+
+    from src.evaluation.corpus import write_json
+    from src.evaluation.parallel_retry import run
+
+    work = tmp_path / "input"
+    work.mkdir()
+    diff = "diff --git a/app.py b/app.py\n--- a/app.py\n+++ b/app.py\n" + FILE.patch
+    (work / "diff.patch").write_text(diff)
+    digest = hashlib.sha256(diff.encode()).hexdigest()
+    previous = tmp_path / "previous"
+    write_json(
+        previous / "run.json",
+        {
+            "model": "test",
+            "benchmark_commit": "rev",
+            "records": [{"case_id": "old", "status": "success"}],
+        },
+    )
+    write_json(previous / "candidates/old.json", {"findings": []})
+    write_json(previous / "audits/old.json", {"original": True})
+    metadata = {
+        "nwo": "test/repo",
+        "pr_number": 1,
+        "title": "Change",
+        "base": "a" * 40,
+        "head": "b" * 40,
+    }
+    prepared = {
+        "benchmark_commit": "rev",
+        "records": [
+            {
+                "case_id": name,
+                "status": "ready",
+                "metadata": metadata,
+                "input_dir": str(work),
+                "diff_sha256": digest,
+            }
+            for name in ("old", "new")
+        ],
+    }
+    calls = []
+
+    class Provider:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def complete_json(self, *args):
+            calls.append("main")
+            return json.dumps(EMPTY)
+
+    result = run(prepared, previous, tmp_path / "output", Provider, "test", concurrency=2)
+    assert calls == ["main"]
+    assert all(r["status"] == "success" for r in result["records"])
+    assert json.loads((tmp_path / "output/audits/old.json").read_text()) == {"original": True}

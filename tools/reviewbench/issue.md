@@ -1,14 +1,14 @@
-The reviewer has deterministic regression tests but no independent semantic benchmark results. Add an isolated ReviewBench mounted-input adapter and controlled experiments without changing existing entrypoint defaults.
+Add an independent official ReviewBench evaluation path and improve verification/coverage contracts without replacing existing GitHub Actions, Web or VS Code entrypoints.
 
-Acceptance criteria:
-- Read mounted diff and PR metadata without GitHub API calls or golden labels.
-- Emit contract-compatible findings and bind experiments to model, diff and source version.
-- Distinguish model/critic failures from successful empty findings.
-- Score independently adjudicated logical findings with one-to-one maximum matching.
-- Reject dataset leakage and unverified negative samples.
-- Compare Evidence Gate, Critic and target-context configurations on frozen inputs.
-- Keep candidate optimization restricted to configuration, with precision/recall and latency gates.
+Progress:
+- [x] Prepare all 25 official test PR snapshots and record benchmark revision/input hashes.
+- [x] Connect the original ReviewBench local judging CLI; one real PR smoke scored.
+- [x] Preserve binary/rename/empty-file metadata and explicit coverage omissions.
+- [x] Apply shared evidence/Critic checks to confirmed rule candidates.
+- [x] Distinguish partial/failed hotspot calls from successful empty findings.
+- [x] Capture actual model usage and served model identity; bound retries and stop fatal failures.
+- [ ] Finish 25-PR generation and official local judging.
+- [ ] Controlled Gate/Critic/context ablations and independent label audit (continue #40/#41).
+- [ ] Freeze held-out data and validate candidate optimization effectiveness.
 
-Current experiment blocker: configured DeepSeek provider returned HTTP 402 (insufficient balance) on 2026-10-13. The recorded runs are failures, not accuracy results. Official judging, broad golden labeling and improvement effectiveness remain pending.
-
-Follow-up scope: frozen validation/test corpus, independently reviewed labels, Langfuse tracing, repeat runs and confidence intervals. Do not claim quality gains from fixtures or the initial synthetic development set.
+Model credit has been restored. All 25 real DeepSeek task outputs have succeeded; local judging and Critic replay are running; timeout/connection failures are preserved and retried without rerunning successful tasks. No precision/recall improvements have been claimed. Draft implementation: #45.

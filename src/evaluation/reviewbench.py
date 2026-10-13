@@ -156,7 +156,11 @@ def run_review(
         review_meta=ReviewMeta(reviewed_commit=metadata["head"]),
     )
     if observed.errors:
-        raise EvaluationFailure("provider", status_code=observed.errors[-1].status_code)
+        raise EvaluationFailure(
+            "provider",
+            status_code=observed.errors[-1].status_code,
+            error_kind=observed.errors[-1].kind,
+        )
     if not report.used_ai or report.ai_failure_reason or report.execution_status != "success":
         raise EvaluationFailure("review_failed_or_degraded", outputs=observed.outputs)
     if critic and any(d.get("decision") == "unverified" for d in report.critic_decisions):

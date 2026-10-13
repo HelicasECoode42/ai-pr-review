@@ -12,18 +12,22 @@ FATAL_HTTP_STATUSES = frozenset({400, 401, 402, 403, 404})
 
 
 class EvaluationFailure(RuntimeError):
-    def __init__(self, stage: str, *, status_code: int | None = None, outputs=None):
+    def __init__(
+        self, stage: str, *, status_code: int | None = None, outputs=None, error_kind=None
+    ):
         super().__init__(f"Evaluation failed in {stage}")
         self.stage = stage
         self.status_code = status_code
         self.fatal = status_code in FATAL_HTTP_STATUSES
         self.outputs = outputs or []
+        self.error_kind = error_kind
 
     def record(self) -> dict:
         return {
             "stage": self.stage,
             "http_status": self.status_code,
             "fatal": self.fatal,
+            "error_kind": self.error_kind,
             "model_outputs": self.outputs,
         }
 

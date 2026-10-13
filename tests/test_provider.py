@@ -88,7 +88,8 @@ def test_streaming_provider_rejects_unfinished_content() -> None:
     ) as provider:
         with pytest.raises(ProviderError, match="Incomplete streaming"):
             provider.complete_json("system", "user")
-        assert provider.usage_records == []
+        assert provider.usage_records[0]["stream_complete"] is False
+        assert provider.usage_records[0]["usage"] is None
 
 
 @respx.mock
