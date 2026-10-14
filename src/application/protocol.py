@@ -1,0 +1,76 @@
+"""Typed contracts for transport-independent execution and planning."""
+
+from __future__ import annotations
+
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from src.models import ChangedFile, PullRequest, ReviewReport, RiskFinding
+
+
+class AgentContext(BaseModel):
+    """Validated carrier while the existing traced tool registry is retained."""
+
+    model_config = ConfigDict(validate_assignment=True, extra="forbid")
+    repo: str
+    pr_number: int
+    language: str = "en"
+    use_ai: bool = True
+    strategy: Literal["rule_only", "one_shot_ai", "two_stage"] | None = None
+    reviewer_version: str = "pr-branch"
+    execution_status: str = "success"
+    degradation_reason: str | None = None
+    report_confidence: str = "normal"
+    pr_syntax_ok: bool = True
+    reviewed_commit: str | None = None
+    trigger_event: str | None = None
+    workflow_run_url: str | None = None
+    review_mode: str = "full_pr"
+    pr: PullRequest | None = None
+    files: list[ChangedFile] = Field(default_factory=list)
+    findings: list[RiskFinding] = Field(default_factory=list)
+    cross_file_findings: list[RiskFinding] = Field(default_factory=list)
+    report: ReviewReport | None = None
+    markdown: str = ""
+    json_report: str | dict = Field(default_factory=dict)
+
+
+class FrozenContract(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+
+class Coverage(FrozenContract):
+    path: str
+    hunk_id: str | None = None
+    status: Literal["planned", "excluded", "unavailable"]
+    reason: str | None = None
+
+
+class BudgetLedger(FrozenContract):
+    token_limit: int = Field(gt=0)
+    estimated_tokens: int = Field(ge=0, default=0)
+    calls: int = Field(ge=0, default=0)
+
+
+class ReviewRun(FrozenContract):
+    run_id: str
+    repo: str
+    base: str
+    head: str
+    strategy_version: str
+
+
+class StageInput(FrozenContract):
+    run: ReviewRun
+    stage: Literal["index", "plan", "discover", "verify", "report", "publish"]
+    unit_id: str | None = None
+    budget: BudgetLedger
+
+
+class StageOutput(FrozenContract):
+    stage: str
+    status: Literal["success", "partial", "failed"]
+    artifact_ref: str | None = None
+    error: str | None = None
+    coverage: tuple[Coverage, ...] = ()

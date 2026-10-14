@@ -2,6 +2,8 @@
 
 日期：2026-10-14。依据：[PRD](PRD-review-capability-v2.md)。用户已支持图分组、低耦合、可靠恢复、预算优化；本轮先冻结开发文档，后续按下列顺序实现。Python + TypeScript 保持不变。
 
+最新实施状态：D1 公共 AI 应用边界与有类型 Agent 数据已实现；D2 离线图规划已实现并通过验收，D3–D5 尚未完成。下面的“当前进度”表保留文档编写时快照；本轮交付详情见文末。
+
 ## 当前进度
 
 本地分支 codex/evaluation-driven-review，文档编写前 HEAD 13e9a3e；已有 Draft PR #45 https://github.com/HelicasECoode42/ai-pr-review/pull/45 。本轮没有核对远端最新状态，不能称本地全部提交已推送。main 未在本轮修改。
@@ -106,3 +108,32 @@ flowchart LR
 ## 下一轮起点
 
 先做 D1 与 D2 的行为保持实现、无付费模型的图分组测试及覆盖报告，再接 D3 修正入口核验与上下文重复。D4 在阶段协议稳定后接入，D5 决定是否默认上线。每阶段独立提交，记录实施状态/验证/已知边界；不将设计状态写成完成。
+
+## 提交规范
+
+沿用已有 Conventional Commits：feat(review)、fix(review)、docs(review) 等。个人项目按完整可验收功能提交，可以较大；本次 D1/D2 的实现、测试和开发说明归入一个 feat(review) 提交，不按文件或每个小调整拆开。
+
+提交说明记录问题、实现边界和验证结果；不把单元测试通过写成审查能力提升。不为格式单独制造零碎提交，独立紧急修复可例外。已发布历史不因本次规范擅自重写；不提交 .env、依赖目录或庞大的实验日志。开发使用 codex/ 分支，保持 Draft PR，未经用户要求不合并 main。
+
+## D1/D2 本轮交付（2026-10-14）
+
+- src/application/review.py：公共模型配置、主审/Critic Provider 生命周期及冻结仓库 reader 所有权，CLI/Web/Agent 均接入。Critic 使用自身模型的思考配置；构造或执行失败时已创建资源也关闭。
+- src/application/protocol.py：有类型 AgentContext，拒绝未知字段/非法赋值；运行、阶段、预算与覆盖协议。现有工具注册与 transport 编排壳保留，未将 D4 队列/持久化伪装成已完成。
+- src/analyzer/review_plan.py：Python AST、TS/TSX Tree-sitter 语法定义/导入索引，import 强关系与符号匹配弱关系；明确无类型/运行时解析保证。有限的 run-scoped 源码 hash 索引缓存；未完成跨进程持久索引。
+- 分组：稳定输入生成稳定单元；循环依赖可分组，高连接公共依赖不黏合整仓库；超大 hunk/长行拆分保留全部内容和顺序；base 删除/重命名证据保留；索引预算耗尽不影响变更归属，缺失定义明确报告。弱同名关系数量有界并记录限制。
+- 新增离线 CLI plan 命令：显式 base/head 解析固定提交，读取 Git 对象而非工作区。重命名在 CLI 中暂按删除/新增表示；库接口支持 previous_filename。规划仅生成产物，不调用模型、不发布评论、不自动启用新审查策略。
+
+使用方式：
+
+```sh
+ai-pr-review plan --repo-path /path/to/repo --base origin/main --head HEAD \
+  --token-budget 6000 --output reports/review-plan.json
+```
+
+budget 目前只约束拼接后的 diff fragment tokens，定义以 EvidenceRef 保存，由 D3 计入最终上下文预算；系统指令、证据、模型输出均不在该数值内。tokenizer 估算也不等于模型实际计费。JS 和其他语言当前仍明确标注索引关系不支持，不能称全语言调用图。
+
+验收：180 项 pytest 测试通过；新增模块和测试完整 Ruff 检查通过，既有修改文件 F 检查及 diff whitespace 检查通过。新增 20 项行为测试覆盖资源释放、类型约束、确定性分组、循环/重名/公共节点、长行拆分、25 文件覆盖、删除/重命名、TS 导入、缓存失效和不读未提交内容。
+
+真实仓库固定范围 89943fe → 13e9a3e，在 1,000 diff tokens 预算下规划 22 个 hunk、14 个单元，最大单元 986 tokens；238 条 import 关系、970 条弱符号关系。关系数不是已证明调用路径数。此次未调用付费模型，没有新的 Precision/Recall 或 token 节省比例。
+
+下一步 D3 才将单元接入发现与核验，修正实际入口可达性与预算重复；D4 才接队列恢复。不要把 plan JSON 当作完成的审查报告。

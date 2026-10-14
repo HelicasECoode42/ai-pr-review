@@ -19,8 +19,7 @@ from pydantic import BaseModel
 from src.analyzer.risk_rules import collect_signals
 from src.github.client import GitHubApiError, GitHubClient
 from src.output.markdown import render_markdown
-from src.reviewer.engine import build_rule_only_report, review_with_ai
-from src.reviewer.provider import OpenAICompatibleProvider
+from src.reviewer.engine import build_rule_only_report
 from src.utils.config import detect_output_language, get_settings
 
 app = FastAPI(title="AI PR Review Console")
@@ -237,27 +236,12 @@ def analyze(req: AnalyzeRequest) -> AnalyzeResponse | dict:
                 "OPENAI_API_KEY not set; falling back to rule-only."
             )
         else:
-            provider = OpenAICompatibleProvider(
-                api_key=api_key,
-                model=settings.review_model,
-                base_url=settings.openai_base_url,
-                timeout=settings.request_timeout_seconds,
-                stream=settings.enable_repository_review,
-                total_timeout=300 if settings.enable_repository_review else None,
-                max_output_tokens=32768 if settings.enable_repository_review else None,
-                reasoning_effort=settings.review_reasoning_effort or ("low" if settings.enable_repository_review and settings.review_model.startswith(("deepseek-v4", "deepseek-flash")) else None),
-            )
+            from src.application.review import ReviewApplication
             try:
-                report = review_with_ai(
+                report = ReviewApplication(settings).review(
                     pr=pr,
                     files=files,
                     findings=findings,
-                    provider=provider,
-                    max_suggestions=settings.max_suggestions,
-                    follow_changes=settings.enable_repository_review,
-                    repository_evidence_tokens=settings.repository_evidence_tokens,
-                    min_confidence=settings.min_comment_confidence,
-                    max_suggestions_per_file=settings.max_suggestions_per_file,
                     language=req.language,
                 )
             except Exception as exc:
@@ -265,8 +249,6 @@ def analyze(req: AnalyzeRequest) -> AnalyzeResponse | dict:
                 report.analysis_warnings.append(
                     f"AI review failed: {exc}. Showing rule-based analysis only."
                 )
-            finally:
-                provider.close()
 
     # 5. Render output
     md = render_markdown(report, language=req.language)
