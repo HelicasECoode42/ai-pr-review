@@ -373,6 +373,7 @@ def analyze(
                     stream=settings.enable_repository_review,
                     total_timeout=300 if settings.enable_repository_review else None,
                     max_output_tokens=32768 if settings.enable_repository_review else None,
+                    reasoning_effort=settings.review_reasoning_effort or ("low" if settings.enable_repository_review and settings.review_model.startswith(("deepseek-v4", "deepseek-flash")) else None),
                 )
                 try:
                     report = review_with_ai(

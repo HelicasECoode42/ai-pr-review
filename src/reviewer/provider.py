@@ -32,11 +32,13 @@ class OpenAICompatibleProvider:
         stream: bool = False,
         max_output_tokens: int | None = None,
         total_timeout: float | None = None,
+        reasoning_effort: str | None = None,
     ) -> None:
         self._model = model
         self._stream = stream
         self._max_output_tokens = max_output_tokens
         self._total_timeout = total_timeout
+        self._reasoning_effort = reasoning_effort
         self.usage_records: list[dict] = []
         self._client = httpx.Client(
             base_url=base_url.rstrip("/"),
@@ -54,6 +56,8 @@ class OpenAICompatibleProvider:
             "temperature": 0.1,
             "response_format": {"type": "json_object"},
         }
+        if self._reasoning_effort is not None:
+            payload["reasoning_effort"] = self._reasoning_effort
         if self._max_output_tokens is not None:
             payload["max_tokens"] = self._max_output_tokens
         try:

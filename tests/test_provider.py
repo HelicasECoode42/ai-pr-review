@@ -107,3 +107,17 @@ def test_output_budget_exhaustion_is_failure_not_repaired_success() -> None:
         with pytest.raises(ProviderError, match="output token budget"):
             provider.complete_json("system", "user")
         assert provider.usage_records[0]["usage"]["total_tokens"] == 10
+
+
+@respx.mock
+def test_explicit_reasoning_effort_is_sent_without_changing_model():
+    import json
+    route = respx.post("https://provider.test/v1/chat/completions").mock(
+        return_value=httpx.Response(200, json={"choices": [{"message": {"content": '{"ok": true}'}}]})
+    )
+    with OpenAICompatibleProvider("test-key", "deepseek-v4-flash", "https://provider.test/v1",
+                                  reasoning_effort="low") as provider:
+        provider.complete_json("Return JSON", "Check")
+    body = json.loads(route.calls[0].request.content)
+    assert body["reasoning_effort"] == "low"
+    assert body["model"] == "deepseek-v4-flash"

@@ -49,7 +49,7 @@ def paired(prepared, mirrors, output, *, arms=("control", "grounded"), concurren
                 "reviewer": identity, "source_token_budget": 12000,
                 "repository_token_budget": 6000, "max_output_tokens_per_call": 32768,
                 "read_timeout_seconds": 180, "total_timeout_per_call_seconds": 300,
-                "temperature": .1, "max_suggestions": 20, "control_min_confidence": .65,
+                "reasoning_effort": "low", "temperature_requested": .1, "max_suggestions": 20, "control_min_confidence": .65,
                 "grounded_acceptance": "confirmed causal chain plus validated source citations; confidence is reported, not a calibrated probability",
                 "guidance": True, "concurrency": concurrency, "max_attempts_per_task": 2,
                 "discovery_max_calls": 3, "verification_max_calls": 2,
@@ -85,7 +85,7 @@ def paired(prepared, mirrors, output, *, arms=("control", "grounded"), concurren
                 break
             provider = OpenAICompatibleProvider(settings.openai_api_key, settings.review_model,
                          settings.openai_base_url, timeout=180, stream=True,
-                         total_timeout=300, max_output_tokens=32768)
+                         total_timeout=300, max_output_tokens=32768, reasoning_effort="low")
             measured = MeasuredProvider(provider)
             started = time.monotonic()
             try:

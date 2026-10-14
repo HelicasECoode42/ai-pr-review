@@ -45,6 +45,7 @@ class GitSnapshot:
         self.root, self.base, self.head = root.resolve(), base, head
         self.cache: dict[tuple[str, str], str | None] = {}
         self.errors: list[dict] = []
+        self.search_limited = False
 
     def _git(self, *args):
         return subprocess.check_output(["git", "-C", str(self.root), *args],
@@ -67,7 +68,19 @@ class GitSnapshot:
         if side not in {"head", "base"} or not re.fullmatch(r"[A-Za-z_]\w{2,79}", symbol):
             return []
         try:
-            raw = self._git("grep", "-n", "-I", "-w", "-F", "-m", "6", "-e", symbol, getattr(self, side), "--")
+            paths = [p for p in self._git("ls-tree", "-r", "--name-only", getattr(self, side)).splitlines()
+                     if safe_source_path(p) and Path(p).suffix not in {".md", ".json", ".ipynb"}]
+            if not paths:
+                return []
+            bounded = []
+            size = 0
+            for path in paths:
+                size += len(path.encode()) + 1
+                if size > 120_000 or len(bounded) >= 5000:
+                    self.search_limited = True
+                    break
+                bounded.append(path)
+            raw = self._git("grep", "-n", "-I", "-w", "-F", "-m", "6", "-e", symbol, getattr(self, side), "--", *bounded)
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
             if getattr(exc, "returncode", None) != 1:
                 self.errors.append({"symbol": symbol, "reason": "search_failed"})
@@ -89,6 +102,7 @@ class GitSnapshot:
 
     def audit(self):
         return {"backend": "git_objects", "base": self.base, "head": self.head,
+                "search_limited": self.search_limited,
                 "read_files": [{"side": side, "path": path, "available": text is not None}
                                for (side, path), text in self.cache.items()], "errors": self.errors}
 
@@ -220,6 +234,9 @@ class EvidenceBundle:
         if not text:
             self.omitted.append({"path": path, "side": side, "reason": "source_unavailable"})
             return
+        if not 1 <= int(line) <= len(text.splitlines()):
+            self.omitted.append({"path": path, "side": side, "reason": "line_out_of_range"})
+            return
         start, end, symbol, extent = function_window(path, text, int(line))
         if any(e["path"] == path and e["side"] == side and e["start_line"] <= int(line) <= e["end_line"] for e in self.excerpts):
             return
@@ -284,11 +301,19 @@ class EvidenceBundle:
                 continue
             entry = {"request": request, "executed": False}
             try:
+                if "tool" not in request and isinstance(request.get("path"), str):
+                    request = {**request, "tool": "read"}
+                    entry["format_notice"] = "path_only_read_request"
                 side = request.get("side", "head")
                 if side not in {"base", "head"}:
                     raise ValueError("Invalid snapshot side")
                 if request.get("tool") == "read":
-                    self.add(request["path"], max(1, int(request.get("line", 1))), side, "requested_definition")
+                    line = request.get("line", request.get("start_line"))
+                    if line is None:
+                        previous = [e for e in self.excerpts if e["path"] == request["path"] and e["side"] == side]
+                        line = max((e["end_line"] for e in previous), default=0) + 1
+                        entry["continuation_line"] = line
+                    self.add(request["path"], max(1, int(line)), side, "requested_definition")
                     entry["executed"] = True
                 elif request.get("tool") == "search":
                     hits = self.snapshot.search(request["symbol"], side, limit=4)

@@ -61,6 +61,40 @@ class GroundedResult:
     verification_failed: bool = False
 
 
+def _repair_closed_containers(raw):
+    """Correct only mismatched closing brackets in a fully closed response.
+
+    Never create keys, values, quotes, or missing EOF containers; do not repair
+    truncated responses or concatenate multiple objects.
+    """
+    stack, output, quoted, escaped = [], [], False, False
+    for char in raw:
+        if quoted:
+            output.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                quoted = False
+            continue
+        if char == '"':
+            quoted = True; output.append(char)
+        elif char in "{[":
+            if not stack and "".join(output).strip():
+                raise ValueError("Multiple JSON objects are not supported")
+            stack.append(char); output.append(char)
+        elif char in "}]":
+            if stack:
+                output.append("}" if stack.pop() == "{" else "]")
+            # Ignore only surplus closing-container punctuation, never other data.
+        else:
+            output.append(char)
+    if quoted or stack:
+        raise ValueError("Truncated JSON cannot be repaired")
+    return "".join(output)
+
+
 def _json(provider, system, prompt):
     raw = provider.complete_json(system, prompt)
     notice = None
@@ -72,11 +106,15 @@ def _json(provider, system, prompt):
             value = json.loads(raw, strict=False)
             notice = "literal_control_characters"
         except json.JSONDecodeError:
-            value, end = json.JSONDecoder().raw_decode(raw.lstrip())
-            tail = raw.lstrip()[end:]
-            if not isinstance(value, list) or not re.fullmatch(r"(?:\s*</[｜A-Za-z_ ]+>)+\s*", tail):
-                raise ValueError("Unsupported model response envelope")
-            notice = "dsml_request_array"
+            try:
+                value, end = json.JSONDecoder().raw_decode(raw.lstrip())
+                tail = raw.lstrip()[end:]
+                if not isinstance(value, list) or not re.fullmatch(r"(?:\s*</[｜A-Za-z_ ]+>)+\s*", tail):
+                    raise ValueError("Unsupported model response envelope")
+                notice = "dsml_request_array"
+            except (json.JSONDecodeError, ValueError):
+                value = json.loads(_repair_closed_containers(raw), strict=False)
+                notice = "closing_container_types_normalized"
     if isinstance(value, list):
         if not value or not all(isinstance(r, dict) and r.get("tool") in {"read", "search"} for r in value):
             raise ValueError("Only read/search request arrays are supported")
@@ -278,7 +316,9 @@ def build_grounded_report(pr, files, findings, result, context, *, reviewer_vers
     severity = max((s.severity for s in result.suggestions),
                    key=lambda s: {Severity.LOW: 1, Severity.MEDIUM: 2, Severity.HIGH: 3, Severity.CRITICAL: 4}[s],
                    default=Severity.LOW)
-    incomplete = bool(context.truncated or result.bundle["omitted"] or result.bundle["snapshot"].get("search_limited")
+    incomplete = bool(context.truncated or result.bundle["omitted"] or result.bundle.get("evicted")
+                      or any(e.get("truncated") for e in result.bundle["excerpts"])
+                      or result.bundle["snapshot"].get("search_limited")
                       or result.bundle["snapshot"].get("errors"))
     warnings = ["Behavior verification uses cited source reasoning; no target tests were executed."]
     if incomplete:

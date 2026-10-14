@@ -218,3 +218,29 @@ def test_brace_window_contains_full_ts_method_beyond_default_window():
     assert end >= 74
     assert symbol == "check"
     assert extent == "heuristic_brace_definition"
+
+
+def test_closing_container_repair_preserves_values_and_rejects_truncation():
+    from src.reviewer.grounded_review import _repair_closed_containers
+    raw = '{"items":[],"context_requests":[{"path":"caller.py","reason":"read body."]}]}'
+    repaired = json.loads(_repair_closed_containers(raw))
+    assert repaired == {"items": [], "context_requests": [{"path": "caller.py", "reason": "read body."}]}
+    for value in ('{"items":[', '{"items":[]', '{"reason":"unfinished', '{"a":1}{"b":2}'):
+        with pytest.raises(ValueError):
+            _repair_closed_containers(value)
+
+
+def test_path_only_request_pages_forward_instead_of_rereading_prefix(repo):
+    root, base, head = repo
+    text = "// header\n" * 160 + "const sentinel = 1;\n"
+    class Snapshot:
+        base = "a" * 40
+        head = "b" * 40
+        def read(self, path, side="head"): return text
+    bundle = EvidenceBundle(Snapshot(), budget=8000)
+    bundle.add("large.ts", 1)
+    first_end = bundle.excerpts[0]["end_line"]
+    bundle.execute([{"path": "large.ts", "side": "head"}])
+    assert bundle.requests[-1]["continuation_line"] == first_end + 1
+    assert bundle.requests[-1]["format_notice"] == "path_only_read_request"
+    assert any(e["end_line"] > first_end for e in bundle.excerpts)
