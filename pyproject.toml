@@ -38,6 +38,7 @@ dev = [
 
 [project.scripts]
 ai-pr-review = "src.cli.main:app"
+ai-pr-review-plan = "src.cli.plan:app"
 ai-pr-review-web = "src.service.app:app"
 
 [build-system]

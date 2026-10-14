@@ -5,7 +5,7 @@ from typer.testing import CliRunner
 
 from src.analyzer.context_builder import count_tokens
 from src.analyzer.review_plan import SourceIndexCache, build_review_plan
-from src.cli.main import app
+from src.cli.plan import app
 from src.models import ChangedFile, FileStatus
 
 
@@ -183,7 +183,7 @@ def test_plan_cli_freezes_commits_and_does_not_read_worktree(tmp_path):
     (tmp_path / "a.py").write_text("UNCOMMITTED_SECRET_SENTINEL")
     output = tmp_path / "plan.json"
     result = CliRunner().invoke(
-        app, ["plan", "--repo-path", str(tmp_path), "--base", base, "--output", str(output)]
+        app, ["--repo-path", str(tmp_path), "--base", base, "--output", str(output)]
     )
     assert result.exit_code == 0, result.output
     assert "UNCOMMITTED_SECRET_SENTINEL" not in output.read_text()

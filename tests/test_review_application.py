@@ -90,3 +90,14 @@ def test_application_owns_snapshot_client_and_releases_it_on_engine_failure():
         snapshot = engine.call_args.kwargs["repository_snapshot"]
         assert snapshot.base == pr.base_sha and snapshot.head == pr.head_sha
     provider.close.assert_called_once()
+
+
+def test_original_review_cli_keeps_positional_arguments_and_workflow_options():
+    from typer.main import get_command
+
+    from src.cli.main import app
+
+    command = get_command(app)
+    assert [p.name for p in command.params][:2] == ["repo", "pr_number"]
+    assert any("--reviewer-version" in p.opts for p in command.params)
+    assert not hasattr(command, "commands")
