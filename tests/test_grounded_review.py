@@ -180,6 +180,19 @@ def test_provider_outage_keeps_candidate_and_marks_partial(repo):
     assert report.behavior_verifications[0]["decision"] == "unverified"
 
 
+@pytest.mark.parametrize("malformed", [
+    {},
+    {"items": [{"candidate_id": 7, "decision": "confirmed"}]},
+])
+def test_malformed_verifier_response_keeps_discovery_candidate_pending(repo, malformed):
+    report, _ = run(repo, [candidate(), malformed])
+    assert report.used_ai
+    assert report.execution_status == "partial"
+    assert report.suggestions == []
+    assert len(report.pending_suggestions) == 1
+    assert report.candidate_audit[0]["status"] == "needs_context"
+
+
 def test_explicit_behavior_proof_does_not_depend_on_uncalibrated_confidence(repo):
     report, _ = run(repo, [candidate(), verdict(confidence=.4, call_path="caller.py:3 -> users.py:2")])
     assert len(report.suggestions) == 1

@@ -226,26 +226,27 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
             try:
                 response = _json(provider, VERIFY_SYSTEM, prompt)
                 verification_calls += 1
-            except (ProviderError, ValueError, TypeError) as exc:
+                requested = response.get("context_requests") or []
+                if requested and round_index == 0:
+                    if not isinstance(requested, list):
+                        raise ValueError("Verification requests must be a list")
+                    bundle.execute(requested)
+                    continue
+                items = response.get("items")
+                if not isinstance(items, list):
+                    raise ValueError("Verification response has no items list")
+                for item in items:
+                    index = item.get("candidate_id")
+                    if isinstance(index, bool) or not isinstance(index, int) or index in verdicts:
+                        raise ValueError("Ambiguous verification candidate id")
+                    if index not in {i for i, _ in eligible}:
+                        raise ValueError("Unknown verification candidate id")
+                    verdicts[index] = item
+            except (ProviderError, ValueError, TypeError, AttributeError) as exc:
                 failed = True
+                verdicts.clear()
                 decisions.append({"decision": "unverified", "reason": str(exc), "stage": "behavior_verification"})
                 break
-            requested = response.get("context_requests") or []
-            if requested and round_index == 0:
-                if not isinstance(requested, list):
-                    raise ValueError("Verification requests must be a list")
-                bundle.execute(requested)
-                continue
-            items = response.get("items")
-            if not isinstance(items, list):
-                raise ValueError("Verification response has no items list")
-            for item in items:
-                index = item.get("candidate_id")
-                if isinstance(index, bool) or not isinstance(index, int) or index in verdicts:
-                    raise ValueError("Ambiguous verification candidate id")
-                if index not in {i for i, _ in eligible}:
-                    raise ValueError("Unknown verification candidate id")
-                verdicts[index] = item
             break
         for index, suggestion in eligible:
             item = verdicts.get(index, {"candidate_id": index, "decision": "needs_context", "reason": "No verdict returned"})
