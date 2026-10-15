@@ -370,9 +370,7 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
             )
             by_name = {verdict.name: verdict for verdict in filters}
             validated = by_name["source_provenance"].passed
-            counter_valid = bool(counter) and all(
-                valid_citation(c, snapshot, bundle, files, context.text) for c in counter
-            )
+            counter_valid = by_name["counter_evidence"].passed
             witness_block = blocked_by_witness(filters)
             if witness_block is not None:
                 witness_blocked += 1

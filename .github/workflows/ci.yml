@@ -28,6 +28,12 @@ jobs:
       - name: Criteria gate
         run: uv run python scripts/criteria_gate.py
 
+      # Seam gate: fails on arguments a function accepts and never uses, flags
+      # with no reader, and call/definition keyword mismatches. Every integration
+      # bug in this repository's history would have been caught here.
+      - name: Interface audit
+        run: uv run python scripts/interface_audit.py
+
   vscode-extension:
     # Shelved by ADR-001: the extension is not a supported product, so its build
     # must not block a merge. `npm audit` stays gating: marking the whole JOB as

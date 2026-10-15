@@ -5,7 +5,8 @@ made it impossible to answer "why was this candidate not published?" and
 impossible to switch a check off. This module turns it into a named chain in
 which every filter returns a verdict, including the reason it rejected:
 
-    chain_completeness -> source_provenance -> witness_eval -> decision_vocabulary
+    chain_completeness -> source_provenance -> counter_evidence -> witness_eval
+    -> decision_vocabulary
 
 ``witness_eval`` also consults the declared contract domains, so a witness built
 from an input the interface excludes does not count as a witness.
@@ -62,7 +63,7 @@ def quote_was_shown(quote: str, sent_text: str) -> bool:
     return False
 
 
-def valid_citation(citation, snapshot, bundle, files, sent_text=None) -> bool:
+def valid_citation(citation, snapshot, bundle, sent_text=None) -> bool:
     """Provenance first, then an exact match against the frozen snapshot."""
     try:
         path = citation["path"]
@@ -170,7 +171,7 @@ def confirmation_verdicts(
 
     cited = list(evidence)
     source_ok = bool(cited) and all(
-        valid_citation(c, snapshot, bundle, files, sent_text) for c in cited
+        valid_citation(c, snapshot, bundle, sent_text) for c in cited
     )
     has_head = any(c.get("side") == "head" for c in cited)
     provenance_ok = source_ok and has_head
@@ -211,6 +212,28 @@ def confirmation_verdicts(
                 "witness_eval", True, f"not evaluable: {result.reason}",
                 {"status": result.status},
             ))
+
+    # Dismissals must rest on counter-evidence that was actually sent and matches
+    # the snapshot; this lived outside the chain before, which is why the chain
+    # accepted `counter` and never looked at it.
+    counter_ok = bool(counter) and all(
+        valid_citation(c, snapshot, bundle, sent_text) for c in counter
+    )
+    # Only a dismissal needs counter-evidence: it claims the scenario cannot
+    # happen, so it must cite what disproves it. A confirmation needs none, and
+    # "no counter-evidence offered" must not count as a passing check for one.
+    if decision != "dismissed":
+        counter_passed, counter_reason = True, "not required for this decision"
+    elif not counter:
+        counter_passed, counter_reason = False, "dismissal has no counter-evidence"
+    elif counter_ok:
+        counter_passed, counter_reason = True, "counter-evidence is valid"
+    else:
+        counter_passed = False
+        counter_reason = "counter-evidence was never shown or does not match the snapshot"
+    verdicts.append(FilterVerdict(
+        "counter_evidence", counter_passed, counter_reason, {"citations": len(counter)},
+    ))
 
     verdicts.append(FilterVerdict(
         "decision_vocabulary", decision in _VALID_DECISIONS,

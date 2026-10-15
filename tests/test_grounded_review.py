@@ -300,34 +300,31 @@ def test_citation_to_a_hunk_that_was_never_sent_is_rejected():
     from src.models import ChangedFile
     from src.reviewer.grounded_review import _valid_citation
 
-    files = [ChangedFile(filename="x.py", patch=PATCH)]
     snapshot = _SnapshotWith("def f():\n    return 2\n")
     citation = {"path": "x.py", "side": "head", "line": 2, "quote": "return 2"}
-    # The line is inside the file's hunk, but the prompt we sent did not contain it.
-    assert _valid_citation(citation, snapshot, _Bundle([]), files, "no diff here") is False
+    # The prompt we sent did not contain the line, whatever the file contains.
+    assert _valid_citation(citation, snapshot, _Bundle([]), "no diff here") is False
     # The same citation is accepted when the line really was in the sent text.
-    assert _valid_citation(citation, snapshot, _Bundle([]), files, SNIPPET_SENT) is True
+    assert _valid_citation(citation, snapshot, _Bundle([]), SNIPPET_SENT) is True
 
 
 def test_citation_from_a_rendered_evidence_excerpt_is_accepted():
     from src.models import ChangedFile
     from src.reviewer.grounded_review import _valid_citation
 
-    files = [ChangedFile(filename="x.py", patch=PATCH)]
     snapshot = _SnapshotWith("def f():\n    return 2\n")
     excerpts = [{"path": "x.py", "side": "head", "start_line": 1, "end_line": 4}]
     citation = {"path": "x.py", "side": "head", "line": 2, "quote": "return 2"}
-    assert _valid_citation(citation, snapshot, _Bundle(excerpts), files, "") is True
+    assert _valid_citation(citation, snapshot, _Bundle(excerpts), "") is True
 
 
 def test_citation_that_does_not_match_the_snapshot_is_still_rejected():
     from src.models import ChangedFile
     from src.reviewer.grounded_review import _valid_citation
 
-    files = [ChangedFile(filename="x.py", patch=PATCH)]
     snapshot = _SnapshotWith("def f():\n    return 2\n")
     citation = {"path": "x.py", "side": "head", "line": 2, "quote": "return 999"}
-    assert _valid_citation(citation, snapshot, _Bundle([]), files, SNIPPET_SENT) is False
+    assert _valid_citation(citation, snapshot, _Bundle([]), SNIPPET_SENT) is False
 
 
 @pytest.fixture
