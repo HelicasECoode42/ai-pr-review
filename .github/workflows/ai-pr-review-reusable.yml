@@ -81,6 +81,10 @@ permissions:
 jobs:
   review:
     runs-on: ubuntu-latest
+    # One run per PR and ref: without this, two pushes race and both comment.
+    concurrency:
+      group: ai-pr-review-${{ github.repository }}-${{ github.event.pull_request.number || inputs.pr_number }}
+      cancel-in-progress: false
     steps:
       # The caller's repository: the reviewer reads its diff at the frozen SHA.
       - uses: actions/checkout@v4
@@ -101,6 +105,8 @@ jobs:
           echo "number=${pr}" >> "$GITHUB_OUTPUT"
 
       - name: Run the reviewer from the tool repository
+        # Inputs reach the shell only through env vars: interpolating ${{ }} straight
+        # into a run script would let a caller-controlled value inject commands.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -108,18 +114,23 @@ jobs:
           REVIEW_MODEL: ${{ secrets.REVIEW_MODEL }}
           CRITIC_MODEL: ${{ secrets.CRITIC_MODEL }}
           MAX_REVIEW_INPUT_TOKENS: ${{ inputs.max_input_tokens }}
+          INPUT_LANGUAGE: ${{ inputs.language }}
+          INPUT_MAX_SUGGESTIONS: ${{ inputs.max_suggestions }}
+          INPUT_REVIEWER_REF: ${{ inputs.reviewer_ref }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          TARGET_REPO: ${{ github.repository }}
         run: |
           mkdir -p reports
           args=(--format json --output reports/pr-review.json
-                --max-suggestions "${{ inputs.max_suggestions }}")
+                --max-suggestions "${INPUT_MAX_SUGGESTIONS}")
           # The CLI validates --language against en|zh, so "auto" means omit it.
-          if [ "${{ inputs.language }}" != "auto" ]; then
-            args+=(--language "${{ inputs.language }}")
+          if [ "${INPUT_LANGUAGE}" != "auto" ]; then
+            args+=(--language "${INPUT_LANGUAGE}")
           fi
           # One model run: the JSON report is the source for both the summary
           # comment and the optional inline comments.
-          uvx --from "git+https://github.com/HelicasECoode42/ai-pr-review@${{ inputs.reviewer_ref }}" \
-            ai-pr-review "${{ github.repository }}" "${{ steps.pr.outputs.number }}" "${args[@]}"
+          uvx --from "git+https://github.com/HelicasECoode42/ai-pr-review@${INPUT_REVIEWER_REF}" \
+            ai-pr-review "${TARGET_REPO}" "${PR_NUMBER}" "${args[@]}"
 
       - name: Upload review report
         if: always()

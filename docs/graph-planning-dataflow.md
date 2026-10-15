@@ -297,3 +297,25 @@ limitations: evidence_refs_are_lazy_and_not_in_diff_token_budget
 - 冻结离线基线：`scripts/plan_baseline.py --base 89943fe --head 13e9a3e --token-budget 1000` 产出 [plan-baseline-89943fe-13e9a3e.json](evaluation/plan-baseline-89943fe-13e9a3e.json)。结果 14 units、23 slices、22 planned hunks，`coverage_summary.complete=true`，`omission_reasons={}`，`budget_over_limit=[]`；`diff_fragments_per_unit.used=986/1000`，`relationships` 238 strong + 970 weak，`cuts` 记录 17 条被跨组切开的强边、39 个变更符号的外部调用方。23/23 slices 都有行区间，0 个切在行中间。这些数字与历史记录一致，说明新增账本没有改变分组结果；它证明的是会计与可复现性，不是分组质量或审查召回。
 - 基线的输入只有 git object：`load_frozen_plan_inputs` 先 `rev-parse` 成 40 位 SHA 再读，未提交的工作区内容不会进入产物（测试用 sentinel 验证）。
 - 历史记录：2026-10-14 D1/D2 交付称 181 项 pytest 通过；固定范围 `89943fe → 13e9a3e`、`token_budget=1000` 时 22 hunks、14 units、最大单元 986；索引 238 import 关系、970 弱符号关系。这些数字说明覆盖、确定性与 diff 预算约束；关系条数不是已证明调用路径条数。真实语义分组质量、Precision/Recall、实际模型 token 消耗与费用变化均未验证。本功能未使用付费模型。
+
+## 生产路径的真实大 PR 运行（2026-10-16，251 文件）
+
+`scripts/run_real_review.py --base d99524db81 --head f17b940b --units 12 --workers 4`
+
+| 指标 | 实测 |
+|---|---:|
+| 变更文件 | **251** |
+| 耗时 | **352.5 秒** |
+| tokens | **558,691**（prompt 369,992 / completion 188,699） |
+| cache 命中率 | 43.5% |
+| 规划单元 / 已审 / 失败 / 因上限跳过 | **146 / 9 / 3 / 134** |
+| 候选 / 已核验 / 发布 / 待确认 | 27 / 7 / **6** / 15 |
+| witness 阻断 | 0 |
+| 成本（余额差） | 约 **4.5 元** |
+
+**结论（对 P4 的诚实判定）**：**逐单元在当前配置下并不优于截断**——12 个单元上限只覆盖了 **9/146 单元（6%）**，比同规模 PR 上截断路径的 11% 更低，而成本是单次路径的数十倍（约 62k tokens/单元）。三个单元失败（25%），但已被隔离记录而不是毁掉整次运行。因此 P4 的结论是：**路径可用、账目正确、但性价比未达标**；要变划算必须先降低单单元成本（更小单元 / 更少轮次 / 更准取证），而不是调大上限。
+
+**同时它找到了真问题**：这次运行对**本仓库自己的 CI 工作流**提了 6 条，其中两条经我核对成立并已修——
+1. `reviewer_ref` 默认指向移动的 `main`（供应链风险，已在文档层警告，默认值仍待改）；
+2. **`${{ inputs.* }}` 直接插进 `run:` 脚本**（脚本注入），已改为全部经 `env` 传递，并补了 `concurrency` 组防止重复评论与产物名冲突。
+第 6 条指出：`negative-index` 的 gold 标签**低估了回归**（除了返回值错，`index < -len` 还会 IndexError）——这是对我们的评测集本身的正确批评。
