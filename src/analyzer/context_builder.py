@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import logging
+import re
 from functools import lru_cache
 from dataclasses import dataclass, field
 from enum import Enum
 
 from src.analyzer.diff_parser import parse_file_hunks
+from src.application.protocol import BudgetLine, BudgetReport, Omission
 from src.models import ChangedFile, PullRequest, RiskFinding, FileStatus, StepStatus
 from src.github.client import GitHubClient, GitHubApiError
 from src.utils.config import get_settings
@@ -99,6 +101,13 @@ class ReviewContext:
     skipped_files: list[tuple[str, str]] = field(default_factory=list)
     token_count: int = 0
     patch_token_budget: int = 0
+    # Every file the patch context did not fully include, with why. `skipped_files`
+    # keeps its published meaning (file absent from the patch context); `omissions`
+    # also records clipping and full-file substitution.
+    omissions: list[Omission] = field(default_factory=list)
+    budgets: BudgetReport = field(
+        default_factory=lambda: BudgetReport(scope="build_review_context")
+    )
 
 
 
@@ -266,29 +275,67 @@ def _build_context_pack(
     return result
 
 
-def _fetch_repo_file_text(repo: str, path: str, ref: str | None) -> str | None:
-    """Try to fetch file text from the given ref; if ref fetch fails, fall back to 'main'.
+_FROZEN_SHA_RE = re.compile(r"\A[0-9a-f]{40}\Z")
 
-    Returns None if the file cannot be fetched.
+
+def _is_frozen_ref(ref: str | None) -> bool:
+    """Only an immutable 40-hex commit identifies the code being reviewed."""
+    return bool(ref) and _FROZEN_SHA_RE.match(ref or "") is not None
+
+
+def _fetch_repo_file_text(repo: str, path: str, ref: str | None) -> str | None:
+    """Read one file at an immutable commit; never a different ref.
+
+    A branch name, a missing SHA or a failed read all return None. The earlier
+    behaviour of retrying on `main` is deliberately gone: it could put code that
+    is not part of the reviewed revision into the review context while the
+    report still claimed to describe the PR.
     """
+    if not _is_frozen_ref(ref):
+        logger.debug("Refusing to read %s at non-frozen ref %r", path, ref)
+        return None
     settings = get_settings()
     try:
         with GitHubClient(settings.github_token, timeout=settings.request_timeout_seconds) as gh:
             try:
-                text = gh.get_file_contents(repo, path, ref=ref) if ref else gh.get_file_contents(repo, path)
-                if text is not None:
-                    return text
+                return gh.get_file_contents(repo, path, ref=ref)
             except GitHubApiError as e:
                 logger.debug(f"Failed to fetch {repo}/{path}@{ref}: {e}")
-            # fallback to main branch
-            try:
-                main_text = gh.get_file_contents(repo, path, ref="main")
-                return main_text
-            except GitHubApiError:
                 return None
     except Exception as e:
         logger.warning(f"Error while fetching file contents for {repo}/{path}: {e}")
         return None
+
+
+_PARTIAL_INCLUSION_REASONS = frozenset(
+    {
+        "patch_clipped",
+        "full_file_substituted_for_missing_patch",
+        "full_file_substituted_for_truncated_hunk",
+    }
+)
+
+
+def partial_inclusion_counts(context: ReviewContext) -> dict[str, int]:
+    """Files that reached the prompt only in part, by reason.
+
+    These are not skipped files: they are present but incomplete, which is why
+    they need their own line instead of hiding behind the truncated flag.
+    """
+    counts: dict[str, int] = {}
+    for omission in context.omissions:
+        if omission.reason in _PARTIAL_INCLUSION_REASONS:
+            counts[omission.reason] = counts.get(omission.reason, 0) + 1
+    return counts
+
+
+def partial_inclusion_warning(context: ReviewContext) -> str | None:
+    """One warning line naming every partial inclusion, or None when there is none."""
+    counts = partial_inclusion_counts(context)
+    if not counts:
+        return None
+    detail = ", ".join(f"{reason}={count}" for reason, count in sorted(counts.items()))
+    return f"{sum(counts.values())} file(s) only partly in the AI patch context: {detail}"
 
 
 def build_review_context(
@@ -396,6 +443,8 @@ def build_review_context(
             key=lambda f: not any(r.file_path == f.filename for r in findings),
         )
     skipped_files: list[tuple[str, str]] = []
+    extra_omissions: list[Omission] = []
+    max_file_tokens = 0
     lockfiles_skipped = 0
     partial_flag = False
 
@@ -437,19 +486,17 @@ def build_review_context(
 
             # If hunks empty and either parsing failed, patch missing, or file added/removed, try fallback to full file content
             if not hunks and (parse_failed or file.patch is None or file.patch == "" or file.status in (FileStatus.ADDED, FileStatus.REMOVED)):
-                # For added files, include full content from head_ref if available
-                # For removed files, try base_ref
-                ref_try = None
+                # Only immutable commits may be read: a branch name would mix
+                # code that is not part of the reviewed revision into the context.
                 if file.status == FileStatus.ADDED:
-                    ref_try = pr.head_sha or pr.head_ref
+                    ref_try = pr.head_sha
                 elif file.status == FileStatus.REMOVED:
-                    ref_try = pr.base_ref
+                    ref_try = pr.base_sha
                 else:
-                    # try both head then base
-                    ref_try = pr.head_sha or pr.head_ref or pr.base_ref
+                    ref_try = pr.head_sha or pr.base_sha
 
                 file_contents = None
-                if allow_remote_file_fetch:
+                if allow_remote_file_fetch and _is_frozen_ref(ref_try):
                     try:
                         file_contents = _fetch_repo_file_text(pr.repo, file.filename, ref_try)
                     except Exception as e:
@@ -461,6 +508,17 @@ def build_review_context(
                     )
                     truncated = truncated or clipped
                     partial_flag = partial_flag or clipped
+                    max_file_tokens = max(max_file_tokens, consumed)
+                    extra_omissions.append(
+                        Omission(
+                            path=file.filename,
+                            reason="full_file_substituted_for_missing_patch",
+                            detail=(
+                                "no usable diff hunk; frozen whole file substituted"
+                                f" (truncated={clipped})"
+                            ),
+                        )
+                    )
                     parts.extend(["", f"### {file.filename}", "```", file_text, "```"])
                     patch_budget -= consumed
                     if patch_budget <= 0:
@@ -470,12 +528,20 @@ def build_review_context(
                     continue
                 else:
                     # Couldn't fetch full file; mark partial and continue
-                    logger.warning(f"Could not retrieve full contents for {file.filename} during fallback")
+                    miss_reason = (
+                        "patch_unavailable" if _is_frozen_ref(ref_try) else "no_frozen_ref"
+                    )
+                    logger.warning(
+                        f"Could not retrieve full contents for {file.filename} during fallback"
+                    )
                     partial_flag = True
-                    skipped_files.append((file.filename, "patch_unavailable"))
+                    skipped_files.append((file.filename, miss_reason))
                     continue
 
             if not hunks:
+                reason = "patch_parse_failed" if parse_failed else "patch_without_hunks"
+                partial_flag = True
+                skipped_files.append((file.filename, reason))
                 continue
 
             file_text = "\n".join(h.raw for h in hunks)
@@ -483,17 +549,36 @@ def build_review_context(
             total_added = sum(len(h.added_lines) for h in hunks)
             total_hunk_lines = sum(h.new_count for h in hunks)
             if allow_remote_file_fetch and total_hunk_lines > 0 and total_added < total_hunk_lines // 2:
-                # Hunk likely truncated; fetch full file — prefer head_ref (current PR code)
-                file_contents = (
-                    _fetch_repo_file_text(pr.repo, file.filename, (pr.head_sha or pr.head_ref))
-                    or _fetch_repo_file_text(pr.repo, file.filename, pr.base_ref)
-                )
+                # Hunk likely truncated: read the frozen file and record that the
+                # context now carries whole-file code instead of the diff.
+                file_contents = _fetch_repo_file_text(
+                    pr.repo, file.filename, pr.head_sha
+                ) or _fetch_repo_file_text(pr.repo, file.filename, pr.base_sha)
                 if file_contents:
                     file_text = file_contents
+                    extra_omissions.append(
+                        Omission(
+                            path=file.filename,
+                            reason="full_file_substituted_for_truncated_hunk",
+                            detail=(
+                                f"diff hunk showed {total_added} added of"
+                                f" {total_hunk_lines} new lines"
+                            ),
+                        )
+                    )
 
             file_text, consumed, clipped = truncate_to_token_budget(file_text, min(patch_budget, per_file_budget))
             truncated = truncated or clipped
             partial_flag = partial_flag or clipped
+            max_file_tokens = max(max_file_tokens, consumed)
+            if clipped:
+                extra_omissions.append(
+                    Omission(
+                        path=file.filename,
+                        reason="patch_clipped",
+                        detail=f"kept {consumed} tokens of this file's diff under the per-file cap",
+                    )
+                )
             parts.extend(["", f"### {file.filename}", "```diff", file_text, "```"])
             patch_budget -= consumed
             if patch_budget <= 0:
@@ -503,6 +588,7 @@ def build_review_context(
         except Exception as e:
             logger.warning(f"Failed to process patch for {getattr(file, 'filename', '?')}: {e}")
             partial_flag = True
+            skipped_files.append((getattr(file, "filename", "?"), "patch_processing_error"))
             continue
 
     if lockfiles_skipped > 0 or skipped_files:
@@ -530,6 +616,41 @@ def build_review_context(
         status = StepStatus.PARTIAL
 
     context_text = "\n".join(parts)
+    # One ledger for the whole artifact: exclusions published to the report plus
+    # the partial-inclusion cases the report does not show as skipped files.
+    omissions = [Omission(path=fpath, reason=freason) for fpath, freason in skipped_files]
+    seen = {(o.path, o.reason) for o in omissions}
+    for extra in extra_omissions:
+        if (extra.path, extra.reason) not in seen:
+            omissions.append(extra)
+            seen.add((extra.path, extra.reason))
+    budgets = BudgetReport(
+        scope="build_review_context",
+        lines=(
+            BudgetLine(
+                name="context_pack",
+                limit=_CONTEXT_PACK_TOKEN_BUDGET,
+                used=count_tokens(context_pack),
+                covers="project conventions and function index prepended to the prompt",
+            ),
+            BudgetLine(
+                name="patch_context",
+                limit=max_patch_tokens,
+                used=max(0, max_patch_tokens - max(patch_budget, 0)),
+                covers=(
+                    "patch and substituted-file fragments put in the user prompt; excludes "
+                    "the system prompt, repository evidence reads and model output"
+                ),
+            ),
+            BudgetLine(
+                name="per_file_patch",
+                limit=per_file_budget,
+                used=max_file_tokens,
+                covers="cap on a single file's share of the patch context",
+            ),
+        ),
+        omissions=tuple(omissions),
+    )
     return ReviewContext(
         text=context_text,
         truncated=truncated,
@@ -537,4 +658,6 @@ def build_review_context(
         skipped_files=skipped_files,
         token_count=count_tokens(context_text),
         patch_token_budget=max_patch_tokens,
+        omissions=omissions,
+        budgets=budgets,
     )

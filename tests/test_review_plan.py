@@ -266,3 +266,70 @@ def test_cut_report_finds_unchanged_caller_of_changed_function():
     assert plan.cuts.counts.external_callers_of_changed == 1
     assert plan.cuts.counts.units == 1
     assert plan.cuts.cut_edges == ()
+
+
+def test_fragment_spans_map_back_to_the_source_lines_they_cover():
+    patch = (
+        "@@ -10,4 +10,5 @@\n"
+        " keep1\n"
+        "-old line\n"
+        "+new line\n"
+        " keep2\n"
+        "+" + ("z" * 400) + "\n"
+    )
+    file = ChangedFile(filename="a.py", status=FileStatus.MODIFIED, patch=patch)
+    plan = build_review_plan(
+        MemorySnapshot({"a.py": "def f():\n    return 1\n"}), [file], ["a.py"], token_budget=128
+    )
+    slices = [s for u in plan.units for s in u.slices]
+    new_lines: set[int] = set()
+    old_lines: set[int] = set()
+    for s in slices:
+        assert s.lines.new_start is not None or s.lines.old_start is not None
+        if s.lines.new_start is not None:
+            new_lines.update(range(s.lines.new_start, s.lines.new_end + 1))
+        if s.lines.old_start is not None:
+            old_lines.update(range(s.lines.old_start, s.lines.old_end + 1))
+    # Context lines advance both sides; the added line only advances the new side.
+    assert new_lines == {10, 11, 12, 13}
+    assert old_lines == {10, 11, 12}
+    whole = [s for s in slices if not s.lines.cuts_a_diff_line]
+    assert len(whole) == 1
+    assert (whole[0].lines.new_start, whole[0].lines.new_end) == (10, 12)
+    cut = [s for s in slices if s.lines.cuts_a_diff_line]
+    assert len(cut) >= 2
+    assert {(s.lines.new_start, s.lines.new_end) for s in cut} == {(13, 13)}
+    assert all(s.lines.old_start is None for s in cut)
+
+
+def test_coverage_summary_accounts_for_every_changed_file_and_hunk():
+    files = [
+        changed("ok.py"),
+        ChangedFile(filename="nopatch.py", patch="not a unified diff\n"),
+        ChangedFile(filename=".env", patch=None),
+    ]
+    plan = build_review_plan(MemorySnapshot({"ok.py": "x = 1\n"}), files, ["ok.py"])
+    summary = plan.coverage_summary
+    assert summary.changed_files == 3
+    assert summary.parsed_hunks == 1
+    assert summary.planned_hunks == 1
+    assert summary.unaccounted_hunks == ()
+    assert summary.unaccounted_files == ()
+    assert summary.complete is True
+    reasons = {o.reason for o in plan.budgets.omissions}
+    assert {"missing_or_invalid_patch", "source_policy", "head_unavailable"} <= reasons
+    assert plan.budgets.scope == "build_review_plan"
+    assert plan.budgets.over_limit == ()
+
+
+def test_plan_budget_lines_separate_per_unit_cap_from_measured_total():
+    sources = {f"file{i}.py": f"value = {i}\n" for i in range(6)}
+    files = [changed(p) for p in sources]
+    plan = build_review_plan(MemorySnapshot(sources), files, list(sources), token_budget=256)
+    lines = {line.name: line for line in plan.budgets.lines}
+    assert plan.version == "syntax-plan-v2"
+    assert lines["diff_fragments_per_unit"].limit == 256
+    assert lines["diff_fragments_per_unit"].used <= 256
+    assert lines["diff_fragments_total"].limit is None
+    assert lines["diff_fragments_total"].used == sum(u.estimated_tokens for u in plan.units)
+    assert plan.budgets.over_limit == ()

@@ -23,53 +23,23 @@ def plan_review(
     output: Annotated[Path, typer.Option("--output")] = Path("reports/review-plan.json"),
 ) -> None:
     """Build an experimental frozen graph review plan, without model/API calls."""
-    import subprocess
-
-    from src.analyzer.repository_context import GitSnapshot
+    from src.analyzer.git_loader import GitPlanError, load_frozen_plan_inputs
     from src.analyzer.review_plan import build_review_plan
-    from src.models import ChangedFile, FileStatus
-
-    def git(*args: str) -> str:
-        return subprocess.check_output(
-            ["git", "--literal-pathspecs", "-C", str(repo_path.resolve()), *args],
-            text=True,
-            stderr=subprocess.PIPE,
-            timeout=30,
-        )
 
     try:
-        base_sha = git("rev-parse", "--verify", "--end-of-options", base + "^{commit}").strip()
-        head_sha = git("rev-parse", "--verify", "--end-of-options", head + "^{commit}").strip()
-        snapshot = GitSnapshot(repo_path, base_sha, head_sha)
-        raw = git("diff", "--no-renames", "--name-status", "-z", base_sha, head_sha, "--")
-        fields = raw.rstrip("\0").split("\0") if raw else []
-        statuses = {"A": FileStatus.ADDED, "D": FileStatus.REMOVED, "M": FileStatus.MODIFIED}
-        files = [
-            ChangedFile(
-                filename=fields[i + 1],
-                status=statuses.get(fields[i], FileStatus.UNKNOWN),
-                patch=git(
-                    "diff",
-                    "--no-renames",
-                    "--no-ext-diff",
-                    "--no-textconv",
-                    base_sha,
-                    head_sha,
-                    "--",
-                    fields[i + 1],
-                ),
-            )
-            for i in range(0, len(fields), 2)
-        ]
-        paths = git("ls-tree", "-r", "--name-only", "-z", head_sha).rstrip("\0").split("\0")
+        snapshot, files, paths = load_frozen_plan_inputs(repo_path, base, head)
         plan = build_review_plan(snapshot, files, paths, token_budget=token_budget)
-    except (subprocess.SubprocessError, ValueError) as exc:
+    except (GitPlanError, ValueError) as exc:
         console.print(f"[red]Could not build frozen review plan: {exc}[/red]")
         raise typer.Exit(1) from exc
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(plan.model_dump_json(indent=2), encoding="utf-8")
     console.print(
         f"Plan: {len(plan.units)} units; {len(plan.relationships)} relationships. {output}"
+    )
+    summary = plan.coverage_summary
+    console.print(
+        f"Coverage: {summary.planned_hunks} planned hunk(s), complete={summary.complete}."
     )
     console.print("Planning only: no model review or runtime reachability verification performed.")
 

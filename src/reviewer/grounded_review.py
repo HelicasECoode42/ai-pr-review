@@ -331,6 +331,10 @@ def build_grounded_report(pr, files, findings, result, context, *, reviewer_vers
         report_confidence = "partial"
     if result.pending:
         warnings.append(f"{len(result.pending)} candidate(s) need additional context; excluded from confirmed findings.")
+    from src.analyzer.context_builder import partial_inclusion_warning
+    partial_warning = partial_inclusion_warning(context)
+    if partial_warning:
+        warnings.append(partial_warning)
     from src.reviewer.engine import _build_completeness
     skipped = [SkippedContextFile(file_path=p, reason=r) for p, r in context.skipped_files]
     return ReviewReport(pr=pr, files=files, summary=result.summary, risk_level=severity,

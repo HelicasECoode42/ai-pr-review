@@ -19,8 +19,8 @@ from pydantic import Field
 from src.analyzer.context_builder import count_tokens
 from src.analyzer.diff_parser import parse_file_hunks
 from src.analyzer.repository_context import Snapshot, safe_source_path
-from src.application.protocol import Coverage, FrozenContract
-from src.models import ChangedFile, FileStatus
+from src.application.protocol import BudgetLine, BudgetReport, Coverage, FrozenContract, Omission
+from src.models import ChangedFile, DiffHunk, FileStatus
 
 
 class SourceSymbol(FrozenContract):
@@ -56,6 +56,22 @@ class EvidenceRef(FrozenContract):
     content_hash: str
 
 
+class LineSpan(FrozenContract):
+    """Source lines a fragment covers, on each side.
+
+    ``None`` means the fragment covers no line on that side (for example a
+    fragment holding only the ``@@`` header). ``cuts_a_diff_line`` is true when
+    the fragment boundary falls inside one diff line, so the fragment must not
+    be read as a complete line.
+    """
+
+    new_start: int | None = None
+    new_end: int | None = None
+    old_start: int | None = None
+    old_end: int | None = None
+    cuts_a_diff_line: bool = False
+
+
 class ChangeSlice(FrozenContract):
     slice_id: str
     path: str
@@ -64,6 +80,7 @@ class ChangeSlice(FrozenContract):
     hunk_index: int
     fragment_index: int
     fragment: str
+    lines: LineSpan = Field(default_factory=LineSpan)
     symbols: tuple[str, ...] = ()
     evidence: tuple[EvidenceRef, ...] = ()
     estimated_tokens: int = Field(ge=0)
@@ -118,8 +135,29 @@ class CutReport(FrozenContract):
     counts: CutCounts = Field(default_factory=CutCounts)
 
 
+class CoverageSummary(FrozenContract):
+    """Whether every changed file and hunk this plan read is actually accounted for.
+
+    ``planned_hunks`` counts hunks represented by at least one slice;
+    ``unavailable_evidence_hunks`` counts hunks kept in the plan but without the
+    frozen source needed to locate their definitions. The same hunk can appear
+    in both, so the two are not expected to sum to ``parsed_hunks``. A hunk with
+    neither a slice nor an explanation shows up in ``unaccounted_hunks`` and
+    ``complete`` turns false, which is the regression signal for silent drops.
+    """
+
+    changed_files: int = 0
+    parsed_hunks: int = 0
+    planned_hunks: int = 0
+    unavailable_evidence_hunks: int = 0
+    excluded_files: int = 0
+    unaccounted_hunks: tuple[str, ...] = ()
+    unaccounted_files: tuple[str, ...] = ()
+    complete: bool = True
+
+
 class ReviewPlan(FrozenContract):
-    version: str = "syntax-plan-v1"
+    version: str = "syntax-plan-v2"
     base: str = Field(pattern=r"^[0-9a-f]{40}$")
     head: str = Field(pattern=r"^[0-9a-f]{40}$")
     token_budget: int = Field(gt=0)
@@ -129,6 +167,8 @@ class ReviewPlan(FrozenContract):
     coverage: tuple[Coverage, ...]
     limitations: tuple[str, ...]
     cuts: CutReport = Field(default_factory=CutReport)
+    coverage_summary: CoverageSummary = Field(default_factory=CoverageSummary)
+    budgets: BudgetReport = Field(default_factory=lambda: BudgetReport(scope="build_review_plan"))
 
 
 def _hash(value: str) -> str:
@@ -300,6 +340,92 @@ def _resolve(stem: str, path: str, inventory: set[str]) -> tuple[str, ...]:
     return tuple(p for p in candidates if p in inventory and p != path)
 
 
+def _hunk_line_meta(hunk: DiffHunk) -> list[tuple[str, int | None, int | None]]:
+    """Per raw hunk line: (kind, old line, new line). Header and markers consume nothing.
+
+    The prefix rules mirror diff_parser._build_hunk, so the line span a fragment
+    reports cannot disagree with the added/removed lines extracted from the hunk.
+    """
+    meta: list[tuple[str, int | None, int | None]] = []
+    old_cursor, new_cursor = hunk.old_start, hunk.new_start
+    for index, line in enumerate(hunk.raw.splitlines()):
+        if index == 0:
+            meta.append(("header", None, None))
+        elif line.startswith("\\"):
+            meta.append(("marker", None, None))
+        elif line.startswith("+") and not line.startswith("+++"):
+            meta.append(("added", None, new_cursor))
+            new_cursor += 1
+        elif line.startswith("-") and not line.startswith("---"):
+            meta.append(("removed", old_cursor, None))
+            old_cursor += 1
+        else:
+            meta.append(("context", old_cursor, new_cursor))
+            old_cursor += 1
+            new_cursor += 1
+    return meta
+
+
+def _span_for(
+    pieces: list[tuple[int, bool]], meta: list[tuple[str, int | None, int | None]]
+) -> LineSpan:
+    new_numbers = [meta[index][2] for index, _ in pieces if meta[index][2] is not None]
+    old_numbers = [meta[index][1] for index, _ in pieces if meta[index][1] is not None]
+    return LineSpan(
+        new_start=min(new_numbers) if new_numbers else None,
+        new_end=max(new_numbers) if new_numbers else None,
+        old_start=min(old_numbers) if old_numbers else None,
+        old_end=max(old_numbers) if old_numbers else None,
+        cuts_a_diff_line=any(not whole_line for _, whole_line in pieces),
+    )
+
+
+def _split_hunk(
+    hunk: DiffHunk, token_budget: int, limitations: set[str]
+) -> list[tuple[str, LineSpan]]:
+    """Split one hunk into budget-sized fragments, byte-preserving and in order.
+
+    Every fragment also reports the source line span it covers. A pathological
+    line longer than the whole budget is cut by characters; both pieces are then
+    marked as cutting a diff line rather than pretending to be whole lines.
+    """
+    meta = _hunk_line_meta(hunk)
+    out: list[tuple[str, LineSpan]] = []
+    buffer = ""
+    pieces: list[tuple[int, bool]] = []
+
+    def flush() -> None:
+        nonlocal buffer, pieces
+        out.append((buffer, _span_for(pieces, meta)))
+        buffer = ""
+        pieces = []
+
+    for line_index, chunk in enumerate(hunk.raw.splitlines(keepends=True)):
+        if buffer and count_tokens(buffer + chunk) > token_budget:
+            flush()
+        split_line = False
+        while count_tokens(chunk) > token_budget:
+            split_line = True
+            limitations.add("oversized_hunk_fragmented")
+            lo, hi = 1, len(chunk)
+            while lo < hi:
+                mid = (lo + hi + 1) // 2
+                if count_tokens(chunk[:mid]) <= token_budget:
+                    lo = mid
+                else:
+                    hi = mid - 1
+            pieces.append((line_index, False))
+            buffer += chunk[:lo]
+            chunk = chunk[lo:]
+            flush()
+        if chunk:
+            buffer += chunk
+            pieces.append((line_index, not split_line))
+    if buffer:
+        flush()
+    return out
+
+
 def _cut_report(units: list[ReviewUnit], relationships: tuple[Relationship, ...]) -> CutReport:
     unit_of = defaultdict(set)
     changed_symbols = defaultdict(set)
@@ -382,6 +508,7 @@ def build_review_plan(
     if token_budget < 128 or index_file_limit < 1 or index_char_limit < 1 or public_degree < 2:
         raise ValueError("Invalid planning budget")
     coverage, limitations, indexed, contents = [], set(), {}, {}
+    hunk_ids_by_file: dict[str, list[str]] = defaultdict(list)
     cache = index_cache if index_cache is not None else SourceIndexCache(index_file_limit)
     inventory = {p for p in paths if safe_source_path(p)}
     inventory.update(f.filename for f in files if safe_source_path(f.filename))
@@ -461,6 +588,7 @@ def build_review_plan(
         source = old_source if side == "base" else indexed.get(file.filename)
         for number, hunk in enumerate(hunks):
             hid = _hash(file.filename + "\0" + str(number) + "\0" + hunk.raw)
+            hunk_ids_by_file[file.filename].append(hid)
             line = hunk.old_start if side == "base" else hunk.new_start
             span = hunk.old_count if side == "base" else hunk.new_count
             symbols = (
@@ -499,28 +627,9 @@ def build_review_plan(
                         reason="base_definition_unavailable",
                     )
                 )
-            # Oversized hunks split without dropping a byte. A pathological long
-            # line may split mid-line: original hunk_id ties it back to the diff.
-            fragments, fragment = [], ""
-            for chunk in hunk.raw.splitlines(keepends=True):
-                if fragment and count_tokens(fragment + chunk) > token_budget:
-                    fragments.append(fragment)
-                    fragment = ""
-                while count_tokens(chunk) > token_budget:
-                    lo, hi = 1, len(chunk)
-                    while lo < hi:
-                        mid = (lo + hi + 1) // 2
-                        if count_tokens(chunk[:mid]) <= token_budget:
-                            lo = mid
-                        else:
-                            hi = mid - 1
-                    fragments.append(chunk[:lo])
-                    chunk = chunk[lo:]
-                    limitations.add("oversized_hunk_fragmented")
-                fragment += chunk
-            if fragment:
-                fragments.append(fragment)
-            for part, fragment in enumerate(fragments):
+            # Oversized hunks split without dropping a byte. Each fragment keeps
+            # the source lines it covers and whether its edge cuts a diff line.
+            for part, (fragment, span) in enumerate(_split_hunk(hunk, token_budget, limitations)):
                 slices.append(
                     ChangeSlice(
                         slice_id=_hash(hid + ":" + str(part)),
@@ -530,6 +639,7 @@ def build_review_plan(
                         hunk_index=number,
                         fragment_index=part,
                         fragment=fragment,
+                        lines=span,
                         symbols=tuple(s.name for s in symbols),
                         evidence=refs,
                         estimated_tokens=count_tokens(fragment),
@@ -593,7 +703,7 @@ def build_review_plan(
                 snapshot.head,
                 token_budget,
                 [s.slice_id for s in chosen],
-                "syntax-plan-v1",
+                "syntax-plan-v2",
             ],
             separators=(",", ":"),
         )
@@ -608,6 +718,75 @@ def build_review_plan(
         )
     limitations.add("evidence_refs_are_lazy_and_not_in_diff_token_budget")
     limitations.update(limit for f in indexed.values() for limit in f.limitations)
+    accounted_hunks = {c.hunk_id for c in coverage if c.hunk_id is not None}
+    covered_paths = {c.path for c in coverage}
+    coverage_summary = CoverageSummary(
+        changed_files=len(files),
+        parsed_hunks=sum(len(ids) for ids in hunk_ids_by_file.values()),
+        planned_hunks=sum(c.status == "planned" for c in coverage),
+        unavailable_evidence_hunks=sum(
+            c.status == "unavailable" and c.hunk_id is not None for c in coverage
+        ),
+        excluded_files=len({c.path for c in coverage if c.status == "excluded"}),
+        unaccounted_hunks=tuple(
+            sorted(
+                hid
+                for ids in hunk_ids_by_file.values()
+                for hid in ids
+                if hid not in accounted_hunks
+            )
+        ),
+        unaccounted_files=tuple(
+            sorted(f.filename for f in files if f.filename not in covered_paths)
+        ),
+    )
+    coverage_summary = coverage_summary.model_copy(
+        update={
+            "complete": not coverage_summary.unaccounted_hunks
+            and not coverage_summary.unaccounted_files
+        }
+    )
+    head_files = [key for key in indexed if not key.startswith("base:")]
+    budgets = BudgetReport(
+        scope="build_review_plan",
+        lines=(
+            BudgetLine(
+                name="diff_fragments_per_unit",
+                limit=token_budget,
+                used=max((u.estimated_tokens for u in units), default=0),
+                covers=(
+                    "rendered diff fragments in the largest ReviewUnit; excludes lazy "
+                    "EvidenceRef source, planner prompts and any model output"
+                ),
+            ),
+            BudgetLine(
+                name="diff_fragments_total",
+                limit=None,
+                used=sum(u.estimated_tokens for u in units),
+                covers=(
+                    "sum over units; the cap is applied per unit, so this total is"
+                    " measured rather than bounded"
+                ),
+            ),
+            BudgetLine(
+                name="indexed_files",
+                limit=index_file_limit,
+                used=len(head_files),
+                covers="head files parsed for relationships; base copies are not extra inventory",
+            ),
+            BudgetLine(
+                name="indexed_source_chars",
+                limit=index_char_limit,
+                used=chars,
+                covers="head and base characters read for parsing; not a model context budget",
+            ),
+        ),
+        omissions=tuple(
+            Omission(path=c.path, reason=c.reason or c.status, hunk_id=c.hunk_id)
+            for c in coverage
+            if c.status != "planned"
+        ),
+    )
     return ReviewPlan(
         base=snapshot.base,
         head=snapshot.head,
@@ -618,4 +797,6 @@ def build_review_plan(
         coverage=tuple(coverage),
         limitations=tuple(sorted(limitations)),
         cuts=_cut_report(units, relationships),
+        coverage_summary=coverage_summary,
+        budgets=budgets,
     )

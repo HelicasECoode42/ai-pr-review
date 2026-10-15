@@ -5,7 +5,12 @@ import re
 
 from pydantic import ValidationError
 
-from src.analyzer.context_builder import ReviewContext, build_review_context, tokenizer_name
+from src.analyzer.context_builder import (
+    ReviewContext,
+    build_review_context,
+    partial_inclusion_warning,
+    tokenizer_name,
+)
 from src.analyzer.signal_selection import select_verifiable_signals
 from typing import TYPE_CHECKING
 
@@ -520,6 +525,9 @@ def review_with_ai(
                 "Patch context was truncated to fit token budget; "
                 "some files were not analyzed by AI."
             )
+        partial_warning = partial_inclusion_warning(ctx)
+        if partial_warning:
+            warnings.append(partial_warning)
         skipped_ctx = [
             SkippedContextFile(file_path=fpath, reason=reason)
             for fpath, reason in ctx.skipped_files
