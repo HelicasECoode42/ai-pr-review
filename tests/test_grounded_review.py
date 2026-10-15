@@ -328,3 +328,103 @@ def test_citation_that_does_not_match_the_snapshot_is_still_rejected():
     snapshot = _SnapshotWith("def f():\n    return 2\n")
     citation = {"path": "x.py", "side": "head", "line": 2, "quote": "return 999"}
     assert _valid_citation(citation, snapshot, _Bundle([]), files, SNIPPET_SENT) is False
+
+
+@pytest.fixture
+def equivalent_repo(tmp_path):
+    """A PR whose rewrite is logically equivalent: P -> not Q with swapped branches."""
+    git(tmp_path, "init")
+    git(tmp_path, "config", "user.email", "fixture@example.invalid")
+    git(tmp_path, "config", "user.name", "Fixture")
+    (tmp_path / "select.py").write_text(
+        "def pick(values, index):\n"
+        "    return values[index] if 0 <= index < len(values) else None\n"
+    )
+    git(tmp_path, "add", "."); git(tmp_path, "commit", "-m", "base")
+    base = git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "select.py").write_text(
+        "def pick(values, index):\n"
+        "    return None if index < 0 or index >= len(values) else values[index]\n"
+    )
+    git(tmp_path, "add", "."); git(tmp_path, "commit", "-m", "head")
+    head = git(tmp_path, "rev-parse", "HEAD")
+    return tmp_path, base, head
+
+
+def equivalent_candidate():
+    return {"summary": "Guard changed", "risk_level": "medium", "suggestions": [{
+        "file_path": "select.py", "line": 2, "severity": "medium", "confidence": .9,
+        "title": "Guard inversion changes which inputs reach the subscript",
+        "reason": "The lower bound check was replaced by a disjunction",
+        "recommendation": "Restore the chained comparison",
+        "evidence": ['return values[index] if 0 <= index < len(values) else None'],
+        "failure_scenario": "index below zero now reaches values[index]"}]}
+
+
+def equivalent_verdict(**updates):
+    item = {"candidate_id": 0, "decision": "confirmed", "confidence": .9,
+            "trigger": "pick is called with a negative index",
+            "call_path": ["select.py:2"],
+            "expected_behavior": "returns None for out of range input",
+            "actual_behavior": "returns an element from the end of the sequence",
+            "introduced_by": "the guard was rewritten",
+            "reason": "the two guards are not equivalent",
+            "evidence": [
+                {"path": "select.py", "side": "head", "line": 2,
+                 "quote": "return None if index < 0 or index >= len(values) else values[index]"},
+                {"path": "select.py", "side": "base", "line": 2,
+                 "quote": "return values[index] if 0 <= index < len(values) else None"},
+            ],
+            "counter_evidence": []}
+    return {"items": [{**item, **updates}]}
+
+
+def run_equivalent(repo, responses):
+    root, base, head = repo
+    snapshot = GitSnapshot(root, base, head)
+    files = parse_diff(git(root, "diff", base, head))
+    pr = PullRequest(repo="fixture/repo", number=1, title="Guard", base_sha=base, head_sha=head)
+    context = build_review_context(pr, files, include_context_pack=False, allow_remote_file_fetch=False)
+    provider = Provider(responses)
+    report = review_with_ai(pr, files, [], provider, 20, min_confidence=.65,
+                            repository_snapshot=snapshot, follow_changes=True,
+                            review_context=context)
+    return report, provider
+
+
+def test_witness_filter_blocks_confirmation_of_an_equivalent_rewrite(equivalent_repo):
+    """The acceptance test for the criteria chain: a rewrite that is provably
+    equivalent cannot be published as a confirmed behaviour change."""
+    report, _ = run_equivalent(equivalent_repo, [equivalent_candidate(), equivalent_verdict()])
+    assert report.suggestions == []
+    assert len(report.pending_suggestions) == 1
+    decision = report.behavior_verifications[0]
+    assert decision["validation_reason"].startswith("witness_eval:")
+    verdicts = {v["filter"]: v for v in decision["filter_verdicts"]}
+    assert verdicts["witness_eval"]["passed"] is False
+    assert verdicts["witness_eval"]["domain_size"] > 0
+    assert verdicts["chain_completeness"]["passed"] is True
+    assert verdicts["source_provenance"]["passed"] is True
+    assert report.metrics["witness_blocked_count"] == 1
+
+
+def verdict_with_expression_pair(**updates):
+    """Same verdict, but citing the changed expression on both sides so the
+    witness check has something to evaluate."""
+    item = verdict()["items"][0]
+    item["evidence"] = [
+        {"path": "users.py", "side": "head", "line": 2,
+         "quote": 'return {"name": "name", "age": 42}'},
+        {"path": "users.py", "side": "base", "line": 2, "quote": 'return ("name", 42)'},
+    ]
+    return {"items": [{**item, **updates}]}
+
+
+def test_witness_is_recorded_when_a_real_behaviour_change_is_confirmed(repo):
+    report, _ = run(repo, [candidate(), verdict_with_expression_pair()])
+    assert len(report.suggestions) == 1
+    verdicts = {v["filter"]: v for v in report.behavior_verifications[0]["filter_verdicts"]}
+    assert verdicts["witness_eval"]["passed"] is True
+    assert verdicts["witness_eval"]["status"] == "differs"
+    assert verdicts["witness_eval"]["base_value"] == repr(("name", 42))
+    assert report.metrics["witness_blocked_count"] == 0

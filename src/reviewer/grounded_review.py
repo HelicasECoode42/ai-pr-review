@@ -17,16 +17,20 @@ from src.models import (
 )
 from src.reviewer.model_payload import parse_model_payload
 from src.reviewer.prompt import build_user_prompt
+from src.reviewer.criteria import (
+    CRITERIA_VERSION,
+    blocked_by_witness,
+    confirmation_verdicts,
+    quote_was_shown,
+    valid_citation,
+)
 from src.reviewer.provider import ProviderError
 
 # How many caller locations to pull in for one candidate. Bounded because the
 # evidence budget, not the search backend, is the scarce resource.
 CALLER_EVIDENCE_LIMIT = 3
 
-# Version of the verification criteria in this module. Bump it whenever the
-# confirmation rules change, so a report says which rules produced it and a
-# change in behaviour can be attributed instead of guessed.
-CRITERIA_VERSION = "grounded-v1: chain+validated-citation+provenance"
+
 
 DISCOVERY_SYSTEM = """You review code changes against a frozen base/head repository snapshot.
 Find concrete correctness, security, reliability, interface-contract and maintainability defects.
@@ -150,43 +154,9 @@ def _json(provider, system, prompt):
     return value
 
 
-def _quote_was_shown(quote: str, sent_text: str) -> bool:
-    """Was this exact source line part of the diff text we actually sent?
-
-    The check is on the prompt, not on the repository: a citation the model could
-    not have read is not evidence, no matter how well it matches the snapshot.
-    """
-    needle = "".join(quote.split())
-    if not needle:
-        return False
-    for line in sent_text.splitlines():
-        if line[:1] in {"+", "-", " "} and "".join(line[1:].split()) == needle:
-            return True
-    return False
-
-
-def _valid_citation(citation, snapshot, bundle, files, sent_text=None):
-    try:
-        path, side, line, quote = citation["path"], citation["side"], int(citation["line"]), citation["quote"]
-        if side not in {"head", "base"} or line < 1 or not isinstance(quote, str) or not quote.strip():
-            return False
-        # Provenance first: the line must have been inside an evidence excerpt we
-        # rendered, or inside the patch text we sent. Being merely inside the
-        # changed file's hunks is not enough - a hunk the context omitted was
-        # never shown, and a finding about it would be unverifiable to the model.
-        seen = any(e["path"] == path and e["side"] == side and e["start_line"] <= line <= e["end_line"]
-                   for e in bundle.excerpts)
-        if not seen and sent_text is not None:
-            seen = _quote_was_shown(quote, sent_text)
-        if not seen:
-            return False
-        text = snapshot.read(path, side)
-        if not text or line > len(text.splitlines()):
-            return False
-        # Exact quotation, allowing whitespace normalization only.
-        return "".join(quote.split()) in "".join(text.splitlines()[line - 1].split())
-    except (KeyError, TypeError, ValueError):
-        return False
+# Aliases kept for existing importers; the implementations live in criteria.py.
+_quote_was_shown = quote_was_shown
+_valid_citation = valid_citation
 
 
 def _add_contract_callers(bundle, snapshot, files, suggestion) -> None:
@@ -365,31 +335,38 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
                 decisions.append({"decision": "unverified", "reason": str(exc), "stage": "behavior_verification"})
                 break
             break
+        witness_blocked = 0
         for index, suggestion in eligible:
             item = verdicts.get(index, {"candidate_id": index, "decision": "needs_context", "reason": "No verdict returned"})
             decision = item.get("decision")
             evidence, counter = item.get("evidence") or [], item.get("counter_evidence") or []
-            validated = bool(evidence) and all(
-                _valid_citation(c, snapshot, bundle, files, context.text) for c in evidence
-            )
-            counter_valid = bool(counter) and all(
-                _valid_citation(c, snapshot, bundle, files, context.text) for c in counter
-            )
-            chain = all(isinstance(item.get(k), str) and item[k].strip()
-                        for k in ("trigger", "expected_behavior", "actual_behavior", "introduced_by", "reason"))
             call_path = item.get("call_path")
             if isinstance(call_path, str) and call_path.strip():
                 item = {**item, "call_path_original": call_path, "call_path": [call_path]}
-                call_path = item["call_path"]
-            chain = chain and isinstance(call_path, list) and bool(call_path) and all(
-                isinstance(step, str) and step.strip() for step in call_path
-            )
             confidence = item.get("confidence", 0)
             if isinstance(confidence, bool) or not isinstance(confidence, (int, float)) or not 0 <= confidence <= 1:
                 confidence = 0
-            if decision == "confirmed" and (not validated or not chain
-                                             or not any(c.get("side") == "head" for c in evidence)):
-                item = {**item, "decision": "needs_context", "validation_reason": "insufficient_behavior_chain_or_source_evidence"}
+            # The named filter chain replaces the old inline conjunction, so
+            # every rejection carries a reason and can be reported (H7).
+            filters = confirmation_verdicts(
+                decision=decision, item=item, evidence=evidence, counter=counter,
+                snapshot=snapshot, bundle=bundle, files=files, sent_text=context.text,
+            )
+            by_name = {verdict.name: verdict for verdict in filters}
+            validated = by_name["source_provenance"].passed
+            counter_valid = bool(counter) and all(
+                valid_citation(c, snapshot, bundle, files, context.text) for c in counter
+            )
+            witness_block = blocked_by_witness(filters)
+            if witness_block is not None:
+                witness_blocked += 1
+            if decision == "confirmed" and witness_block is not None:
+                item = {**item, "decision": "needs_context",
+                        "validation_reason": f"witness_eval: {witness_block.reason}"}
+                decision = "needs_context"
+            elif decision == "confirmed" and not (validated and by_name["chain_completeness"].passed):
+                item = {**item, "decision": "needs_context",
+                        "validation_reason": "insufficient_behavior_chain_or_source_evidence"}
                 decision = "needs_context"
             elif decision == "dismissed" and not counter_valid:
                 item = {**item, "decision": "needs_context", "validation_reason": "dismissal_has_no_valid_counter_evidence"}
@@ -398,7 +375,9 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
                 item = {**item, "decision": "needs_context", "validation_reason": "invalid_decision"}
                 decision = "needs_context"
             item = {**item, "verification_method": "source_reasoning", "tests_executed": False,
-                    "source_evidence_valid": validated, "counter_evidence_valid": counter_valid}
+                    "source_evidence_valid": validated, "counter_evidence_valid": counter_valid,
+                    "criteria_version": CRITERIA_VERSION,
+                    "filter_verdicts": [verdict.as_dict() for verdict in filters]}
             decisions.append(item)
             candidates[index].update(status=decision, reason=item.get("reason", ""))
             if decision == "confirmed":
@@ -427,6 +406,7 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
         published.append(suggestion)
     kept = published
     audit = bundle.audit()
+    audit["witness_blocked"] = witness_blocked
     audit["discovery_trace"] = discovery_trace
     return GroundedResult(payload.summary, kept, pending, candidates, decisions, audit,
                           discovery_calls, verification_calls, failed,
@@ -473,6 +453,7 @@ def build_grounded_report(pr, files, findings, result, context, *, reviewer_vers
         "discovery_request_count": result.discovery_calls,
         "behavior_verification_request_count": result.verification_calls,
         "main_review_prompt_signal_count": 0,
+        "witness_blocked_count": int(result.bundle.get("witness_blocked", 0) or 0),
     }
     # What the reader must know about a truncated prompt: how much of the change
     # never reached the model at all.
