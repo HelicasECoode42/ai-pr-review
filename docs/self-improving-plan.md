@@ -160,10 +160,12 @@
 
 ### P3 — 成本与可靠性的一刀（0 元代码，但需你定方向）
 
-1. **discovery 增量重发**：本次实测 3 轮各重发完整 prompt，prompt 合计 42,454 tokens；改成增量可省约 2/3。
-2. **`enable_critic` 默认值**：默认开且用更贵的 `deepseek-v4-pro`；历史对照中 Critic 误删过 2 条成立建议。本次因无候选而未调用（0 次）。
+1. **验证阶段的重复重发**：本次实测 3 次调用 = **1 次 discovery + 2 次验证**（`discovery_request_count=1`、`behavior_verification_request_count=2`），prompt 合计 42,454 tokens。每一轮验证都把**完整 diff + 全部证据**重发一次；改为"只发增量 + 变化部分"预计可省约 **1/3**（≈2.5 万 tokens）。discovery 本次只用 1 轮，不是重复重发的主因。
+2. **`enable_critic` 默认值**：默认开且用更贵的 `deepseek-v4-pro`；历史对照中 Critic 误删过 2 条成立建议。本次因证据门后无可发布候选（`suggestions=0`）→ Critic 候选为空 → **0 次调用**。也就是说它的成本只在"真有候选"时才发生，但那时也更贵。
 3. **发布阈值三处收敛**：workflow 硬编码 `0.80`、config `0.65`、而 `min_confidence` 在 grounded 链路上**被传入却从未使用**。
 4. **prefix cache**（你已支持）：稳定前缀（system + 不变量）在前、动态内容（diff/证据/经验）在后；**必须实测 cache 命中再谈节省比例**，不编造。
+
+> 更正记录：本文初稿把 74,461 tokens 的 3 次调用误记为"discovery 3 轮"。核对运行产物的 `metrics.discovery_request_count=1` 与 `behavior_verification_request_count=2` 后更正为"1 次 discovery + 2 次验证"。这也是"账本能自己纠错"的例子——**没有这两条计数，成本结构就只能靠猜**。
 
 ---
 
