@@ -77,6 +77,47 @@ class ReviewUnit(FrozenContract):
     related_paths: tuple[str, ...] = ()
 
 
+class SplitSymbol(FrozenContract):
+    path: str
+    symbol: str
+    units: int
+    fragments: int
+
+
+class CutEdge(FrozenContract):
+    source: str
+    target: str
+    kind: str
+    strength: Literal["strong", "weak"]
+    symbol: str | None = None
+    targets_changed_symbol: bool = False
+
+
+class ExternalCaller(FrozenContract):
+    source: str
+    target: str
+    symbol: str
+
+
+class CutCounts(FrozenContract):
+    units: int = 0
+    slices: int = 0
+    split_symbols: int = 0
+    cut_edges_strong: int = 0
+    cut_edges_weak: int = 0
+    cut_edges_targets_changed_symbol: int = 0
+    external_callers_of_changed: int = 0
+
+
+class CutReport(FrozenContract):
+    """Measurement of what the current split separates; never used for grouping."""
+
+    split_symbols: tuple[SplitSymbol, ...] = ()
+    cut_edges: tuple[CutEdge, ...] = ()
+    external_callers_of_changed: tuple[ExternalCaller, ...] = ()
+    counts: CutCounts = Field(default_factory=CutCounts)
+
+
 class ReviewPlan(FrozenContract):
     version: str = "syntax-plan-v1"
     base: str = Field(pattern=r"^[0-9a-f]{40}$")
@@ -87,6 +128,7 @@ class ReviewPlan(FrozenContract):
     relationships: tuple[Relationship, ...]
     coverage: tuple[Coverage, ...]
     limitations: tuple[str, ...]
+    cuts: CutReport = Field(default_factory=CutReport)
 
 
 def _hash(value: str) -> str:
@@ -256,6 +298,69 @@ def _resolve(stem: str, path: str, inventory: set[str]) -> tuple[str, ...]:
     if stem.endswith((".js", ".jsx")):
         candidates += [stem.rsplit(".", 1)[0] + ".ts", stem.rsplit(".", 1)[0] + ".tsx"]
     return tuple(p for p in candidates if p in inventory and p != path)
+
+
+def _cut_report(units: list[ReviewUnit], relationships: tuple[Relationship, ...]) -> CutReport:
+    unit_of = defaultdict(set)
+    changed_symbols = defaultdict(set)
+    occurrences = defaultdict(list)
+    slice_count = 0
+    for index, unit in enumerate(units):
+        for s in unit.slices:
+            slice_count += 1
+            unit_of[s.path].add(index)
+            changed_symbols[s.path].update(s.symbols)
+            for name in set(s.symbols):
+                occurrences[(s.path, name)].append((index, s.hunk_id))
+    split = []
+    for (path, name), occ in sorted(occurrences.items()):
+        unit_count = len({i for i, _ in occ})
+        fragment_count = len(occ)
+        if unit_count > 1 or fragment_count > len({h for _, h in occ}):
+            split.append(
+                SplitSymbol(path=path, symbol=name, units=unit_count, fragments=fragment_count)
+            )
+    cut, external = [], []
+    for e in relationships:
+        if e.source not in unit_of or e.target not in unit_of:
+            continue
+        symbol_hit = e.kind == "symbol_reference" and e.symbol in changed_symbols[e.target]
+        if not unit_of[e.source] & unit_of[e.target]:
+            cut.append(
+                CutEdge(
+                    source=e.source,
+                    target=e.target,
+                    kind=e.kind,
+                    strength=e.strength,
+                    symbol=e.symbol,
+                    targets_changed_symbol=bool(symbol_hit),
+                )
+            )
+    for e in relationships:
+        if (
+            e.kind == "symbol_reference"
+            and e.strength == "weak"
+            and e.target in unit_of
+            and e.symbol in changed_symbols[e.target]
+            and e.source not in unit_of
+        ):
+            external.append(ExternalCaller(source=e.source, target=e.target, symbol=e.symbol))
+    cut.sort(key=lambda c: (c.source, c.target, c.kind, c.strength, c.symbol or ""))
+    external.sort(key=lambda c: (c.source, c.target, c.symbol))
+    return CutReport(
+        split_symbols=tuple(split),
+        cut_edges=tuple(cut),
+        external_callers_of_changed=tuple(external[:50]),
+        counts=CutCounts(
+            units=len(units),
+            slices=slice_count,
+            split_symbols=len(split),
+            cut_edges_strong=sum(c.strength == "strong" for c in cut),
+            cut_edges_weak=sum(c.strength == "weak" for c in cut),
+            cut_edges_targets_changed_symbol=sum(c.targets_changed_symbol for c in cut),
+            external_callers_of_changed=len(external),
+        ),
+    )
 
 
 def build_review_plan(
@@ -512,4 +617,5 @@ def build_review_plan(
         relationships=relationships,
         coverage=tuple(coverage),
         limitations=tuple(sorted(limitations)),
+        cuts=_cut_report(units, relationships),
     )

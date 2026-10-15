@@ -217,3 +217,52 @@ def test_index_limit_does_not_get_bypassed_during_hunk_mapping():
         c.path == "b.py" and c.reason == "definition_source_unavailable" for c in plan.coverage
     )
     assert any(s.path == "b.py" for u in plan.units for s in u.slices)
+
+
+def test_cut_report_flags_symbol_split_across_fragments_and_units():
+    file = ChangedFile(
+        filename="a.py", patch="@@ -1,1 +1,1 @@\n-old\n+" + ("abcdefgh! " * 500) + "\n"
+    )
+    plan = build_review_plan(
+        MemorySnapshot({"a.py": "def big():\n    return 1\n"}), [file], ["a.py"], token_budget=128
+    )
+    entries = {(s.path, s.symbol): s for s in plan.cuts.split_symbols}
+    assert entries[("a.py", "big")].fragments > 1
+    assert entries[("a.py", "big")].units == len(plan.units) > 1
+    assert plan.cuts.counts.split_symbols == len(plan.cuts.split_symbols) >= 1
+
+
+def test_cut_report_lists_import_linked_changed_files_in_different_units():
+    sources = {
+        "app/api.py": "from .service import save\ndef route():\n    return save()\n",
+        "app/service.py": "def save():\n    return 1\n",
+    }
+    files = [
+        ChangedFile(
+            filename="app/api.py", patch="@@ -1,1 +1,1 @@\n-old\n+" + ("abcdefgh! " * 60) + "\n"
+        ),
+        ChangedFile(
+            filename="app/service.py", patch="@@ -1,1 +1,1 @@\n-old\n+" + ("abcdefgh! " * 60) + "\n"
+        ),
+    ]
+    plan = build_review_plan(MemorySnapshot(sources), files, list(sources), token_budget=128)
+    cut = [e for e in plan.cuts.cut_edges if e.kind == "import"]
+    assert [(e.source, e.target, e.strength) for e in cut] == [
+        ("app/api.py", "app/service.py", "strong")
+    ]
+    assert plan.cuts.counts.cut_edges_strong >= 1
+    assert all(not e.targets_changed_symbol for e in cut)
+
+
+def test_cut_report_finds_unchanged_caller_of_changed_function():
+    sources = {
+        "service.py": "def save():\n    return 1\n",
+        "caller.py": "def run():\n    return save()\n",
+    }
+    plan = build_review_plan(MemorySnapshot(sources), [changed("service.py")], list(sources))
+    assert [(c.source, c.target, c.symbol) for c in plan.cuts.external_callers_of_changed] == [
+        ("caller.py", "service.py", "save")
+    ]
+    assert plan.cuts.counts.external_callers_of_changed == 1
+    assert plan.cuts.counts.units == 1
+    assert plan.cuts.cut_edges == ()
