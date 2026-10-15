@@ -4,7 +4,7 @@
 
 ## 目的
 
-为当前 grounded 审查流程提供一个小型开发评测集（10 个 PR），用于调试、
+为当前 grounded 审查流程提供一个小型开发评测集（9 个 PR），用于调试、
 对比基线与回归检查。同时登记 15 个 PR 作为 holdout 清单。本文件和分组
 文件都不运行模型，也不包含金标签内容。
 
@@ -28,7 +28,7 @@ holdout 都不是“未见测试”。** holdout 目前只能作为回归检查�
   该路径位于仓库之外的临时目录，可能随系统清理而消失；正式运行前需要把
   ReviewBench 检出到稳定位置（见下文“运行基线”）。
 
-## dev 集（10 个 PR）
+## dev 集（9 个 PR）
 
 “金标签”列为 tp 标签数 / 全部标签数；“跨文件”列为金标签涉及的不同文件数，
 括号内为需要相关文件或更大项目上下文的标签数。跨文件判定只基于标签中的
@@ -38,7 +38,6 @@ holdout 都不是“未见测试”。** holdout 目前只能作为回归检查�
 |---|---|---|---:|---:|---:|---|---|---|
 | PierreJanineh_TechDebtMCP_135-16a54f0f | PierreJanineh/TechDebtMCP | TypeScript | 10 | 297 | 9/19 | 4（11） | 是 | input-preparation.json；baseline-audits/ |
 | AA-Factory_aafactory-prototype_17-a1978cb7 | AA-Factory/aafactory-prototype | Python | 1 | 45 | 9/17 | 1（7） | 否（单文件小 PR） | 同上 |
-| brianc_node-postgres_3650-b922f0dd | brianc/node-postgres | JavaScript | 6 | 557 | 11/26 | 6（11） | 是 | 同上 |
 | brexhq_CrabTrap_15-5ef0884c | brexhq/CrabTrap | Go | 6 | 198 | 16/25 | 7（14） | 是 | 同上 |
 | ardevd_jadx-collaboration_3-853179dc | ardevd/jadx-collaboration | Kotlin | 3 | 65 | 9/14 | 3（7） | 是 | 同上 |
 | superhighfives_pika_200-b227aff0 | superhighfives/pika | Swift | 16 | 628 | 19/21 | 9（16） | 是 | 同上 |
@@ -47,8 +46,10 @@ holdout 都不是“未见测试”。** holdout 目前只能作为回归检查�
 | sdsykes_fastimage_165-8fc7cd32 | sdsykes/fastimage | Ruby | 12 | 341 | 14/28 | 8（12） | 是 | 同上 |
 | scotthamilton77_agents-config_1-1fc78970 | scotthamilton77/agents-config | Shell | 38 | 495 | 25/37 | 16（12） | 是（最多文件） | 同上 |
 
-覆盖：9 种语言；小 PR（1–4 文件）与大 PR（12–38 文件，最大 1124 行）都有；
-9 个 PR 的金标签跨越 2 个及以上文件，满足“至少 3 个多文件样本”的要求。
+覆盖：8 种语言（排除 brianc 后不再包含 JavaScript）；小 PR（1–4 文件）与大 PR（12–38 文件，最大 1124 行）都有；
+8 个 PR 的金标签跨越 2 个及以上文件，满足“至少 3 个多文件样本”的要求。
+
+**排除**：`brianc_node-postgres_3650-b922f0dd` 已从 dev 移出（记录于 `datasets/dev/split.json` 的 `excluded` 字段）。原因：head commit `b922f0dd` 在远端不可达，PR ref 已被改写；2026-10-15 检查确认。因此 dev 集现为 9 个 PR。
 
 ## holdout 清单（15 个 PR，仅登记，调参期间不得读取其金标签）
 

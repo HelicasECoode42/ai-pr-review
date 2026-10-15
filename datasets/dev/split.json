@@ -2,7 +2,6 @@
   "dev": [
     "PierreJanineh_TechDebtMCP_135-16a54f0f",
     "AA-Factory_aafactory-prototype_17-a1978cb7",
-    "brianc_node-postgres_3650-b922f0dd",
     "brexhq_CrabTrap_15-5ef0884c",
     "ardevd_jadx-collaboration_3-853179dc",
     "superhighfives_pika_200-b227aff0",
@@ -29,5 +28,11 @@
     "Marvell-Consulting_statswales-frontend_626-30ba27a5"
   ],
   "split_rule": "by repository",
-  "created": "2026-10-15"
+  "created": "2026-10-15",
+  "excluded": [
+    {
+      "case_id": "brianc_node-postgres_3650-b922f0dd",
+      "reason": "head commit b922f0dd unreachable on remote (PR ref rewritten); checked 2026-10-15"
+    }
+  ]
 }
