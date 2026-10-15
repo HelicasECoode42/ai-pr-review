@@ -14,6 +14,10 @@ AI PR Review Assistant 是一个面向 GitHub Pull Request 的 AI 代码审查�
 
 项目目标不是用 AI 替代人工 Review，而是把重复性的上下文整理、风险预筛、报告生成和代码定位交给系统，让审查者把注意力放在真正需要判断的设计、业务和安全风险上。
 
+## 规范
+
+本项目的规范只有一份：**[docs/HARNESS.md](docs/HARNESS.md)**（好 harness 的 15 条硬性条款、现状对照、能力差的根因、架构与判据规范、6 阶段计划 + RSI 循环、改动量估算）。任何 `*-plan.md` / `*-design.md` 与它冲突时以它为准。
+
 ## 产品闭环
 
 ```text
@@ -34,7 +38,7 @@ GitHub PR
 |---|---|---|
 | GitHub Actions | 团队协作中的 PR 审查者 | PR 创建或更新后自动审查，发布 summary comment 和高置信 inline comments |
 | Web Console | 评委、队友、非 IDE 用户 | 粘贴 GitHub PR URL 后直接分析任意 PR，可视化查看建议和完整报告 |
-| VS Code 插件（**已冻存**） | 正在本地修代码的开发者 | 自动识别当前分支 PR，把 Review 结果同步到 Problems、Review Panel 和 CodeLens。**暂不维护、暂不支持**（见 [决策记录](docs/decisions.md) ADR-001）；最后一个可用版本是 `vscode-extension/ai-pr-review-0.2.0.vsix` |
+| VS Code 插件（**已冻存**） | 正在本地修代码的开发者 | 自动识别当前分支 PR，把 Review 结果同步到 Problems、Review Panel 和 CodeLens。**暂不维护、暂不支持**（见 [规范](docs/HARNESS.md) 第 9 节）；最后一个可用版本是 `vscode-extension/ai-pr-review-0.2.0.vsix` |
 
 底层 CLI 和 Review Engine 被多个入口复用，保证同一套分析逻辑可以运行在本地、CI、Web 服务和 IDE 插件中。
 
