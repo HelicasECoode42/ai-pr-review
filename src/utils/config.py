@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     # Dispatch-time cost ceiling (H13). The per-unit path is refused when its
     # estimated cost exceeds this, and the refusal is recorded in the report.
     unit_review_cost_ceiling_tokens: int = 400_000
+    # Per-unit evidence budget. Smaller than the single-pass budget because a unit
+    # is small and every round re-renders whatever is in here.
+    unit_evidence_tokens: int = 3000
     # Knowledge layer (P3): where the playbook lives and how many entries to
     # offer one review. Empty path disables recall.
     playbook_path: str = "knowledge/playbook.md"

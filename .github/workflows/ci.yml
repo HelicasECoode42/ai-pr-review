@@ -29,10 +29,11 @@ jobs:
         run: uv run python scripts/criteria_gate.py
 
   vscode-extension:
-    # Shelved by ADR-001: the extension still compiles so it does not rot
-    # silently, but it is not a supported product and must not block a merge.
-    name: VS Code extension build (shelved, not a gate)
-    continue-on-error: true
+    # Shelved by ADR-001: the extension is not a supported product, so its build
+    # must not block a merge. `npm audit` stays gating: marking the whole JOB as
+    # continue-on-error would have neutralised the security check as well, which
+    # this repository's own reviewer flagged as a regression.
+    name: VS Code extension build (shelved, audit still gating)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -46,4 +47,6 @@ jobs:
           cache-dependency-path: vscode-extension/package-lock.json
       - run: npm ci
       - run: npm audit --audit-level=high
-      - run: npm run compile
+      - name: Compile (advisory, extension shelved)
+        continue-on-error: true
+        run: npm run compile

@@ -404,6 +404,7 @@ def review_with_ai(
     unit_review_max_units: int = 0,
     unit_review_workers: int = 1,
     unit_review_cost_ceiling_tokens: int = 0,
+    unit_evidence_tokens: int = 3000,
     unit_provider_factory=None,
     repository_snapshot=None,
     follow_changes: bool = False,
@@ -425,9 +426,13 @@ def review_with_ai(
                 try:
                     return review_grounded(
                         pr, unit_files, unit_provider, snapshot, unit_ctx, max_suggestions,
-                        language, repository_evidence_tokens, verify_behavior,
+                        language, min(repository_evidence_tokens, unit_evidence_tokens),
+                        verify_behavior,
                         max_suggestions_per_file=max_suggestions_per_file,
                         contract_domains=contract_domains,
+                        # A unit is small: one discovery round and one verification
+                        # round. Each extra round re-sends the prompt and evidence.
+                        discovery_rounds=1, verify_rounds=1,
                     )
                 finally:
                     if unit_provider_factory is not None:

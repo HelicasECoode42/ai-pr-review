@@ -213,7 +213,8 @@ def _unit_coverage(snapshot, files, context: ReviewContext, audit: dict) -> dict
 def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewContext,
                     max_suggestions=20, language="en",
                     evidence_tokens=6000, verify_behavior=True, max_suggestions_per_file=5,
-                    contract_domains: dict | None = None) -> GroundedResult:
+                    contract_domains: dict | None = None,
+                    discovery_rounds: int = 3, verify_rounds: int = 2) -> GroundedResult:
     """Ground discovery and verification in a frozen snapshot.
 
     Publication here is decided by proof, not by the model's self-reported
@@ -230,7 +231,11 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
     discovery_calls = 0
     payload = None
     discovery_trace = []
-    for round_index in range(3):
+    # Round budgets are parameters because each round re-sends the whole prompt
+    # and the evidence bundle: on a small unit one round each is enough, and the
+    # saved re-sends are the difference between 62k and ~20k tokens per unit.
+    discovery_budget = max(1, discovery_rounds)
+    for round_index in range(discovery_budget):
         # Cross-file evidence changes the constraints; the prompt module owns
         # that choice so this path never rewrites prompt text by matching strings.
         prompt = build_user_prompt(
@@ -238,7 +243,7 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
         )
         prompt += "\n## Frozen repository evidence\n" + bundle.render()
         prompt += "\nIf context is insufficient, return context_requests with your draft candidates."
-        if round_index == 2:
+        if round_index == discovery_budget - 1:
             prompt += "\nTool-round budget exhausted. Return your final candidates; do not assume missing evidence is safe."
         response = None
         requests: list = []
@@ -268,7 +273,7 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
         discovery_trace.append({"round": round_index, "context_requests": requests,
                                 "response_format_notice": response.get("response_format_notice"),
                                 "suggestions": response.get("suggestions", [])})
-        if requests and round_index < 2:
+        if requests and round_index < discovery_budget - 1:
             bundle.execute(requests)
             continue
         if payload is None:
@@ -309,17 +314,18 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
     verification_calls, failed = 0, False
     if eligible and verify_behavior:
         verdicts = {}
-        for round_index in range(2):
+        verify_budget = max(1, verify_rounds)
+        for round_index in range(verify_budget):
             prompt = json.dumps({"candidates": [{"candidate_id": index,
                       "candidate": s.model_dump(mode="json")} for index, s in eligible]}, ensure_ascii=False)
             prompt += "\n## Changed diff\n" + context.text + "\n## Frozen repository evidence\n" + bundle.render()
-            if round_index == 1:
+            if round_index == verify_budget - 1:
                 prompt += "\nFinal verification round: mark insufficient evidence needs_context."
             try:
                 response = _json(provider, VERIFY_SYSTEM, prompt)
                 verification_calls += 1
                 requested = response.get("context_requests") or []
-                if requested and round_index == 0:
+                if requested and round_index < verify_budget - 1:
                     if not isinstance(requested, list):
                         raise ValueError("Verification requests must be a list")
                     bundle.execute(requested)
