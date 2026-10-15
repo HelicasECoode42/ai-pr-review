@@ -8,8 +8,11 @@ from src.reviewer import grounded_review
 from src.reviewer.prompt import (
     CROSS_FILE_ANCHOR_CONSTRAINT,
     CROSS_FILE_EVIDENCE_CONSTRAINT,
+    DIFF_HORIZON_CLAUSE,
     EVIDENCE_EXCERPT_CONSTRAINT,
+    SYSTEM_PROMPT,
     UNCHANGED_LINES_CONSTRAINT,
+    UNTRUSTED_INPUT_CLAUSE,
     build_user_prompt,
 )
 
@@ -52,3 +55,18 @@ def test_grounded_review_no_longer_patches_prompt_text():
     """A str.replace() patch silently no-ops once the wording changes."""
     source = inspect.getsource(grounded_review)
     assert "prompt.replace(" not in source
+
+
+def test_both_families_declare_untrusted_input():
+    assert UNTRUSTED_INPUT_CLAUSE in SYSTEM_PROMPT
+    assert "untrusted data" in grounded_review.DISCOVERY_SYSTEM
+    assert "untrusted data" in grounded_review.VERIFY_SYSTEM
+
+
+def test_legacy_prompt_states_the_diff_horizon():
+    assert DIFF_HORIZON_CLAUSE in SYSTEM_PROMPT
+    # The grounded prompts state the same limits in their own words.
+    assert "Never invent missing code" in grounded_review.DISCOVERY_SYSTEM
+    assert "Absence of a check in a short excerpt does not prove absence" in (
+        grounded_review.VERIFY_SYSTEM
+    )
