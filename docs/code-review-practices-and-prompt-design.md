@@ -59,10 +59,82 @@ Google《The Standard of Code Review》原话（一手，[google.github.io/eng-p
 
 ### 1.3 评论的书写规范
 
-- 用 `Nit:` 前缀区分"可改可不改"；`Optional:`、`FYI:` 也是常见约定。
+- 用 `Nit:` 前缀区分"可改可不改"；`Optional:`、`FYI:` 也是常见约定。Google [comments.html](https://google.github.io/eng-practices/review/reviewer/comments.html) 给了理由：**"without comment labels, authors may interpret all comments as mandatory"**，并给了 `FYI:` 的原话示例："FYI: I don't expect you to do this in this CL, but you may find this interesting to think about for the future."
 - 反对意见要说清是**技术事实**还是**个人偏好**；是偏好就别卡人。
 - 抱怨前先确认对方是否已经知道（有些问题是历史遗留，属于"该开 issue"而不是"该现在修"）。
 - 有冲突时线下沟通，但**把结论记回 CL 评论**；共识不成要升级，**不要让 CL 挂在那**。
+
+---
+
+## 1.4 实证数字：人类 review 到底在说什么
+
+上一节是规范（应该怎样），这一节是**测量**（实际怎样）。三组数字会直接改变你对"AI reviewer 该做什么"的判断。
+
+### ① 人类评论的分类
+
+[Bacchelli & Bird, ICSE 2013](https://sback.it/publications/icse2013.pdf)（Microsoft CodeFlow，200 条讨论串 / 570 条评论，卡片分类，**这才是"评论分类占比"的出处，不是 Google 那篇**）：
+
+| 类别 | 条数 | 占比 |
+|---|---:|---:|
+| code improvements（更好的写法 / 死代码 / 可读性） | 165 | **29%** |
+| defects（缺陷） | 78 | **14%** |
+| ├ logic / high-level / security / exception handling | 65 / 6 / 5 / 3 | |
+| knowledge transfer | 12 | 2% |
+
+原文：
+
+> Review comments about defects are **few, comprising one-eighth of the total** in our sample, and mostly address 'micro' level and superficial concerns.
+
+### ② 微软的复现与"有用性"衰减
+
+[Czerwonka, Greiler, Tilford, ICSE-SEIP 2015](https://www.microsoft.com/en-us/research/publication/code-reviews-do-not-find-bugs-how-the-current-code-review-best-practice-slows-us-down/)：
+
+> Only about **15%** of comments provided by reviewers indicate a possible defect, much less a blocking defect.
+
+- 至少 **50%** 的评论关于**长期可维护性**；
+- 一条评论被作者认为"有用"的比例：**第一次约 33%**，同一处代码第三次才升到 **约 67%**；
+- **评论规模越大有用性越低，从 20+ 个文件开始明显下降。**
+
+### ③ Google 的定位与规模分布
+
+[Sadowski, Söderberg, Church, Sipko, Bacchelli, ICSE-SEIP 2018](https://sback.it/publications/icse2018seip.pdf)（注：**不是** Halder/Michaud）：
+
+> although it is great if reviewers find bugs, the **foremost reason** for introducing code review at Google was to **improve code understandability and maintainability**.
+
+同论文的规模/流程数字：中位数**改动 24 行**；>35% 只改 1 个文件、~90% 改动 <10 个文件；**中位 reviewer 数 = 1**，<25% 的改动有多于 1 个 reviewer；中位端到端延迟 **<4 小时**；>80% 的改动最多一轮评论往返。另有：只有 **2 位**受访者说"评论发现过 bug"。
+
+### ④ 变更大小
+
+[Google small CLs](https://google.github.io/eng-practices/review/reviewer/small-cls.html)：
+
+> **100 lines is usually a reasonable size for a CL, and 1000 lines is usually too large.**
+
+### 对本仓库的直接含义
+
+1. **只找 bug 的 reviewer，对标的是人类 review 产出的 14–15%。** 另外 29% 的 "code improvements" 与 ≥50% 的"可维护性"才是主体。本仓库把它们归到"结构建议"——这不是可选项，而是人类 review 的大头。
+2. **20+ 个文件的 PR，人的评论有用性就明显下降**（Czerwonka）。你的工具在超大 PR 上"截断 + 少发"方向一致，但"因为截断所以少发"和"因为不重要所以少发"必须能区分——这正是 chunk 覆盖账本要解决的问题。
+3. **真实世界的 PR 普遍很小**（中位 24 行、中位 1 个 reviewer）。ReviewBench 的 25 个 PR 平均 **14 个参考问题/PR**，属于"参考集极密"的一端，**不能代表日常 PR**；把它的 recall 当作日常体验会高估问题密度。
+
+---
+
+## 1.5 噪声预算是可以量化的：Tricorder 的 5%
+
+[Software Engineering at Google, ch.20](https://abseil.io/resources/swe-book/html/ch20.html) 记录了 Google 静态分析平台 Tricorder 的**发布准入标准**：
+
+> Produce **less than 10% effective false positives** … The overall effective false-positive rate is just below **5%**.
+
+关键在 "effective" 的定义：
+
+> developers did **not take some positive action** after seeing the issue
+
+也就是：**"开发者看了但什么都没做"就算误报**，哪怕这条提示技术上完全正确。同一章还有两句：
+
+> before we established clear feedback channels, many developers would just ignore analysis results they did not understand
+> pointing out formatting errors is not a good use of a human reviewer's time.
+
+**给你的指标建议**：在 precision/recall 之外，单独报一个 **"有效误报率" = 开发者看到后没有采取任何行动的比例**（包括"已读不改"）。它比"是否匹配参考 TP"更接近真实价值，而且你已经有了落地点：`fix_tracking` 与用户反馈状态（`Accepted` / `Rejected` / `Already handled` / `Needs context`）。
+
+**一个诚实的空白**：本次研究**没有找到**可引用的"reviewer 之间对'什么算缺陷'的一致性（inter-rater agreement）"同行评审统计。常被引用的 Hirao et al. (OSS 2016) 测的是另一件事（reviewer 投票是否与最终 merge/abandon 一致），**不能**当作缺陷定义一致性的证据。这个空白对本仓库尤其重要：judge 与主审同族、golden TP 里 98.9% 来自 LLM producer，都是同一个未解决的测量问题。
 
 ---
 
@@ -117,6 +189,7 @@ Google《The Standard of Code Review》原话（一手，[google.github.io/eng-p
 它与 2.1 是同一体系的两个版本（这个版本更强调 diff-only），差异本身很有教学价值：
 
 - 步骤 4 是 **4 个并行代理**：2 个 CLAUDE.md 合规 + 2 个 bug 代理。其中 Agent 3 明确要求"**只看 diff 本身，不读额外上下文**"，Agent 4 看"引入的代码里的问题（安全、逻辑）"。
+- **这个文件里没有数值置信度阈值**（重要：网上常把 ≥80 归到它头上）。它的步骤 5-6 是"每条 issue 起独立子代理验证 → 未验证的直接丢弃"，没有分数。
 - 把高信号标准写成加粗硬约束（原文）：
 
   > **CRITICAL: We only want HIGH SIGNAL issues.**
@@ -125,11 +198,18 @@ Google《The Standard of Code Review》原话（一手，[google.github.io/eng-p
   > **If you are not certain an issue is real, do not flag it. False positives erode trust and waste reviewer time.**
 
 - 它显式告诉子代理"**所有工具都是可用的，不要探索性调用工具**"，并要求"每个工具调用都要有明确目的"——**这是为了省掉代理的试探性开销**。
-- 每条 issue 都要起独立子代理**验证**，未经验证的直接丢弃。
 - **一条唯一 issue 只发一条评论**（"Only post ONE comment per unique issue"）。
 - **可提交建议（suggestion block）只在"提交这个建议能完整修好问题"时才给**；6 行以上/跨多处改动的只描述不给补丁。
 - 引用格式有硬要求：必须是**完整 commit SHA** 的 permalink，行号格式 `L[start]-L[end]`，并且"**至少给出评论行前后各 1 行上下文**"。
 - 误报清单里同样有"linter 会抓到的"和"**用户本次没改的行**"。
+
+**"≥80" 到底在哪：** 在同一个插件的另一个文件 `plugins/pr-review-toolkit/agents/code-reviewer.md`（一手，已核对本地原文）。它用的是**分档区间**而不是 0/25/50/75/100：
+
+> **Only report issues with confidence ≥ 80**
+> …Group issues by severity (**Critical: 90-100, Important: 80-89**).
+> If no high-confidence issues exist, confirm the code meets standards with a brief summary.
+
+它的分档是 `0-25`（很可能是误报 / pre-existing）、`26-50`、`51-75`、`76-90`、`91-100`。**注意这句话本身也是教学设计**：没有高置信问题时，输出"代码符合标准"而不是空报告——这比让模型自由发挥"没问题"更可控。
 
 ### 2.3 PR-Agent 的 reviewer prompt（一手）
 
@@ -192,24 +272,51 @@ Google《The Standard of Code Review》原话（一手，[google.github.io/eng-p
 
 ### 2.4 三份 prompt 的横向对比
 
-| | Anthropic 官方 | Claude Code 插件版 | PR-Agent |
+| | Anthropic 官方（claude-plugins-official） | Claude Code 插件版 | PR-Agent |
 |---|---|---|---|
 | 输出格式 | 无 schema，自然语言评论 | 无 schema，终端/评论 | YAML + Pydantic 定义，字段级约束 |
 | 行号 | 靠 permalink 格式硬要求 | 同左 | `start_line`/`end_line` 独立整数字段 |
 | 严重度 | 无（用 0–100 代替） | 无 | `risk_level` + severity 描述规则 |
-| 置信度 | **0/25/50/75/100 五档锚点** | 同左 | 无显式分数；用"be certain / prefer not reporting over guessing"表达 |
-| 误报控制 | 7 条误报清单 + 分数 <80 丢弃 | 同左 + 加粗硬约束 | 分层 flag 策略 + 明确"不要猜" |
+| 置信度 | **0/25/50/75/100 五档锚点**，`<80` 丢弃 | 本文件**没有**数值阈值，靠独立验证代理过滤；`≥80` 在 `pr-review-toolkit` 的 agent 文件里 | 不给分数；用"be certain / prefer not reporting over guessing"表达 |
+| 误报控制 | 7 条误报清单 + 分数 <80 丢弃 | 同左 + 加粗硬约束 + 逐条独立验证 | 分层 flag 策略 + 明确"不要猜" + 拒绝清单 |
 | 独立验证 | 每条 issue 一个打分代理 | 每条 issue 一个验证代理，未验证即丢 | 可选 `reflection`/自省链路；本次未逐一核实 |
 | 跨轮去重 | 发布前查"是否已评论过" | 同左 | `previous_findings` 三态语义 + 文本逐字复用 |
 | 防注入 | 未在命令文件中显式声明 | 未显式声明 | **显式声明 PR 描述/commit/代码为 untrusted data** |
 | 视野限制说明 | 要求 Agent 读历史/blame/旧 PR 补上下文 | 明确"只看 diff，不读额外上下文" | **显式声明"你只看 hunk，不是整个代码库"** |
 | 跳过条件 | 有（closed/draft/已评论） | 有 | 有（配置项控制） |
 
-**共同点（也就是"必须做"的部分）**：都要行号、都要引用可核对、都明确列出不该报的东西、都做去重、都不让模型自己决定"已验证"。
+**共同点（也就是"必须做"的部分）**：都要行号、都要引用可核对、都明确列出不该报的东西、都做去重、都不让模型自己决定"已验证"、**都允许"没有高置信问题"这个结论**（PR-Agent 允许空数组；pr-review-toolkit 明说"没有高置信问题就确认代码符合标准"）。
 
-**几乎没人做的**：**宿主级**证据复核——即"把这条 issue 引用的证据交给确定性程序去核对原文"，而不是再让一个模型来判断。三份 prompt 里的"验证"都是**再起一个模型**（Anthropic 的打分代理、插件版的验证代理、PR-Agent 的 reflection）。PR-Agent 的 `failure_modes.detected_by` 只是让模型自己写"怎么才能发现"，仍不构成宿主复核。
+**本轮核实后，"几乎没人做"的清单**（依据上面各文件的原文）：
 
-这一点值得单独强调，因为本仓库**已经在做**了：`evidence_validator.py` 会校验引用是否真的是被引用文件里的一行原文，`grounded_review` 会在花核验预算之前先在冻结 HEAD 里验证 anchor 行是否存在。这是相对上述工具的**结构性优势**，不是"要补的差距"。
+- **校准过的数值置信度**：只有 Claude Code（`≥80`）和 Greptile（`strictness` 1–3 + `confidenceScoreSection`）暴露；**PR-Agent 是刻意不问的**，它改用"能否说出具体触发场景"来替代分数。
+- **强制引用**：只有 Claude Code 要求"You must cite and link each issue"。
+- **可直接落地的补丁**：只有 PR-Agent 要求 `improved_code` 是"完整、可立即替换"的代码，且**禁止用省略号或占位符**。
+- **"won't fix" 的记忆**：只有 PR-Agent 建模了 `active`/`resolved`/`dismissed` 并禁止重提被 dismissed 的问题。
+- **自己核实自己的说法**：只有 Claude Code 的验证代理是真正的"生成后再验证"循环；其余工具都是发现后直接发布。
+- **宿主级证据复核**（把引用的证据交给确定性程序核对原文，而不是再起一个模型）：**上面所有工具都没有**。PR-Agent 的 `failure_modes.detected_by` 只是让模型自己描述"怎么才能发现"，仍不构成宿主复核。
+
+最后一条值得单独强调，因为本仓库**已经在做**了：`evidence_validator.py` 会校验引用是否真的是被引用文件里的一行原文，`grounded_review` 会在花核验预算之前先在冻结 HEAD 里验证 anchor 行是否存在。这是相对上述工具的结构性优势。
+
+### 2.5 配置层其实也是 prompt（一手）
+
+上面各工具的 prompt 正文多不公开，但**用户可写的那部分**是公开契约，实际效果等同于 prompt：
+
+| 工具 | 用户可注入的文本 | 关键细节（原文/文档措辞） |
+|---|---|---|
+| **CodeRabbit** | `reviews.path_instructions[].instructions`（按 glob 生效，单条上限 20000 字符）、`tone_instructions`（≤250 字符） | 语气开关是 **`reviews.profile`**：`quiet` / `chill`（默认）/ `assertive`——"quiet for only the most important feedback, chill for balanced feedback, assertive for more feedback (which may feel nitpicky)"。另外它在模型之外**真的跑 ast-grep / semgrep / shellcheck / hadolint / languagetool**，机械检查不占模型预算。 |
+| **Greptile** | `.greptile/rules.md`（纯 markdown 直接当上下文） | `strictness` `1|2|3`：1 = verbose（报更多）、3 = critical only；`commentTypes` 默认 `["syntax","logic","style"]`；输出段含 `confidenceScoreSection`。 |
+| **Cursor Bugbot** | `.cursor/BUGBOT.md`（含嵌套） | 规则注入顺序："Team Rules → project .cursor/BUGBOT.md（含嵌套）→ learned rules → manual rules"；**每条规则截断到 30,000 字符，总量上限 100,000 字符**；`.cursor/config/bugbot.yaml` 控制 `effort` 与 `incremental`。 |
+| **Graphite** | 自定义规则 | 规则格式契约：**Rule → Bad example → Good example → Reasoning**；一条规则只讲一件事；排除项过宽会削弱效果。 |
+| **Gemini CLI** | `.gemini/skills/code-reviewer/SKILL.md` | 固定支柱（Correctness / Maintainability / Readability / Efficiency / Security / Edge Cases / Testability）+ 固定输出三段（Critical / Improvements / Nitpicks）+ 结尾必须给 "Approved / Request Changes"；先跑确定的 `npm run preflight`。 |
+| **OpenAI Codex** | `.github/codex/labels/codex-review.md` | **流程导向而非找 bug**："Make sure the pull request body explains the motivation behind the change"；"Each PR should ideally do one conceptual thing"。 |
+
+**两条可直接抄的设计**：
+
+1. **规则要写"反例 + 正例 + 理由"**（Graphite 的契约）。只写"不要 X"的规则，模型会过度泛化；给出反例/正例能显著收窄作用域。
+2. **把机械检查交给 linter，把模型预算留给语义**（CodeRabbit）。这与你文档里 Anthropic 那句"linter 会抓到的问题不要报、也不用自己跑构建"是同一个设计。
+
+**PR-Agent 的拒绝清单**也值得单独记（一手）：它明确写"**Don't suggest** to add docstring, type hints, or comments, to remove unused imports, or to use more specific exception types"——这四类恰好是 AI reviewer 最爱刷的低价值评论。
 
 ---
 
@@ -451,21 +558,43 @@ schema 是 `"confidence": 0.0`，配置是 `min_comment_confidence=0.65`（[conf
 
 ## 7. 资料来源清单
 
-一手（我实际抓到原文）：
+一手（实际抓到原文；PDF 用 `curl` + `pdftotext` 读取，因为 `web_fetch` 不支持 `application/pdf`）：
 
 - Google《The Standard of Code Review》 https://google.github.io/eng-practices/review/reviewer/standard.html
 - Google《What to look for in a code review》 https://google.github.io/eng-practices/review/reviewer/looking-for.html
+- Google《How to write code review comments》 https://google.github.io/eng-practices/review/reviewer/comments.html
+- Google《Small CLs》 https://google.github.io/eng-practices/review/reviewer/small-cls.html
 - Anthropic 官方 code review 命令 + 0/25/50/75/100 量表 https://github.com/anthropics/claude-plugins-official/blob/main/plugins/code-review/commands/code-review.md
 - Anthropic Claude Code 内置 code-review 插件（diff-only 版本） https://github.com/anthropics/claude-code/blob/main/plugins/code-review/commands/code-review.md
+- Anthropic `pr-review-toolkit` 的 code reviewer agent（**`≥80` 的真实出处**，含 0-25/26-50/51-75/76-90/91-100 分档） https://github.com/anthropics/claude-code/blob/main/plugins/pr-review-toolkit/agents/code-reviewer.md
 - PR-Agent reviewer prompt（含防注入、分层 flag 策略、schema、跨轮去重） https://github.com/The-PR-Agent/pr-agent/blob/main/pr_agent/settings/pr_reviewer_prompts.toml
 - PR-Agent diff hunk 格式说明 https://github.com/The-PR-Agent/pr-agent/blob/main/pr_agent/settings/prompt_fragments.toml
+- PR-Agent 代码建议 prompt（拒绝清单 + `improved_code` 完整性要求） https://github.com/The-PR-Agent/pr-agent/blob/main/pr_agent/settings/code_suggestions/pr_code_suggestions_prompts.toml
 - Claude Code Code Review 插件文档（多代理、置信度阈值 80） https://mintlify.wiki/anthropics/claude-code/plugins/bundled/code-review
 - Awesome Reviewers：从真实 review 讨论中提炼的可复用审查指令语料（含 `/raw/<slug>.md` 与 bundle API） https://github.com/baz-scm/awesome-reviewers
+- Sadowski, Söderberg, Church, Sipko, Bacchelli, ICSE-SEIP 2018（Google） https://sback.it/publications/icse2018seip.pdf
+- Bacchelli & Bird, ICSE 2013（Microsoft，评论分类占比的**真正出处**） https://sback.it/publications/icse2013.pdf
+- Czerwonka, Greiler, Tilford, ICSE-SEIP 2015（Microsoft，"评论有用性"与规模衰减） https://www.microsoft.com/en-us/research/publication/code-reviews-do-not-find-bugs-how-the-current-code-review-best-practice-slows-us-down/
+- Software Engineering at Google ch.20（Tricorder 的 5% 有效误报标准） https://abseil.io/resources/swe-book/html/ch20.html
+- OWASP Code Review Guide（安全审查类别 A1–A10） https://owasp.org/www-project-code-review-guide/
+- Rust Review Policy https://github.com/rust-lang/rust-forge/blob/master/src/compiler/reviews.md
+- CPython PR 生命周期（含"评论好的地方"与"review 不必完美"） https://devguide.python.org/getting-started/pull-request-lifecycle/
+- Go CodeReviewComments https://go.dev/wiki/CodeReviewComments
+- "The Code Review Pyramid"（**作者是 Gunnar Morling**，不是 graphite.dev） https://www.morling.dev/blog/the-code-review-pyramid/
+- Gemini CLI code reviewer skill https://github.com/google-gemini/gemini-cli/blob/main/.gemini/skills/code-reviewer/SKILL.md
+- OpenAI Codex review label prompts https://github.com/openai/codex/blob/main/.github/codex/labels/codex-review.md
+- Cursor Bugbot 配置 https://cursor.com/docs/bugbot.md
+- Greptile 配置参考 https://www.greptile.com/docs/code-review/greptile-config-reference
+- Graphite 自定义规则契约 https://graphite.dev/docs/ai-review-customization
 
 二手（未能抓到原始文件，标明了）：
 
 - 连续浮点置信度失败案例与锚点迁移复盘： https://github.com/EveryInc/compound-engineering-plugin/blob/372e44af75fa5c5684e3653ad19a2b35674dee0d/docs/solutions/skill-design/confidence-anchored-scoring.md
-- CodeRabbit 配置（path instructions / tone / review profile）与"slop detection"等机制——其文档站为 JS 渲染，我抓到的是导航骨架，未能逐项核实： https://docs.coderabbit.ai/configuration/path-instructions
+- SmartBear/Cisco 的"200–400 LOC"行业研究：**厂商营销页，非同行评审**，且原始 PDF 已 404（`web.archive.org` 在本机不可达），因此本文只把它列为待核实数字： https://smartbear.com/learn/code-review/best-practices-for-peer-code-review/
+- Qodo 自家的 prompt 文件：查询超时，**未做任何关于 Qodo Merge 与 PR-Agent 现状关系的断言**。
+- Cursor Bugbot / Graphite Diamond 的系统 prompt：不公开，只有配置 schema。
+
+**研究过程备注（便于复核）**：`web_fetch` 在本次会话中对 `raw.githubusercontent.com` 时好时坏，对 `application/pdf` 直接不支持；可靠路径是 `bash` + `curl`（PDF 再配 `pdftotext`），以及各类文档站的 Mintlify `.md` 端点。已抓取的原始文件副本在仓库外的 `research/raw/`（与 `eval-data/` 同级），可用来逐字复核本文引文。
 
 本机参考（本仓库已有研究）：
 
