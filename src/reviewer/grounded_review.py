@@ -248,18 +248,39 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
         prompt += "\nIf context is insufficient, return context_requests with your draft candidates."
         if round_index == 2:
             prompt += "\nTool-round budget exhausted. Return your final candidates; do not assume missing evidence is safe."
-        response = _json(provider, DISCOVERY_SYSTEM, prompt)
-        discovery_calls += 1
-        requests = response.get("context_requests") or []
-        if not isinstance(requests, list):
-            raise ValueError("context_requests must be a list")
+        response = None
+        requests: list = []
+        payload = None
+        attempt_prompt = prompt
+        for attempt in (1, 2):
+            try:
+                response = _json(provider, DISCOVERY_SYSTEM, attempt_prompt)
+                discovery_calls += 1
+                requests = response.get("context_requests") or []
+                if not isinstance(requests, list):
+                    raise ValueError("context_requests must be a list")
+                if not requests:
+                    payload = parse_model_payload(json.dumps(response))
+                break
+            except ValueError:
+                # A garbled answer must not discard the whole review: one
+                # recorded retry is far cheaper than losing the run entirely.
+                if attempt == 2:
+                    raise
+                discovery_trace.append({"round": round_index, "context_requests": [],
+                                        "retry_after_unparseable_response": True})
+                attempt_prompt = prompt + (
+                    "\nYour previous answer could not be parsed. Return only the JSON "
+                    "object described above, with no prose before or after it."
+                )
         discovery_trace.append({"round": round_index, "context_requests": requests,
                                 "response_format_notice": response.get("response_format_notice"),
                                 "suggestions": response.get("suggestions", [])})
         if requests and round_index < 2:
             bundle.execute(requests)
             continue
-        payload = parse_model_payload(json.dumps(response))
+        if payload is None:
+            payload = parse_model_payload(json.dumps(response))
         break
     if payload is None:
         raise ValueError("Discovery did not produce final candidates")

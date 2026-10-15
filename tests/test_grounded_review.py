@@ -257,3 +257,18 @@ def test_path_only_request_pages_forward_instead_of_rereading_prefix(repo):
     assert bundle.requests[-1]["continuation_line"] == first_end + 1
     assert bundle.requests[-1]["format_notice"] == "path_only_read_request"
     assert any(e["end_line"] > first_end for e in bundle.excerpts)
+
+
+def test_unparseable_discovery_answer_is_retried_once(repo):
+    """A garbled final answer must not discard the whole review."""
+    report, provider = run(repo, ["not json at all", candidate(), verdict()])
+    assert len(report.suggestions) == 1
+    # One discovery call, one retry, one verification call.
+    assert len(provider.calls) == 3
+    assert "could not be parsed" in provider.calls[1][1]
+
+
+def test_retry_is_recorded_in_the_discovery_trace(repo):
+    report, _ = run(repo, ["not json at all", candidate(), verdict()])
+    trace = report.repository_context["discovery_trace"]
+    assert any(entry.get("retry_after_unparseable_response") for entry in trace)
