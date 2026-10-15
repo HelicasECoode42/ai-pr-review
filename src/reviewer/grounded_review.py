@@ -77,6 +77,8 @@ class GroundedResult:
     # This bundle's own budget ledger; kept out of the dataclass fields above so
     # existing positional callers keep working.
     evidence_budget: BudgetReport | None = None
+    # Which planned units reached the prompt; None when the prompt fit.
+    unit_coverage: dict | None = None
 
 
 def _repair_closed_containers(raw):
@@ -196,6 +198,29 @@ def _add_contract_callers(bundle, snapshot, files, suggestion) -> None:
         if path in changed or path == suggestion.file_path:
             continue  # callers already in the diff are visible without help
         bundle.add(path, line, kind="candidate_caller")
+
+
+def _unit_coverage(snapshot, files, context: ReviewContext, audit: dict) -> dict | None:
+    """Account for which planned review units reached the prompt.
+
+    Only runs when the prompt was truncated: that is exactly the case where a
+    reader needs to know what was left out. Offline and model-free, but it does
+    parse the changed files, so it is skipped entirely when it cannot matter.
+    """
+    if not context.truncated or not files:
+        return None
+    try:
+        from src.analyzer.plan_baseline import summarize_unit_coverage
+        from src.analyzer.review_plan import build_review_plan
+
+        budget = max(128, context.patch_token_budget or 6000)
+        # The inventory is the changed set: the grounded path has no head
+        # listing, so relationship edges outside the diff are not resolved here.
+        plan = build_review_plan(snapshot, files, [f.filename for f in files], token_budget=budget)
+        return summarize_unit_coverage(plan, context)
+    except Exception as exc:
+        audit["unit_coverage_error"] = f"{type(exc).__name__}: {exc}"
+        return None
 
 
 def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewContext,
@@ -363,7 +388,8 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
     audit["discovery_trace"] = discovery_trace
     return GroundedResult(payload.summary, kept, pending, candidates, decisions, audit,
                           discovery_calls, verification_calls, failed,
-                          evidence_budget=bundle.budget_report)
+                          evidence_budget=bundle.budget_report,
+                          unit_coverage=_unit_coverage(snapshot, files, context, audit))
 
 
 def build_grounded_report(pr, files, findings, result, context, *, reviewer_version="pr-branch",
@@ -398,6 +424,34 @@ def build_grounded_report(pr, files, findings, result, context, *, reviewer_vers
     evidence_budget = result.evidence_budget or BudgetReport(scope="repository_evidence")
     run_budget = run_budget_report((context.budgets, evidence_budget), cap=max_input_tokens)
     warnings.extend(budget_warnings(run_budget))
+    run_metrics: dict[str, int | float] = {
+        "raw_candidate_count": len(result.candidates),
+        "pending_candidate_count": len(result.pending),
+        "behavior_verified_count": sum(d.get("decision") == "confirmed" for d in result.decisions),
+        "discovery_request_count": result.discovery_calls,
+        "behavior_verification_request_count": result.verification_calls,
+        "main_review_prompt_signal_count": 0,
+    }
+    # What the reader must know about a truncated prompt: how much of the change
+    # never reached the model at all.
+    if result.unit_coverage:
+        coverage = result.unit_coverage
+        for key in (
+            "units_planned",
+            "units_with_evidence_in_prompt",
+            "units_fully_in_prompt",
+            "units_not_reviewed",
+        ):
+            if isinstance(coverage.get(key), int):
+                run_metrics[key] = coverage[key]
+        unreviewed = coverage.get("units_not_reviewed") or 0
+        if unreviewed:
+            sample = ", ".join((coverage.get("unreviewed_paths_sample") or [])[:5])
+            warnings.append(
+                f"{unreviewed} of {coverage.get('units_planned', 0)} semantic review unit(s) were "
+                f"not reviewed in this run; the report is partial."
+                + (f" Examples: {sample}." if sample else "")
+            )
     from src.reviewer.engine import _build_completeness
     skipped = [SkippedContextFile(file_path=p, reason=r) for p, r in context.skipped_files]
     return ReviewReport(pr=pr, files=files, summary=result.summary, risk_level=severity,
@@ -414,8 +468,4 @@ def build_grounded_report(pr, files, findings, result, context, *, reviewer_vers
                         repository_context=result.bundle,
                         budget_report=run_budget,
                         hidden_suggestions_count=len(result.candidates) - len(result.suggestions),
-                        metrics={"raw_candidate_count": len(result.candidates), "pending_candidate_count": len(result.pending),
-                                 "behavior_verified_count": sum(d.get("decision") == "confirmed" for d in result.decisions),
-                                 "discovery_request_count": result.discovery_calls,
-                                 "behavior_verification_request_count": result.verification_calls,
-                                 "main_review_prompt_signal_count": 0})
+                        metrics=run_metrics)

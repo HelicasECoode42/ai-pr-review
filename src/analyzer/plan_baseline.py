@@ -98,6 +98,45 @@ def summarize_context(context: ReviewContext) -> dict:
     }
 
 
+def summarize_unit_coverage(plan: ReviewPlan, context: ReviewContext) -> dict:
+    """How many planned review units actually reached the prompt.
+
+    The planner already answers "what are the semantic units of this diff"; this
+    answers the follow-up the reviewer needs: which of them were actually put in
+    front of the model, and which were never seen at all.
+    """
+    in_prompt = {
+        entry.path
+        for entry in context.coverage
+        if entry.mode == "diff" and entry.status in {"included", "partial"}
+    }
+    complete = {
+        entry.path
+        for entry in context.coverage
+        if entry.mode == "diff" and entry.status == "included"
+    }
+    units = plan.units
+    reviewed = [u for u in units if any(s.path in in_prompt for s in u.slices)]
+    fully = [u for u in units if all(s.path in complete for s in u.slices)]
+    missing = [u for u in units if not any(s.path in in_prompt for s in u.slices)]
+    return {
+        "units_planned": len(units),
+        "units_with_evidence_in_prompt": len(reviewed),
+        "units_fully_in_prompt": len(fully),
+        "units_not_reviewed": len(missing),
+        "planned_hunks": plan.coverage_summary.planned_hunks,
+        "hunks_complete_in_prompt": context.coverage_summary.hunks_complete,
+        "hunks_total": context.coverage_summary.hunks_total,
+        "unreviewed_paths_sample": sorted({s.path for u in missing for s in u.slices})[:20],
+        "plan_token_budget": plan.token_budget,
+        "note": (
+            "Unit accounting compares the offline ReviewPlan with the prompt that was actually "
+            "built. A unit counts as reviewed when at least one of its slices is in the prompt; "
+            "these are structural counts, not a quality claim."
+        ),
+    }
+
+
 def compare_planner_and_context(plan_summary: dict, context_summary: dict) -> dict:
     """State the gap between what the planner planned and what the prompt got.
 

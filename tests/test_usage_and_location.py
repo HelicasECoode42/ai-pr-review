@@ -5,6 +5,7 @@ from __future__ import annotations
 from src.analyzer.context_builder import build_review_context
 from src.application.review import ReviewApplication
 from src.models import (
+    BudgetReport,
     ChangedFile,
     PullRequest,
     ReviewReport,
@@ -237,3 +238,74 @@ def test_default_orchestration_is_auto():
 
     info = inspect.signature(analyze).parameters["agent_mode"].default
     assert info.default == "auto"
+
+
+class _MemSnapshot:
+    base = "1" * 40
+    head = "2" * 40
+
+    def __init__(self, sources):
+        self.sources = sources
+
+    def read(self, path, side="head"):
+        return self.sources.get(path)
+
+
+def test_unit_coverage_counts_units_that_never_reached_the_prompt():
+    from src.analyzer.plan_baseline import summarize_unit_coverage
+    from src.analyzer.review_plan import build_review_plan
+
+    patch = "@@ -1,1 +1,1 @@\n-old\n+new\n"
+    sources = {"src/a.py": "value = 1\n", "src/b.py": "value = 2\n"}
+    files = [ChangedFile(filename=p, patch=patch) for p in sources]
+    plan = build_review_plan(_MemSnapshot(sources), files, list(sources), token_budget=1000)
+    # Only src/a.py reached the prompt.
+    ctx = build_review_context(
+        PullRequest(repo="o/r", number=1, title="t"), files[:1], allow_remote_file_fetch=False
+    )
+    summary = summarize_unit_coverage(plan, ctx)
+    assert summary["units_planned"] == 2
+    assert summary["units_with_evidence_in_prompt"] == 1
+    assert summary["units_not_reviewed"] == 1
+    assert summary["unreviewed_paths_sample"] == ["src/b.py"]
+
+
+def test_unit_accounting_is_skipped_when_the_prompt_fit():
+    from src.reviewer.grounded_review import _unit_coverage
+
+    ctx = build_review_context(
+        PullRequest(repo="o/r", number=1, title="t"),
+        [ChangedFile(filename="src/a.py", patch=CODE_PATCH)],
+        allow_remote_file_fetch=False,
+    )
+    assert ctx.truncated is False
+    assert _unit_coverage(None, [], ctx, {}) is None
+
+
+def test_grounded_report_names_unreviewed_units_and_counts_them():
+    from src.analyzer.context_builder import ReviewContext
+    from src.reviewer.grounded_review import GroundedResult, build_grounded_report
+
+    ctx = ReviewContext(
+        text="## Patches\n", truncated=True, token_count=10, patch_token_budget=6000,
+        budgets=BudgetReport(scope="build_review_context"),
+    )
+    result = GroundedResult(
+        summary="ok", suggestions=[], pending=[], candidates=[], decisions=[],
+        bundle={"omitted": [], "evicted": [], "excerpts": [], "snapshot": {}, "tokens": 0},
+        discovery_calls=1, verification_calls=0,
+        unit_coverage={
+            "units_planned": 14, "units_with_evidence_in_prompt": 10,
+            "units_fully_in_prompt": 8, "units_not_reviewed": 4,
+            "unreviewed_paths_sample": ["docs/a.md", "src/b.py"],
+        },
+    )
+    report = build_grounded_report(
+        PullRequest(repo="o/r", number=1, title="t"),
+        [ChangedFile(filename="src/a.py", patch=CODE_PATCH)], [], result, ctx,
+    )
+    assert report.metrics["units_planned"] == 14
+    assert report.metrics["units_not_reviewed"] == 4
+    assert any("4 of 14 semantic review unit(s) were not reviewed" in w
+               for w in report.analysis_warnings)
+    assert report.report_confidence == "partial"
