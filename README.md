@@ -94,6 +94,43 @@ uv run uvicorn src.service.app:app --reload
 - 使用 base 分支稳定 reviewer 分析 PR diff，避免 PR 把审查器自身改坏后完全无报告。
 - 对 PR head 额外执行 Python 语法诊断；坏 PR 仍生成报告，但 workflow 最终失败，避免误合并。
 
+#### 在你自己的仓库里使用（reusable workflow）
+
+本仓库的 `.github/workflows/ai-pr-review.yml` 是**自我审查**用的：它把 PR 的 base 分支 checkout 成 reviewer，避免一个坏 PR 把审查工具本身改坏。**别的仓库不要直接调它**——它不会安装本工具，而是去跑调用方自己的源码。
+
+给别人用的是 [`.github/workflows/ai-pr-review-reusable.yml`](.github/workflows/ai-pr-review-reusable.yml)：它从本仓库按 `reviewer_ref` 安装工具（`uvx --from git+…`），在你自己的 checkout 上运行，因此不依赖你的仓库里有没有本工具的源码。
+
+```yaml
+# .github/workflows/ai-review.yml（放在你的仓库里）
+name: AI PR Review
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  review:
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: HelicasECoode42/ai-pr-review/.github/workflows/ai-pr-review-reusable.yml@main
+    with:
+      language: auto          # auto | en | zh
+      post_inline: false      # 默认只发 summary comment
+      reviewer_ref: main      # 可固定到 tag 或 SHA
+      max_input_tokens: 6000  # 可选：给输入 token 设上限
+    secrets:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}   # 用你自己的 Key
+```
+
+行为与边界：
+
+- **用调用方自己的 Key**：`OPENAI_API_KEY` 必需，`OPENAI_BASE_URL` / `REVIEW_MODEL` / `CRITIC_MODEL` 可选；不存在"消耗本仓库余额"的路径。
+- 默认**只发一条可更新的 summary comment**（用 `<!-- ai-pr-review-bot -->` 标记去重），不发行内评论；行内评论需要显式 `post_inline: true`。
+- 行内评论的发布阈值由**报告里的 `metrics.publish_min_confidence`** 决定（由 Python 侧 Settings 盖章），workflow 不再自己硬编码一个。
+- 超过 10 条行内评论时只发前 10 条，并**在日志里报告被丢弃的条数**；每条发布失败也会计数汇总。
+- artifact：`pr-review.json`（完整报告，含 usage 与 cache 命中、预算账本、覆盖率、待补上下文候选）。
+- **未验证**：这个 reusable workflow 目前只做过 YAML 校验与逻辑复核，**没有在第三方仓库实跑过**。
+
 ### Web Console
 
 - 提供 FastAPI 后端和静态前端页面。
