@@ -102,7 +102,15 @@ class _RiskVisitor(ast.NodeVisitor):
                             confidence=rule.confidence,
                         )
                     )
-            except Exception:
+            except Exception as exc:
+                # One rule raising must not look like "this rule found nothing".
+                logger.warning(
+                    "AST rule %s failed on %s: %s: %s",
+                    rule.rule_id,
+                    self.file_path,
+                    type(exc).__name__,
+                    exc,
+                )
                 continue
         self.generic_visit(node)
 
@@ -379,7 +387,14 @@ def scan_ast_risks(files: list[ChangedFile] | None) -> list[RiskFinding]:
 
         try:
             hunks = parse_file_hunks(file)
-        except Exception:
+        except Exception as exc:
+            # No parsable hunks means no rule coverage for this file, not a clean file.
+            logger.warning(
+                "AST rule scan skipped %s (hunk parse failed): %s: %s",
+                file.filename,
+                type(exc).__name__,
+                exc,
+            )
             continue
 
         changed_real_lines = _get_changed_real_lines(hunks)
@@ -401,7 +416,13 @@ def scan_ast_risks(files: list[ChangedFile] | None) -> list[RiskFinding]:
             )
             try:
                 visitor.visit(tree)
-            except Exception:
+            except Exception as exc:
+                logger.warning(
+                    "AST rule scan skipped a hunk of %s (%s: %s)",
+                    file.filename,
+                    type(exc).__name__,
+                    exc,
+                )
                 continue
             findings.extend(visitor.findings)
 

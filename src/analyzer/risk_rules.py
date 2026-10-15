@@ -161,7 +161,15 @@ def _scan_line_rules(file: ChangedFile) -> list[RiskFinding]:
                             confidence=effective_confidence,
                         )
                     )
-                except Exception:
+                except Exception as exc:
+                    # A rule that raised produced no finding for a reason; say so.
+                    logger.warning(
+                        "Line rule %s failed on %s: %s: %s",
+                        rule_id,
+                        file.filename,
+                        type(exc).__name__,
+                        exc,
+                    )
                     continue
     return findings
 
@@ -181,7 +189,13 @@ def _scan_test_deletions(file: ChangedFile) -> list[RiskFinding]:
             try:
                 if "assert" in line or "expect(" in line or "should" in line:
                     deleted_assertions += 1
-            except Exception:
+            except Exception as exc:
+                logger.warning(
+                    "Deleted-line scan skipped one line of %s: %s: %s",
+                    file.filename,
+                    type(exc).__name__,
+                    exc,
+                )
                 continue
     if deleted_assertions == 0:
         return []

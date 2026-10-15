@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import logging
 import re
 import time
 from queue import Queue
@@ -328,7 +329,15 @@ def list_history() -> list[dict]:
                 "report_confidence": report.get("report_confidence", "unknown"),
                 "analyzed_at": payload.get("analyzed_at") or _history_timestamp(f.stem),
             })
-        except Exception:
+        except Exception as exc:
+            # A corrupt historical entry must not break the current listing, but
+            # it must not vanish without a trace either.
+            logging.getLogger(__name__).warning(
+                "Skipping unreadable history entry %s: %s: %s",
+                f.name,
+                type(exc).__name__,
+                exc,
+            )
             continue
     return entries
 

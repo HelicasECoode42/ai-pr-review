@@ -114,7 +114,14 @@ def _detect_changed_signatures(
 
         try:
             hunks = parse_file_hunks(f)
-        except Exception:
+        except Exception as exc:
+            # A file that cannot be parsed is a coverage gap, not an empty file.
+            logger.warning(
+                "Cross-file analysis skipped %s (hunk parse failed): %s: %s",
+                f.filename,
+                type(exc).__name__,
+                exc,
+            )
             continue
 
         for hunk in hunks:
@@ -129,7 +136,13 @@ def _detect_changed_signatures(
             collector = _FuncCollector()
             try:
                 collector.visit(tree)
-            except Exception:
+            except Exception as exc:
+                logger.warning(
+                    "Cross-file analysis skipped a hunk of %s (%s: %s)",
+                    f.filename,
+                    type(exc).__name__,
+                    exc,
+                )
                 continue
 
             for func in collector.definitions:
@@ -164,7 +177,14 @@ def _detect_new_calls(
 
         try:
             hunks = parse_file_hunks(f)
-        except Exception:
+        except Exception as exc:
+            # A file that cannot be parsed is a coverage gap, not an empty file.
+            logger.warning(
+                "Cross-file analysis skipped %s (hunk parse failed): %s: %s",
+                f.filename,
+                type(exc).__name__,
+                exc,
+            )
             continue
 
         for hunk in hunks:
@@ -179,7 +199,13 @@ def _detect_new_calls(
             collector = _FuncCollector()
             try:
                 collector.visit(tree)
-            except Exception:
+            except Exception as exc:
+                logger.warning(
+                    "Cross-file analysis skipped a hunk of %s (%s: %s)",
+                    f.filename,
+                    type(exc).__name__,
+                    exc,
+                )
                 continue
 
             for call in collector.calls:

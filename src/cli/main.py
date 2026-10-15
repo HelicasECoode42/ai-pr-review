@@ -19,6 +19,20 @@ class OutputLanguage(str, Enum):
     ZH = "zh"
 
 
+def _warn_step_summary_failure(report, exc: Exception) -> str:
+    """Surface a failed step-summary write instead of dropping it silently.
+
+    A missing step summary makes CI look as if the tool reported nothing while
+    the run believes it succeeded, so the reason goes to both the console and,
+    when a report exists, its audit trail.
+    """
+    message = f"Could not write the GitHub step summary: {type(exc).__name__}: {exc}"
+    console.print(f"[yellow]{message}[/yellow]")
+    if report is not None:
+        report.analysis_warnings = [*report.analysis_warnings, message]
+    return message
+
+
 def _write_failure_report(
     output: Path | None,
     *,
@@ -271,9 +285,9 @@ def analyze(
                 f"**PR:** {repo}#{pr_number}\n"
             )
             write_step_summary(summary)
-        except Exception:
-            # Do not raise during reporting
-            pass
+        except Exception as exc:
+            # Do not raise during reporting, but do not hide it either.
+            _warn_step_summary_failure(None, exc)
         # Return success exit so CI can still archive artifact produced
         raise typer.Exit(code=0)
 
@@ -305,8 +319,10 @@ def analyze(
             for f in files:
                 try:
                     parts.append(f"- {f.filename} +{f.additions}/-{f.deletions}")
-                except Exception:
-                    continue
+                except Exception as exc:
+                    # Keep one line per changed file so the failure report does
+                    # not quietly understate how much changed.
+                    parts.append(f"- <unreadable changed file: {type(exc).__name__}>")
         parts.append("")
         parts.append("Please check the repository changes that might have modified the review tool code.\n")
         content = "\n".join(parts)
@@ -326,8 +342,8 @@ def analyze(
                 f"**PR:** {repo}#{pr_number if pr is None else pr.number}\n"
             )
             write_step_summary(summary)
-        except Exception:
-            pass
+        except Exception as exc:
+            _warn_step_summary_failure(None, exc)
         raise typer.Exit(code=0)
 
     # Safe execution path
@@ -361,8 +377,8 @@ def analyze(
                     write_step_summary(
                         "## AI Review - Skipped\n\n**Reason:** OPENAI_API_KEY not set; falling back to rule-only report.\n"
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    _warn_step_summary_failure(None, exc)
             else:
                 from src.application.review import ReviewApplication
                 report = ReviewApplication(settings).review(
@@ -434,8 +450,8 @@ def analyze(
             summary_lines.append('\n**AI used:** ' + ('yes' if getattr(report, 'used_ai', False) else 'no'))
             if summary_lines:
                 write_step_summary('\n'.join(summary_lines) + '\n')
-        except Exception:
-            pass
+        except Exception as exc:
+            _warn_step_summary_failure(report, exc)
 
         if report.ai_failure_reason:
             console.print(
@@ -485,8 +501,8 @@ def analyze(
                 f"**PR:** {repo}#{pr_number}\n"
             )
             write_step_summary(summary)
-        except Exception:
-            pass
+        except Exception as exc:
+            _warn_step_summary_failure(None, exc)
         # Do not fail CI.
         raise typer.Exit(code=0)
 
