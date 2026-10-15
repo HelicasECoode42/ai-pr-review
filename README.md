@@ -1,5 +1,7 @@
 # AI PR Review Assistant
 
+> 新接手者请先读 [HANDOFF.md](HANDOFF.md)：项目当前状态、已确认需求、D1/D2 实现边界、后续开发顺序、评测限制与仓库熟悉路径都以此为入口。
+
 ```
 https://www.bilibili.com/video/BV1YKVQ6TE6M/?vd_source=2d2e5574c167e4ae93d225908e32da1b
 ```

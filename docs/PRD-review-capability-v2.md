@@ -1,6 +1,6 @@
 # AI PR Review 审查能力与模块解耦 PRD
 
-日期：2026-10-14。状态：待用户评审。本 PRD 先于下一轮功能开发；已有分支原型不等于本 PRD 已交付。
+日期：2026-10-15。状态：待用户评审。本 PRD 先于下一轮功能开发；已有分支原型不等于本 PRD 已交付。当前单机文件 checkpoint 优先级高于此前 SQLite-first 草案；后者已收窄为按需选项。
 
 用户已支持图分组与恢复方向；实际阶段、测试和边界见 [开发与验收手册](review-v2-development.md)。本文剩余细节仍为设计要求，不代表已实现。
 
@@ -89,7 +89,7 @@ Python 优先可靠 AST；其他语言通过可替换索引适配器渐进增强
 
 使用有类型阶段输入输出，替代共享 dict 的隐含键。Snapshot、Provider、Budget 显式注入；配置读取和网络客户端创建集中于应用入口。只在真实替换点定义接口，禁止一方法一服务的浅封装。
 
-每阶段可独立复跑和测试；阶段检查点包含 repo/base/head、审查器版本、策略哈希、模型及阶段。报告格式版本化兼容，保留已有 GitHub Actions、Web、VS Code 行为。
+每阶段可独立复跑和测试；阶段检查点包含 repo/base/head、审查器版本、策略哈希、模型及阶段。统一 ReviewReport 契约应被 CLI、GitHub Actions、Web、VS Code 消费；VS Code 与 Web 不得把旧 head/旧策略报告展示为当前结果，应显示快照身份或 stale 状态。开发者反馈可采用 Accepted、Rejected、Already handled、Needs context 等枚举，经去重和审核后作为开发数据；反馈本身不是 ground truth，也不能直接改独立评测标签。
 
 ## 8. 模型与预算
 
@@ -113,17 +113,15 @@ Python 优先可靠 AST；其他语言通过可替换索引适配器渐进增强
 
 ## 11. 任务分发、恢复与回滚（补充需求）
 
-低耦合必须覆盖运行时：提交请求与耗时审查分离，阶段失败隔离，任务状态持久化，工作进程可替换。当前 Web SSE 使用进程内 Queue + Thread，不是持久化任务队列，服务崩溃后不能依赖它恢复。
+低耦合必须覆盖运行时：阶段失败隔离、关键任务状态可恢复、执行边界可替换。当前 Web SSE 使用进程内 Queue + Thread，服务崩溃后不能依赖它恢复。D3 定义稳定阶段契约与有意义的 checkpoint；第一版目标仍是快捷可靠的小工具，默认单机有界执行。优先把关键阶段 checkpoint 写入文件，以原子写入、单任务锁及显式 resume 支持跨进程恢复；大产物独立保存，checkpoint 记录 repo/base/head、策略/审查器版本、阶段状态、输入哈希、预算、产物引用与错误。文件读取、语法索引等廉价确定性结果可按冻结 SHA 重算，优先持久化昂贵模型发现/核验结果，不为每次函数调用落 checkpoint。JSONL 可作审计日志，但仅写日志不等于可恢复。只有当确实需要事务并发状态或本地文件方案不足时，再评估标准库 SQLite；第一版不默认数据库、Redis、消息队列、PostgreSQL 或分布式框架。CLI 主机上的本地文件可跨进程恢复；GitHub Actions runner 磁盘通常随 job 结束，跨 job 恢复必须显式上传/下载 artifact，并校验快照和策略版本。
 
-建议部署形态为 Python API + 独立 Celery Worker + Redis 调度/限流缓存 + PostgreSQL 任务与阶段记录。Redis 不是唯一恢复真源；Redis 与 RabbitMQ 均能作为 Celery broker，首次实施先按运维环境确认。CLI 和 GitHub Action 保留直接执行模式，共用同一阶段协议；不能强迫所有用户部署队列。Temporal 可作为未来复杂持久化工作流方案，不与 Celery 同时叠加。
-
-提交时在数据库事务中写 ReviewRun 和 Outbox；分发器将 run_id 投递队列。Worker 领取带期限的阶段租约，凭 attempt/fencing token 更新结果，拒绝失效 Worker 写回。数据库记录输入哈希、状态、尝试次数、预算、产物位置与错误；队列只传引用，不传整个源码或密钥。产物与阶段成功记录提交后才确认消息。周期扫描未分发 Outbox 与过期租约，实现 Redis 故障或 Worker 崩溃后的恢复。
+D4 先验收文件 checkpoint 的原子更新、锁与并发冲突、显式 resume、已完成阶段复用、取消、过期/损坏产物处理和发布幂等；成功状态必须对应持久产物。只有出现实际事务并发需求、多机任务分发，或单机存储/调度经测量成为瓶颈，才按问题选择 SQLite 或外部 broker/SQL 后端，不预设 QPS 门槛，也不承诺必然升级。队列只能分发与恢复，不提高审查质量或让单次模型推理更快；模型调用结果未知时不自动无限重发，已发生费用无法回滚。接口只围绕真实替换点设计。
 
 任务去重键含 repo/base/head、策略版本、模型配置；主动重跑有显式新 run_id。恢复仅复用相同输入和策略的已完成阶段，不能混用不同 commit。并行发现视角只读共享切片，各自产生独立批次，汇总达到完成/截止条件后进入核验；失败视角标记不完整，不能阻塞其他已完成产物或伪装全覆盖。
 
 429、暂时网络/服务故障有次数与总时间上限的退避；401/402/配置错误进入暂停或人工处理，不循环消费。重试耗尽记录失败任务与原因，支持人工重新投递。按模型、用户、仓库限制并发，核验与发现使用明确预算，GitHub 发布单独隔离。取消不允许后续阶段发布结果。
 
-不承诺 exactly-once 模型调用：远端成功但本地未保存就崩溃，可能再次付费。保存请求状态与已返回产物，未知结果进入显式 reconcile 状态，结合提供商能力和用户预算决定是否重发；不能称为可撤销费用。至少一次投递要求所有持久化与外部副作用幂等。
+不承诺 exactly-once 模型调用：远端成功但本地未保存就崩溃，可能再次付费。保存请求状态与已返回产物，未知结果进入显式 reconcile 状态，结合提供商能力和用户预算决定是否重发；模型结果和已产生费用都不能回滚。队列可帮助分发和恢复，但不证明审查质量，也不会让单次模型推理天然更快。若使用至少一次投递，持久化与外部副作用必须幂等。
 
 ### 回滚语义
 
@@ -135,11 +133,11 @@ Python 优先可靠 AST；其他语言通过可替换索引适配器渐进增强
 
 ### 故障验收
 
-杀死 Worker 后，其他 Worker 可恢复未完成阶段且不重复提交已完成结果；Redis 重启后能从数据库重建待处理任务；消息重复投递不重复发布；旧租约持有者无法覆盖新结果；PR head 变化不发布旧报告；402 停止无效重试；新策略失败可切回稳定版本；SSE 断开不终止任务，重连可读取数据库状态及带序号的阶段事件。
+第一版注入本地进程在产物保存前后退出、重复 resume、阶段取消、存储故障和版本升级；已完成阶段可复用，未完成阶段能安全恢复，发布无重复，未知费用请求不自动无限重发。多 worker 部署再验收失效租约/旧 worker 写回、重复消息、broker 重启后状态重建、PR head 变化和跨进程取消。SSE 断开不终止任务，重连读取持久状态及阶段事件。上述恢复能力目前是 PRD 要求，尚未实现。
 
-上述能力目前是 PRD 要求，尚未实现。先以故障验收定义接口，再决定具体队列配置和部署规模，不能只安装 Redis 就声称获得恢复能力。
+公开实现只能说明公开证据覆盖的部署形态。阿里 OpenCodeReview 描述本地 append-only JSONL 会话文件、viewer 直接读文件且无数据库，并以有界 goroutine 并行分组、把重试交给外层 CI；这说明轻量部署可行，但日志不能自动等同于恢复 checkpoint。[架构说明](https://github.com/alibaba/open-code-review/blob/main/pages/src/content/docs/en/architecture.md)。PR-Agent 文档覆盖 GitHub Actions 和 webhook/server 部署；Gunicorn worker 是进程并发证据，不能据此推断存在 Celery，也不能推断商业托管服务的内部架构。[安装方式](https://docs.pr-agent.ai/installation/)、[GitHub 集成](https://docs.pr-agent.ai/installation/github/)。Kodus 公开自托管方案确实包含 Web/API、Worker、RabbitMQ、PostgreSQL 等组件，是团队平台采用消息队列的一个实例，不构成个人 CLI 的默认部署要求。[自托管说明](https://kodus.io/self-hosted-ai-code-review/)、[部署 compose](https://github.com/kodustech/kodus-installer/blob/main/docker-compose.yml)。Claude Code Review 的公开实现是宿主 Claude Code 调用的插件，也不能证明商业托管产品的后台架构。[插件命令](https://github.com/anthropics/claude-code/blob/main/plugins/code-review/commands/code-review.md)。不同项目服务目标和运营规模不同，不猜测未公开的商业 SaaS 后端。
 
-参考：Celery tasks https://docs.celeryq.dev/en/stable/userguide/tasks.html；Temporal Python https://docs.temporal.io/develop/python。
+参考：[Python sqlite3](https://docs.python.org/3/library/sqlite3.html)、[Celery tasks](https://docs.celeryq.dev/en/stable/userguide/tasks.html)。
 
 ## 12. 同类实现、规模与速度质量约束
 
@@ -151,11 +149,11 @@ Python 优先可靠 AST；其他语言通过可替换索引适配器渐进增强
 
 大仓库执行策略：首次按固定 commit 建立定义/引用索引；后续按内容 hash 增量更新。对所有变更记录覆盖状态，按依赖关系组成有大小上限的 ReviewUnit，跨单元依赖通过证据引用连接；大单元继续拆分，不截取前若干文件冒充全覆盖。各单元有界并发、共享只读缓存，避免每个视角重复载入整个仓库。复杂、低覆盖或有待核实候选的单元进入定向深查，简单变更也不能无条件跳过。
 
-提供快速与深入两种策略，均展示范围和遗漏。默认先完成基础发现，再按需核验/检索；策略是否降低召回通过消融确认。按 provider 限流、队列深度和剩余预算调度；并发只降低墙钟耗时，不能声称降低 tokens。MQ 改善分发和恢复，也不会让一次模型推理天然更快。
+提供快速与深入两种策略，均展示范围和遗漏。默认先完成基础发现，再按需核验/检索；策略是否降低召回通过消融确认。按 provider 限流、待执行工作量和剩余预算调度；外部队列部署再观察队列深度。并发只可能降低墙钟耗时，不能声称降低 tokens。MQ 改善分发和恢复，也不会让一次模型推理天然更快。
 
 实验指标包括最终 Precision/Recall、核验误删、每 PR 和每 ReviewUnit 时延、首个结果耗时、P50/P95、排队与模型耗时分解、tokens、重试成本、缓存命中、变更覆盖、失败恢复时长。预算不足明确 partial。目标延迟和成本上限先测代表性小/中/大 PR 后确定，不能以删候选或裁剪变更达标。
 
-成熟度还包含：稳定且版本化的接口和产物；部署与 schema 迁移回退；可观测事件和请求追踪；仓库/用户权限隔离、凭证与日志脱敏；取消、超时与背压；用户确认/拒绝问题及拒绝原因；可复现回归集；新版本灰度比较。反馈是后续标注线索，不能把用户接受/未接受直接等同于真/假，也不能直接修改独立测试标签。
+成熟度还包含：稳定且版本化的接口和产物；部署与 schema 迁移回退（仅在采用数据库时）；可观测事件和请求追踪；仓库/用户权限隔离、凭证与日志脱敏；取消、超时与背压；用户确认/拒绝问题及拒绝原因；可复现回归集；新版本灰度比较。先验证现有本地日志、usage 和 span 是否够用；Langfuse 等外部观测平台是可选学习项，不默认安装服务栈。反馈是后续标注线索，不能把用户接受/未接受直接等同于真/假，也不能直接修改独立测试标签。
 
 ## 13. Benchmark 选择与使用边界
 
