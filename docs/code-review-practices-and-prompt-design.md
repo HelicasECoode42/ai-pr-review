@@ -136,6 +136,28 @@ Google《The Standard of Code Review》原话（一手，[google.github.io/eng-p
 
 **一个诚实的空白**：本次研究**没有找到**可引用的"reviewer 之间对'什么算缺陷'的一致性（inter-rater agreement）"同行评审统计。常被引用的 Hirao et al. (OSS 2016) 测的是另一件事（reviewer 投票是否与最终 merge/abandon 一致），**不能**当作缺陷定义一致性的证据。这个空白对本仓库尤其重要：judge 与主审同族、golden TP 里 98.9% 来自 LLM producer，都是同一个未解决的测量问题。
 
+### 1.6 最强的一条实测证据：噪声会直接降低合并率
+
+上面都是"评论有用性"的间接指标。下面这条是**结果指标**（[arXiv:2604.03196](https://arxiv.org/abs/2604.03196)，MSR 2026 mining challenge）：
+
+- 在 3,109 个 `Commented` 状态的 PR 中，**只有 code-review agent 参与的 PR 合并率 45.20%**，而只有人类 review 的 PR 是 **68.37%**；
+- 98 个被关闭的"仅 agent 评论"PR 中，**60.2% 落在 0–30% 的信号区间**；
+- 13 个 code-review agent 里，**12 个平均信号比低于 60%**；
+- 信号比定义 = `Tier 1 + Tier 2 评论数 / 总评论数`（Tier 1 = 崩溃、编译失败、破坏性 API、安全；Tier 2 = 架构、性能、可维护性），人工标注一致性 κ = 0.75。
+
+**这是相关性证据，不是 precision**——但它说明"评论质量差"的代价不是"用户皱眉头"，而是 **PR 被关掉**。
+
+另一条分布证据（[arXiv:2601.19287](https://arxiv.org/abs/2601.19287)，3,177 个 agent 作者的 PR 上共 19,450 条行内评论）：
+
+| 类别 | 占比 |
+|---|---:|
+| functional correctness | 46.5% |
+| docs / changelog | **11.4%** |
+| styling / formatting | **10.3%** |
+| testing | ~5% |
+
+**约 22% 的行内评论花在文档与格式上。** 这与 Google 的"格式不该占人的时间"、Anthropic 的"linter 能抓的不要报"是同一个结论，只不过这次有分布数字。
+
 ---
 
 ## 2. 生产级 AI reviewer 的 prompt 解剖
@@ -470,10 +492,35 @@ ReviewBench 的 golden set 有 `G_TP`（真正的参考问题）和候选集合 
 4. 记录完整的 producer 身份（主审模型、judge 模型、prompt 版本、budget），以便发现"judge 与主审同族"这类自证偏差；
 5. 25 个 PR 已全部被历史实验接触过，所以 dev/holdout 切分**不能**充当未见测试；要做未见测试必须换新 PR。
 
-### 5.5 其他 benchmark
+### 5.5 其他 benchmark（各自测什么、不能证明什么）
 
-- **Martian code-review-benchmark** 与 **Alibaba AACR-Bench**：我这次未能抓到原始评分文件（网络超时），因此**不做指标比较**。若要用，先读它们的 methodology 文件确认标签来源与分母定义，再决定能否与 ReviewBench 数字并列——**不同 judge/类别/分母的数字拼在一起会得到无意义的 Recall**。
-- 无论用哪个 benchmark，都请照 5.2 的六条威胁逐条写进你的报告"limits"里。方法论作者自己就是这么做的，这个习惯比任何分数都值钱。
+| benchmark | 标签怎么来 | 核心指标 | **不能**证明什么 |
+|---|---|---|---|
+| **ReviewBench**（GitHub） | 219 PR / 187 repo；TP 定义 = "资深 reviewer 会预期作者在合并前处理的问题"，**明确包含**"低于项目门槛的琐碎风格问题"算 FP | grounded precision/recall（定义见 5.1） | augmented recall 的分母是 agent-dependent，**不能跨 agent 排名** |
+| **Martian** | 离线 50 PR / 5 repo、173 条人工精选 golden（含 `style`、`speculative` 标）；在线用"review 之后的提交"当真值 | 各 profile（Strict/Core/All）+ F-beta；judge 问"是否描述同一个问题" | 看不到**没有任何 reviewer 评论过**的 bug；在线口径假设"开发者确实修了"。README **自陈**有训练数据泄漏风险 |
+| **Alibaba AACR-Bench** | 12,715 候选 PR → 50 repo / 10 语言；**1,505 条专家核验问题**（比原始 PR 评论覆盖度 **+285%**），每条标注**所需上下文层级**（diff / 单文件 / 跨文件） | precision / recall / F1 | 匹配≠有用：命中的评论不代表可执行。论文自身给的一手数字：agent + Claude-4.5-Sonnet recall **10.10%** / precision **39.90%** / F1 **16.12%** |
+| **CodeReviewer + CRScore** | CodeReviewer：真实改动+评论，9 语言；CRScore：无参考质量评分 | CRScore 三维 = Comprehensiveness / Conciseness / Relevance，`Rel = 2·Con·Comp/(Con+Comp)`，与人类 **Spearman 0.5431** | 是**评论文本质量**指标，不是检测器：一条评论可以在没找到 bug 的情况下得高分。CRScore 自己指出 CodeReviewer 的参考评论"聚焦琐碎与边缘问题"，且"假设了数据集中并不存在的上下文" |
+
+**为什么这张表重要**：AACR-Bench 的一手数字（recall 10.10% / precision 39.90%）说明**当前最强的通用 agent 在专家核验的真实问题上也只有约 10% 召回**。本仓库 3.98% 的 grounded recall 与它同一量级——所以问题不在"你的 prompt 写得比工业界差一个数量级"，而在**这个任务的召回本身就极难**，且各家口径不同。
+
+无论用哪个 benchmark，都请照 5.2 的六条威胁逐条写进报告的 limits。方法论作者自己就是这么做的，这个习惯比任何分数都值钱。
+
+### 5.6 换一个角度：审查工具自身的架构怎么省钱
+
+同一批工具在**工程架构**上的取舍（一手：读源码与配置得出；`research/ai-code-review-architecture-and-metrics.md` 有完整表格与链接）：
+
+| 工具 | 分块策略 | 每 PR 模型调用 | 关键设计 |
+|---|---|---|---|
+| **alibaba/open-code-review** | 只用 **path + churn 元数据**让 LLM 分组，**不给 diff 内容**，组以整数索引返回 | 文件数 <4 或改动 <200 行时**完全不分组、0 次 LLM 调用**；否则 ≈ `1 + 3–5 × 组数`，并发 8 | `maxFilesPerGroup=10`；超预算的组降级为"每文件一组"；**分组失败也降级为每文件一组**（确定性兜底） |
+| **The-PR-Agent/pr-agent** | **token 预算装填**，不是按 diff 哈希分块：`get_pr_diff` 先取全量再按软预算裁剪；`enable_large_pr_chunking` **默认 false**、`max_number_of_calls=3`、超限块按 `## File:` 再切 | 通常 1 次；分块时每块 1 次（≤3） | `max_model_tokens` 默认 **32000** 统一钳制所有模型；`patch_extra_lines_before=5 / after=1`；被裁掉的文件**至少会被点名** |
+| **reviewdog / danger** | 无——0 次 LLM 调用 | 0 | reviewdog 只按 diff 过滤（`-filter-mode` 默认 `added`）；danger 是人工写的规则 DSL |
+| **Greptile** | 只有**索引**阶段分块；PR 审查分块未公开 | 未公开 | 从 PR 的**首末提交**学习"团队是否会采纳某类评论"，加上 👍/👎 |
+| **CodeRabbit** | "cohorts"/"layers" 与 Semantic diff 是**展示层**，不是已文档化的分块管线 | 未公开 | 把机械检查交给 ast-grep/semgrep/hadolint 等真实 linter |
+
+**两条对本仓库直接有用的结论**：
+
+1. **"低配降级"必须是确定性的**：open-code-review 在文件少/改动小时完全不调用模型，分组失败就每文件一组。本仓库对应的是"分组失败 → 必须有确定性兜底"，而不是让模型重试。
+2. **`max_model_tokens` 统一钳制**是 pr-agent 的做法（默认 32000），它把"输入+输出"放进同一个闸门。本仓库的预算目前是**各产物各记一本账**（见 [graph-planning-dataflow.md](graph-planning-dataflow.md)），没有统一闸门——这是第三轮可以做的事。
 
 ---
 
@@ -544,13 +591,25 @@ schema 是 `"confidence": 0.0`，配置是 `min_comment_confidence=0.65`（[conf
 
 本仓库为此写了 4 层 fallback + `_repair_closed_containers`。PR-Agent 用 YAML + `|` 块标量承载含代码的字段，从源头减少转义/截断类失败。公道地说，`_repair_closed_containers` 的注释明确了"只修不匹配的闭合括号，不创建 key/value/引号，不修截断"——这个边界控制比"尽力修复"更安全，是加分项。
 
+**缺口七：发布路径上的静默丢失（读 CI 时发现，已核对 [.github/workflows/ai-pr-review.yml](../.github/workflows/ai-pr-review.yml#L178-L237)）**
+
+行内评论不是 Python 客户端发的，而是在 workflow 的 `github-script` 步骤里发的。核对到四处：
+
+1. **两个不同的"可发布"门槛**：workflow 里硬编码 `s.confidence >= 0.80`，而引擎侧 `min_comment_confidence` 默认 **0.65**（[config.py:16](../src/utils/config.py#L16)）。同一份报告里"suggestion"与"会被真正发出去的 suggestion"不是同一个集合，而这个 `0.80` 只存在于 YAML，改 Python 配置不会影响它。
+2. **`.slice(0, 10)` 静默截断**：超过 10 条的行内评论被直接丢弃，没有记录、没有优先级说明，报告也不体现"实际发布了哪 10 条"。
+3. **发布失败只剩一条 workflow warning**：逐条 `createReviewComment` + try/catch，某条 422/403 只写 `core.warning`，报告与 UI 都不显示"这条没发出去"。这比"整批被拒"好，代价是**发布结果不可对账**。
+4. **没有跨运行去重**：每次运行都新建评论，PR 更新一次就多一份重复评论（PR-Agent 用 file+line+body 的 SHA-256 HTML marker 解决这件事，且是 opt-in）。
+
+**平台约束（一手）**：GitHub 的**批量** `createReview` 只要有一行不在 diff 内，就会**整批**返回 HTTP 422——而 422 同时是通用的 spam/validation 状态码，无法从状态码分辨原因。Open-code-review 的 [#624](https://github.com/alibaba/open-code-review/issues/624) 记录了这个级联（整批失败 → 逐条重试 → N 条 timeline 记录 + secondary rate limit 风险），修复见 [PR #661](https://github.com/alibaba/open-code-review/pull/661)。本仓库用**逐条**发布绕开了整批风险，因此承担了上面第 3、4 条。
+
 ### 6.3 所以该先改什么
 
 1. **统一两条 prompt 链的口径**，消除 `str.replace` 静默失效——结构问题，零模型成本，可写成回归测试；
-2. **置信度改离散锚点 + 按去向分流**——零模型成本，直接消除"0.65 附近抛硬币"；
-3. **跨轮去重语义化**——减少重复评论，直接降低被静音的概率；
-4. **误报清单补齐三类**；
-5. **把力气投到检索覆盖**：实测 grounded recall 3.98%，瓶颈是**看不到的代码**，不是 prompt 措辞。上面三份工业 prompt 的共同前提是"模型能看到足够上下文"，本仓库的 `context_requests` 机制正是在解这个——它比继续打磨措辞更值得投入。
+2. **统一"可发布"门槛与发布账本**：把 workflow 里硬编码的 `0.80` 与引擎的 `min_comment_confidence` 合成一个来源；记录"候选 N 条 → 实际发布 M 条 → 失败 K 条"，让发布结果可对账（`slice(0, 10)` 必须留下记录）；
+3. **置信度改离散锚点 + 按去向分流**——零模型成本，直接消除"0.65 附近抛硬币"；
+4. **跨轮去重语义化**（含行内评论），减少重复评论，直接降低被静音的概率；
+5. **误报清单补齐三类**；
+6. **把力气投到检索覆盖**：实测 grounded recall 3.98%，瓶颈是**看不到的代码**，不是 prompt 措辞。上面三份工业 prompt 的共同前提是"模型能看到足够上下文"，本仓库的 `context_requests` 机制正是在解这个——它比继续打磨措辞更值得投入。参考 AACR-Bench 的一手数字（agent recall 10.10%），这类任务的召回本身就极难，方向比措辞重要。
 
 **不要**照抄 Anthropic 的 `>=80` 门限：它成立的前提是有 linter/CI 兜底、评论公开可见、代码主张可被 ground truth 验证，而本仓库当前的瓶颈恰恰是召回严重不足。**抄结构（锚点、独立验证、误报清单、去重），不要抄阈值。**
 
@@ -594,7 +653,10 @@ schema 是 `"confidence": 0.0`，配置是 `min_comment_confidence=0.65`（[conf
 - Qodo 自家的 prompt 文件：查询超时，**未做任何关于 Qodo Merge 与 PR-Agent 现状关系的断言**。
 - Cursor Bugbot / Graphite Diamond 的系统 prompt：不公开，只有配置 schema。
 
-**研究过程备注（便于复核）**：`web_fetch` 在本次会话中对 `raw.githubusercontent.com` 时好时坏，对 `application/pdf` 直接不支持；可靠路径是 `bash` + `curl`（PDF 再配 `pdftotext`），以及各类文档站的 Mintlify `.md` 端点。已抓取的原始文件副本在仓库外的 `research/raw/`（与 `eval-data/` 同级），可用来逐字复核本文引文。
+**研究过程备注（便于复核）**：`web_fetch` 在本次会话中对 `raw.githubusercontent.com` 时好时坏，对 `application/pdf` 直接不支持；可靠路径是 `bash` + `curl`（PDF 再配 `pdftotext`），以及各类文档站的 Mintlify `.md` 端点。已抓取的原始文件副本在仓库外的 `research/`（与 `eval-data/` 同级）：
+
+- `research/ai-code-review-prompts.md` + `research/raw/`（各工具 prompt 与配置的原文副本，可逐字复核本文 §2 的引文）
+- `research/ai-code-review-architecture-and-metrics.md`（工具架构对照表、benchmark 指标逐字定义、失败模式的实测数字，本文 §1.6 与 §5.5/§5.6 的主要来源）
 
 本机参考（本仓库已有研究）：
 
