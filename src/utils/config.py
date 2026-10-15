@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     # Per-unit evidence budget. Smaller than the single-pass budget because a unit
     # is small and every round re-renders whatever is in here.
     unit_evidence_tokens: int = 3000
+    # Per-unit checkpoints land here, one file per frozen head SHA, so a run that
+    # dies mid-way resumes instead of re-paying for finished units.
+    unit_checkpoint_dir: str = "reports/unit-checkpoints"
     # Knowledge layer (P3): where the playbook lives and how many entries to
     # offer one review. Empty path disables recall.
     playbook_path: str = "knowledge/playbook.md"

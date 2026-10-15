@@ -405,6 +405,8 @@ def review_with_ai(
     unit_review_workers: int = 1,
     unit_review_cost_ceiling_tokens: int = 0,
     unit_evidence_tokens: int = 3000,
+    unit_checkpoint_path: str | None = None,
+    unit_max_attempts: int = 2,
     unit_provider_factory=None,
     repository_snapshot=None,
     follow_changes: bool = False,
@@ -454,6 +456,8 @@ def review_with_ai(
                         token_budget=ctx.patch_token_budget or repository_evidence_tokens,
                         max_units=unit_review_max_units, max_workers=unit_review_workers,
                         cost_ceiling_tokens=unit_review_cost_ceiling_tokens,
+                        checkpoint_path=unit_checkpoint_path,
+                        max_attempts=unit_max_attempts,
                     )
                     if merged is not None and unit_details.get("units_reviewed"):
                         merged.bundle["unit_details"] = unit_details

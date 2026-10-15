@@ -127,6 +127,13 @@ class ReviewApplication:
             defaults.setdefault("unit_review_cost_ceiling_tokens",
                                 s.unit_review_cost_ceiling_tokens)
             defaults.setdefault("unit_evidence_tokens", s.unit_evidence_tokens)
+            if s.unit_review_max_units and pr.head_sha:
+                # One checkpoint per frozen head: a crashed or cancelled run can be
+                # resumed, and finished units are never paid for twice.
+                defaults.setdefault(
+                    "unit_checkpoint_path",
+                    str(Path(s.unit_checkpoint_dir) / f"units-{pr.head_sha[:12]}.jsonl"),
+                )
             defaults.setdefault(
                 "unit_provider_factory", lambda: self._provider(s.review_model)
             )

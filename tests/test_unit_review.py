@@ -84,7 +84,7 @@ def test_review_by_units_is_bounded_and_records_failures_without_aborting():
             raise RuntimeError("unit one blew up")
         return grounded()
 
-    summary = review_by_units(plan, files, run_unit, max_units=2)
+    summary = review_by_units(plan, files, run_unit, max_units=2, max_attempts=1)
     assert [o.status for o in summary.outcomes] == ["failed", "reviewed"]
     assert "RuntimeError" in (summary.outcomes[0].error or "")
     assert summary.reviewed and not summary.failed or summary.failed
@@ -161,7 +161,7 @@ def test_concurrent_units_isolate_failures():
             raise RuntimeError("first unit blew up")
         return grounded()
 
-    summary = review_by_units(plan, files, run_unit, max_workers=4)
+    summary = review_by_units(plan, files, run_unit, max_workers=4, max_attempts=1)
     # Which unit fails depends on thread scheduling; that exactly one failed, and
     # that the failure is recorded rather than propagated, is the guarantee.
     assert sorted(o.status for o in summary.outcomes) == ["failed", "reviewed"]
@@ -349,3 +349,57 @@ def test_unit_review_is_refused_before_dispatch_when_it_would_cost_too_much(tmp_
     assert report.metrics["unit_review_skipped_cost"] == 1
     assert report.metrics["unit_review_estimated_tokens"] > 1
     assert any("Per-unit review refused before dispatch" in w for w in report.analysis_warnings)
+
+
+def test_a_failing_unit_is_retried_and_then_recorded(tmp_path):
+    plan, files = plan_with_two_units()
+    attempts: list[int] = []
+
+    def flaky(ctx, unit_files_):
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise RuntimeError("transient")
+        return grounded()
+
+    summary = review_by_units(plan, files, flaky, max_attempts=2)
+    assert [o.status for o in summary.outcomes][0] == "reviewed"
+    assert summary.outcomes[0].attempts == 2
+
+
+def test_a_run_can_be_resumed_from_its_checkpoint(tmp_path):
+    plan, files = plan_with_two_units()
+    checkpoint = tmp_path / "units.jsonl"
+
+    first = review_by_units(plan, files, lambda c, f: grounded(), checkpoint_path=checkpoint)
+    assert all(o.status == "reviewed" for o in first.outcomes)
+    calls: list[str] = []
+    second = review_by_units(plan, files, lambda c, f: calls.append("x") or grounded(),
+                             checkpoint_path=checkpoint)
+    # Nothing was re-run: every unit was already terminal in the checkpoint.
+    assert calls == []
+    assert [o.status for o in second.outcomes] == ["resumed"] * len(plan.units)
+
+
+def test_cancellation_stops_the_run_and_marks_the_rest(tmp_path):
+    from threading import Event
+
+    plan, files = plan_with_two_units()
+    cancel = Event()
+    cancel.set()
+    summary = review_by_units(plan, files, lambda c, f: grounded(), cancel=cancel)
+    assert {o.status for o in summary.outcomes} == {"cancelled"}
+    assert summary.counts()["units_reviewed"] == 0
+
+
+def test_every_unit_has_a_terminal_status_even_if_the_provider_explodes(tmp_path):
+    """Reliable return: no unit is ever left without an outcome."""
+    plan, files = plan_with_two_units()
+
+    def always_fails(ctx, unit_files_):
+        raise RuntimeError("provider down")
+
+    summary = review_by_units(plan, files, always_fails, max_attempts=2)
+    assert len(summary.outcomes) == len(plan.units)
+    assert all(o.status == "failed" for o in summary.outcomes)
+    assert all(o.attempts == 2 for o in summary.outcomes)
+    assert all(o.error and "provider down" in o.error for o in summary.outcomes)

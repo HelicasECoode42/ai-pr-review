@@ -193,6 +193,23 @@ P0 收口 ─► P1 装手 ─► P2 核验过滤器链 ─► P3 知识层 ─�
 
 ---
 
+## 7.5 Runtime 能力（从 EvoAgent 的清单里抄的，只抄该抄的）
+
+| EvoAgent 的模块 | 我们的实现 | 状态 | 验收方式 |
+|---|---|---|---|
+| Task State / **Checkpoint / Resume** | `unit_review.py`：每单元结局**逐行 fsync 落盘**（`reports/unit-checkpoints/units-<head>.jsonl`）；续跑时终态单元标 `resumed` 且不重跑 | ✅ | 测试：跑两遍，第二遍 `calls == []` 且全为 `resumed` |
+| **Retry** | 每单元有限重试（默认 2 次，可选退避）；失败**记录 attempts 与原因** | ✅ | 测试：一次瞬时失败后成功，`attempts == 2` |
+| **Cancellation** | `threading.Event`；已取消则剩余单元记 `cancelled` | ✅ | 测试：取消后无 reviewed、全部 `cancelled` |
+| **可靠的返回** | **每个计划单元必有终态**：`reviewed / failed / resumed / cancelled / skipped_by_budget / skipped_by_cost` | ✅ | 测试：provider 永远抛错时，仍有 N 个终态、N 次 attempts、带原因 |
+| **Budget** | 分账 + 派发前成本闸（比它更细） | ✅ | 已有测试 |
+| Trace | sidecar + `filter_verdicts`；**跨运行判定账本未落盘** | ⚠️ | — |
+| **Evaluation Harness + Holdout** | `criteria_gate.py` 离线判据门禁已在 CI；**RC 激活门禁（P→F/F→P 翻转）未做** | ⚠️ | — |
+| 自进化循环 | 机械门禁就绪，循环未实现 | ❌ | — |
+| Redis Streams / 多租户 / RBAC / OTel | **刻意不抄**：与"轻便"定位冲突 | — | — |
+| 自动修复 Patch | **刻意不抄**：改变爆炸半径 | — | — |
+
+**"审核到需要审核的全部"** 现在的口径是：**计划内的每个单元都有可查终态**（`units_planned / reviewed / failed / resumed / cancelled / skipped_*` 之和守恒），中断可续跑，不重复付费；**但"要不要审这个单元"仍受上限与成本闸约束**——这两者都会**显式记账**，不是静默丢弃。
+
 ## 8. 改动量（回答"要改的多吗"）
 
 **不大：P0–P2 合计约 600 行 / 12,161 行（≈5%），不引入新依赖。**

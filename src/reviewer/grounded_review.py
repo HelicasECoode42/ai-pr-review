@@ -472,7 +472,7 @@ def build_grounded_report(pr, files, findings, result, context, *, reviewer_vers
     unit_details = result.bundle.get("unit_details")
     if isinstance(unit_details, dict):
         for key in ("units_planned", "units_reviewed", "units_failed", "units_skipped_by_budget",
-                    "unit_review"):
+                    "unit_review", "units_resumed", "units_cancelled", "unit_attempts"):
             if isinstance(unit_details.get(key), int):
                 run_metrics[key] = unit_details[key]
     # What the reader must know about a truncated prompt: how much of the change

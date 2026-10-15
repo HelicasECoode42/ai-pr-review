@@ -10,9 +10,14 @@ whole path is testable offline and the engine keeps ownership of the provider.
 
 from __future__ import annotations
 
+import json
+import os
+import time
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from pathlib import Path
+from threading import Event
 from typing import Any
 
 from src.analyzer.context_builder import ReviewContext, count_tokens
@@ -106,10 +111,12 @@ def unit_files(unit, files: Sequence[ChangedFile]) -> list[ChangedFile]:
 @dataclass
 class UnitOutcome:
     unit_id: str
-    status: str  # reviewed | failed | skipped
+    # reviewed | failed | skipped_by_budget | skipped_by_cost | cancelled | resumed
+    status: str
     estimated_tokens: int = 0
     error: str | None = None
     result: Any = None
+    attempts: int = 0
 
 
 @dataclass
@@ -138,6 +145,46 @@ class UnitReviewSummary:
         }
 
 
+TERMINAL_OK = {"reviewed", "resumed"}
+TERMINAL_SKIPPED = {"skipped_by_budget", "skipped_by_cost", "cancelled"}
+
+
+def load_checkpoint(path: Path | str | None) -> dict[str, str]:
+    """Read a run's per-unit outcomes so a crashed run can be resumed."""
+    if not path:
+        return {}
+    location = Path(path)
+    if not location.exists():
+        return {}
+    done: dict[str, str] = {}
+    for line in location.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue  # a torn last line must not lose the rest of the checkpoint
+        if isinstance(record, dict) and record.get("unit_id"):
+            done[str(record["unit_id"])] = str(record.get("status", ""))
+    return done
+
+
+def append_checkpoint(path: Path | str | None, outcome: UnitOutcome) -> None:
+    """Append one terminal outcome. Written per unit so a crash keeps progress."""
+    if not path:
+        return
+    location = Path(path)
+    location.parent.mkdir(parents=True, exist_ok=True)
+    with location.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps({
+            "unit_id": outcome.unit_id, "status": outcome.status,
+            "attempts": outcome.attempts, "error": outcome.error,
+            "estimated_tokens": outcome.estimated_tokens,
+        }, ensure_ascii=False) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
 def review_by_units(
     plan,
     files: Sequence[ChangedFile],
@@ -145,6 +192,10 @@ def review_by_units(
     *,
     max_units: int | None = None,
     max_workers: int = 1,
+    retry_backoff_seconds: float = 0.0,
+    checkpoint_path: Path | str | None = None,
+    max_attempts: int = 2,
+    cancel: Event | None = None,
 ) -> UnitReviewSummary:
     """Run one review per unit, bounded, recording every outcome.
 
@@ -166,6 +217,8 @@ def review_by_units(
     """
     if max_workers < 1:
         raise ValueError(f"max_workers must be >= 1, got {max_workers}")
+    if max_attempts < 1:
+        raise ValueError(f"max_attempts must be >= 1, got {max_attempts}")
     workers = min(max_workers, MAX_UNIT_WORKERS)
     summary = UnitReviewSummary()
     units = list(plan.units)
@@ -173,16 +226,33 @@ def review_by_units(
         summary.remaining_units = max(0, len(units) - max_units)
         units = units[:max_units]
 
+    completed = load_checkpoint(checkpoint_path)
+
     def run(unit) -> UnitOutcome:
         outcome = UnitOutcome(
-            unit_id=unit.unit_id, status="skipped", estimated_tokens=unit.estimated_tokens
+            unit_id=unit.unit_id, status="failed", estimated_tokens=unit.estimated_tokens
         )
-        try:
-            outcome.result = run_unit(build_unit_context(unit), unit_files(unit, files))
-            outcome.status = "reviewed"
-        except Exception as exc:  # one unit must not take the run down
-            outcome.status = "failed"
-            outcome.error = f"{type(exc).__name__}: {exc}"
+        if completed.get(unit.unit_id) == "reviewed":
+            # Resumed: a previous run already produced a terminal outcome for it.
+            outcome.status = "resumed"
+            return outcome
+        if cancel is not None and cancel.is_set():
+            outcome.status = "cancelled"
+            append_checkpoint(checkpoint_path, outcome)
+            return outcome
+        for attempt in range(1, max_attempts + 1):
+            outcome.attempts = attempt
+            try:
+                outcome.result = run_unit(build_unit_context(unit), unit_files(unit, files))
+                outcome.status = "reviewed"
+                outcome.error = None
+                break
+            except Exception as exc:  # bounded retry, then a recorded failure
+                outcome.status = "failed"
+                outcome.error = f"{type(exc).__name__}: {exc}"
+                if attempt < max_attempts and retry_backoff_seconds:
+                    time.sleep(retry_backoff_seconds * attempt)
+        append_checkpoint(checkpoint_path, outcome)
         return outcome
 
     if workers > 1 and len(units) > 1:
@@ -290,6 +360,9 @@ def run_units_for_review(
     max_units: int,
     max_workers: int = 1,
     cost_ceiling_tokens: int = 0,
+    checkpoint_path: Path | str | None = None,
+    max_attempts: int = 2,
+    cancel: Event | None = None,
 ) -> tuple[Any, dict]:
     """Plan the diff into units, review them, and merge into one result.
 
@@ -312,11 +385,15 @@ def run_units_for_review(
                 "cost_ceiling_tokens": cost_ceiling_tokens,
             }
     summary = review_by_units(plan, files, run_unit, max_units=max_units,
-                             max_workers=max_workers)
+                             max_workers=max_workers, checkpoint_path=checkpoint_path,
+                             max_attempts=max_attempts, cancel=cancel)
     merged = merge_grounded_results([outcome.result for outcome in summary.reviewed])
     details = {
         **summary.counts(),
         "unit_ids_reviewed": [o.unit_id for o in summary.reviewed],
+        "units_resumed": sum(o.status == "resumed" for o in summary.outcomes),
+        "units_cancelled": sum(o.status == "cancelled" for o in summary.outcomes),
+        "unit_attempts": sum(o.attempts for o in summary.outcomes),
         "unit_errors": [o.error for o in summary.failed if o.error],
         "unit_review": 1,
     }
