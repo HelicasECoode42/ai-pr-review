@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     # Optional run-level cap on model input tokens (patch context + evidence).
     # None means measured and reported, but not enforced.
     max_review_input_tokens: int | None = None
+    # Per-unit review (P4). 0 disables it; otherwise it applies only when the
+    # prompt was truncated, and never reviews more than this many units.
+    unit_review_max_units: int = 12
+    unit_review_workers: int = 4
     # Knowledge layer (P3): where the playbook lives and how many entries to
     # offer one review. Empty path disables recall.
     playbook_path: str = "knowledge/playbook.md"

@@ -274,3 +274,33 @@ def merge_grounded_results(results: Sequence[Any], *, summary_note: str = "") ->
         verification_failed=any(r.verification_failed for r in live),
         evidence_budget=evidence_budget,
     )
+
+
+def run_units_for_review(
+    run_unit: Callable[[ReviewContext, list[ChangedFile]], Any],
+    snapshot,
+    files: Sequence[ChangedFile],
+    *,
+    token_budget: int,
+    max_units: int,
+    max_workers: int = 1,
+) -> tuple[Any, dict]:
+    """Plan the diff into units, review them, and merge into one result.
+
+    The unit count is capped by the caller: reviewing every unit of a large PR is
+    the expensive path, so it is bounded rather than open-ended.
+    """
+    from src.analyzer.review_plan import build_review_plan
+
+    plan = build_review_plan(snapshot, files, [f.filename for f in files],
+                             token_budget=max(128, token_budget))
+    summary = review_by_units(plan, files, run_unit, max_units=max_units,
+                             max_workers=max_workers)
+    merged = merge_grounded_results([outcome.result for outcome in summary.reviewed])
+    details = {
+        **summary.counts(),
+        "unit_ids_reviewed": [o.unit_id for o in summary.reviewed],
+        "unit_errors": [o.error for o in summary.failed if o.error],
+        "unit_review": 1,
+    }
+    return merged, details

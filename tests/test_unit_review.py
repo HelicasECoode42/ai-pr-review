@@ -182,3 +182,114 @@ def test_worker_count_is_validated_and_capped():
     summary = review_by_units(plan, files, lambda c, f: grounded(),
                               max_workers=MAX_UNIT_WORKERS * 10)
     assert summary.counts()["units_reviewed"] == len(plan.units)
+
+
+def _unit_review_report(tmp_path, *, units_enabled: int):
+    """Drive the engine's unit path with a scripted provider over a small repo.
+
+    Three files with independent changes keep the diff small; the context budget
+    is squeezed so the prompt is truncated, which is what gates the unit path.
+    """
+    import subprocess
+
+    from src.analyzer.context_builder import build_review_context
+    from src.analyzer.repository_context import GitSnapshot
+    from src.evaluation.reviewbench import parse_diff
+    from src.models import PullRequest
+    from src.reviewer.engine import review_with_ai
+
+    def run(*args):
+        return subprocess.check_output(["git", "-C", str(tmp_path), *args], text=True).strip()
+
+    run("init")
+    run("config", "user.email", "f@e.invalid")
+    run("config", "user.name", "F")
+    def body(index: int, name: str) -> str:
+        """Renaming the accumulator changes every line, so the patch really is
+        larger than the context budget and the prompt gets truncated."""
+        lines = [f"def f{index}(x):", f"    {name} = 0"]
+        lines += [f"    {name} += x + {i}" for i in range(30)]
+        lines += [f"    return {name}"]
+        return "\n".join(lines) + "\n"
+
+    for index in range(3):
+        (tmp_path / f"m{index}.py").write_text(body(index, "total"))
+    run("add", ".")
+    run("commit", "-m", "base")
+    base = run("rev-parse", "HEAD")
+    for index in range(3):
+        (tmp_path / f"m{index}.py").write_text(body(index, "accumulated"))
+    run("add", ".")
+    run("commit", "-m", "head")
+    head = run("rev-parse", "HEAD")
+
+    class Scripted:
+        """Answers every unit with a candidate anchored in that unit's file."""
+
+        usage_records: list = []
+
+        def __init__(self):
+            self.calls = 0
+
+        def complete_json(self, system, prompt):
+            import json
+            import re as _re
+
+            self.calls += 1
+            path = _re.search(r"### (\S+\.py)", prompt)
+            name = path.group(1) if path else "m0.py"
+            if "candidate_id" in system:  # the verification schema lives in the system prompt
+                return json.dumps({"items": [{
+                    "candidate_id": 0, "decision": "confirmed", "confidence": 0.9,
+                    "trigger": "caller passes x", "call_path": [f"{name}:1"],
+                    "expected_behavior": "the accumulator is named total",
+                    "actual_behavior": "it is named accumulated",
+                    "introduced_by": "the return expression changed",
+                    "reason": "callers still expect the original value",
+                    "evidence": [
+                        {"path": name, "side": "head", "line": 2, "quote": "accumulated = 0"},
+                        {"path": name, "side": "base", "line": 2, "quote": "total = 0"},
+                    ],
+                    "counter_evidence": []}]})
+            return json.dumps({"summary": "s", "risk_level": "medium", "suggestions": [{
+                "file_path": name, "line": 2, "severity": "medium", "confidence": 0.9,
+                "title": f"{name}: initial total changed",
+                "reason": "the accumulator starts from a different value for every caller",
+                "recommendation": "restore the name", "evidence": ["accumulated = 0"],
+                "failure_scenario": "every caller now gets a total one higher"}]})
+
+        def close(self):
+            pass
+
+    snapshot = GitSnapshot(tmp_path, base, head)
+    files = parse_diff(run("diff", base, head))
+    pr = PullRequest(repo="fixture/repo", number=1, title="t", base_sha=base, head_sha=head)
+    context = build_review_context(pr, files, include_context_pack=False,
+                                  allow_remote_file_fetch=False, max_patch_tokens=200)
+    assert context.truncated is True
+    provider = Scripted()
+    report = review_with_ai(
+        pr, files, [], provider, 20, min_confidence=.65, repository_snapshot=snapshot,
+        follow_changes=True, review_context=context,
+        unit_review_max_units=units_enabled, unit_review_workers=1,
+        unit_provider_factory=Scripted,
+    )
+    return report, provider
+
+
+def test_unit_review_reviews_every_unit_when_the_prompt_is_truncated(tmp_path):
+    report, _ = _unit_review_report(tmp_path, units_enabled=8)
+    assert report.metrics.get("unit_review") == 1
+    # The cap is part of the contract: 8 of 9 units reviewed, one skipped by the
+    # budget gate rather than silently dropped.
+    assert report.metrics["units_reviewed"] == 8
+    assert report.metrics["units_skipped_by_budget"] == 1
+    assert report.metrics["units_failed"] == 0
+    assert len(report.suggestions) >= 1
+
+
+def test_unit_review_is_off_by_default(tmp_path):
+    report, provider = _unit_review_report(tmp_path, units_enabled=0)
+    assert "unit_review" not in report.metrics
+    # The single-pass path makes far fewer calls than one per unit.
+    assert provider.calls <= 3

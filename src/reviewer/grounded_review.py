@@ -455,6 +455,12 @@ def build_grounded_report(pr, files, findings, result, context, *, reviewer_vers
         "main_review_prompt_signal_count": 0,
         "witness_blocked_count": int(result.bundle.get("witness_blocked", 0) or 0),
     }
+    unit_details = result.bundle.get("unit_details")
+    if isinstance(unit_details, dict):
+        for key in ("units_planned", "units_reviewed", "units_failed", "units_skipped_by_budget",
+                    "unit_review"):
+            if isinstance(unit_details.get(key), int):
+                run_metrics[key] = unit_details[key]
     # What the reader must know about a truncated prompt: how much of the change
     # never reached the model at all.
     if result.unit_coverage:

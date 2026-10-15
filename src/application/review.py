@@ -121,6 +121,11 @@ class ReviewApplication:
                 defaults["repository_snapshot"] = GitHubSnapshot(
                     reader, pr.repo, pr.base_sha, pr.head_sha, [f.filename for f in files]
                 )
+            defaults.setdefault("unit_review_max_units", s.unit_review_max_units)
+            defaults.setdefault("unit_review_workers", s.unit_review_workers)
+            defaults.setdefault(
+                "unit_provider_factory", lambda: self._provider(s.review_model)
+            )
             # Knowledge layer (P3): recall scope-matched playbook entries and offer
             # them as guidance. Entries never override the criteria, and the ids
             # used are recorded so a report says which knowledge was in play.

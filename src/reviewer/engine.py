@@ -400,6 +400,9 @@ def review_with_ai(
     enable_evidence_gate: bool = True,
     review_context: "ReviewContext | None" = None,
     prompt_addendum: str = "",
+    unit_review_max_units: int = 0,
+    unit_review_workers: int = 1,
+    unit_provider_factory=None,
     repository_snapshot=None,
     follow_changes: bool = False,
     verify_behavior: bool = True,
@@ -415,7 +418,41 @@ def review_with_ai(
         )
         if follow_changes and not two_stage and (repository_snapshot is not None or (pr.head_sha and pr.base_sha)):
             from src.reviewer.grounded_review import review_grounded, build_grounded_report
+            def run_one_unit(unit_ctx, unit_files, snapshot):
+                unit_provider = unit_provider_factory() if unit_provider_factory else provider
+                try:
+                    return review_grounded(
+                        pr, unit_files, unit_provider, snapshot, unit_ctx, max_suggestions,
+                        language, repository_evidence_tokens, verify_behavior,
+                        max_suggestions_per_file=max_suggestions_per_file,
+                    )
+                finally:
+                    if unit_provider_factory is not None:
+                        unit_provider.close()
+
             def grounded(snapshot):
+                # Large diffs are reviewed one semantic unit at a time. The gate is
+                # deliberate: this path costs one review per unit, so it only runs
+                # when the prompt was truncated and the unit count is capped.
+                if unit_review_max_units and ctx.truncated and len(files) > 2:
+                    from src.reviewer.unit_review import run_units_for_review
+
+                    merged, unit_details = run_units_for_review(
+                        lambda unit_ctx, unit_files: run_one_unit(unit_ctx, unit_files, snapshot),
+                        snapshot, files,
+                        token_budget=ctx.patch_token_budget or repository_evidence_tokens,
+                        max_units=unit_review_max_units, max_workers=unit_review_workers,
+                    )
+                    if unit_details.get("units_reviewed"):
+                        merged.bundle["unit_details"] = unit_details
+                        return build_grounded_report(
+                            pr, files, findings, merged, ctx, reviewer_version=reviewer_version,
+                            execution_status=execution_status, review_meta=review_meta,
+                            pr_syntax_ok=pr_syntax_ok, report_confidence=report_confidence,
+                            degradation_reason=degradation_reason,
+                            max_input_tokens=max_input_tokens,
+                            analyzer_warnings=analyzer_warnings,
+                        )
                 result = review_grounded(pr, files, provider, snapshot, ctx, max_suggestions,
                                          language, repository_evidence_tokens, verify_behavior,
                                          max_suggestions_per_file=max_suggestions_per_file)
