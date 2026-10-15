@@ -23,8 +23,14 @@ sys.path.insert(0, str(REPO_ROOT))
 from src.analyzer.context_builder import build_review_context  # noqa: E402
 from src.evaluation.reviewbench import parse_diff  # noqa: E402
 from src.evaluation.scoring import score  # noqa: E402
+from src.knowledge.playbook import (  # noqa: E402
+    DEFAULT_PLAYBOOK,
+    contract_domains,
+    load_playbook,
+    recall,
+)
 from src.models import PullRequest  # noqa: E402
-from src.reviewer.grounded_review import review_grounded  # noqa: E402
+from src.reviewer.grounded_review import CRITERIA_VERSION, review_grounded  # noqa: E402
 from src.reviewer.provider import OpenAICompatibleProvider  # noqa: E402
 from src.reviewer.usage import summarize_usage  # noqa: E402
 from src.utils.config import get_settings  # noqa: E402
@@ -128,7 +134,7 @@ def main(argv=None) -> int:
     model = args.model or settings.review_model
     cases = json.loads(args.gold.read_text())
 
-    report: dict = {"model": model, "cases": [], "usage": {}}
+    report: dict = {"model": model, "criteria": None, "cases": [], "usage": {}}
     total_records: list[dict] = []
     scored: list[dict] = []
     for case in cases:
@@ -147,10 +153,17 @@ def main(argv=None) -> int:
             timeout=settings.request_timeout_seconds, stream=True, total_timeout=300,
             max_output_tokens=32768, reasoning_effort="low",
         )
+        # Run the production criteria: playbook recall supplies both the guidance
+        # in the prompt and the declared contract domains the witness check uses.
+        entries = load_playbook(REPO_ROOT / DEFAULT_PLAYBOOK)
+        recalled = recall(entries, repo=pr.repo,
+                          paths=[f.filename for f in files], languages=["python"],
+                          k=settings.playbook_recall_k)
         result = review_grounded(pr, files, provider, snapshot, context,
                                  max_suggestions=settings.max_suggestions,
                                  evidence_tokens=settings.repository_evidence_tokens,
-                                 verify_behavior=True)
+                                 verify_behavior=True,
+                                 contract_domains=contract_domains(recalled))
         total_records.extend(provider.usage_records)
         provider.close()
 
@@ -167,6 +180,8 @@ def main(argv=None) -> int:
         case_score = score(len(predictions), golden_ids, edges)
         scored.append(case_score)
         report["cases"].append({
+            "experience_ids": [e.id for e in recalled],
+            "criteria_version": CRITERIA_VERSION,
             "case_id": case["case_id"],
             "golden_ids": golden_ids,
             "negative_case": not golden_ids,
