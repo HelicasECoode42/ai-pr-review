@@ -2,22 +2,34 @@
 
 日期：2026-10-15。依据：[PRD](PRD-review-capability-v2.md) 与 [HANDOFF](../HANDOFF.md)。Python + TypeScript 保持不变；恢复方案已按最新决定收敛为文件 checkpoint 优先，SQLite/MQ/Redis/PostgreSQL 均不是第一版默认项。
 
-最新实施状态：D1 公共 AI 应用边界与有类型 Agent 数据已实现；D2 离线图规划已实现并通过验收，D3–D5 尚未完成。下面的“当前进度”表保留文档编写时快照；本轮交付详情见文末。
+状态校正（2026-10-15，HEAD `7aee62abd2bb91567251c66536eb071ded0285b2`）：存在公共应用边界与离线图规划原型；不据此称 D2 能力验收完成。图规划没有接入生产主审查，也没有语义关系 precision/recall 或 Bug 质量增益测量。下文 D1–D5 编号和顺序是历史设计草案，不能视为用户批准的自动开发路线；先读 [HANDOFF](../HANDOFF.md) 的最新用户约束和仓库状态。
 
 ## 当前进度
 
-本地分支 codex/evaluation-driven-review，文档编写前 HEAD 13e9a3e；已有 Draft PR #45 https://github.com/HelicasECoode42/ai-pr-review/pull/45 。本轮没有核对远端最新状态，不能称本地全部提交已推送。main 未在本轮修改。
+下表是此前代码快照的功能概览，不是本轮质量验收。当前未提交工作区保留原有 `--max-attempts`（默认 2），并追加 ReviewBench 单请求输出上限、run 级共享 HTTP attempt budget 和安全错误诊断；均不属于 HEAD。2026-10-15 对 provider、paired 和 reviewer engine 的 38 项定向离线测试通过，不代表生产主审查能力或 Bug 质量已验收。
 
 | 模块 | 实际状态 | 缺口 |
 | --- | --- | --- |
 | 冻结源码读取 | Git/GitHub Snapshot、base/head 读取与审计已实现 | GitHub 检索有限；不能声称全仓库语义分析 |
-| 上下文 | 定义窗口、文本引用、按需只读请求已实现 | 没有依赖图分组；初始文件/hunk 上限可能遗漏 |
+| 生产上下文 | PR diff、定义窗口、文本引用、按需只读请求已实现 | 不消费离线 ReviewUnit；初始证据只读最多 12 个 changed-file seeds，每文件最多 2 hunks；另有 patch 与 evidence 分离预算 |
 | 发现/核验 | 因果字段、原文引用、反证、待核实已实现 | 小批量确认项仍缺真实入口可达证据 |
-| 模型预算 | Flash low、usage/cache hit 记录已实现 | 缺统一总体预算和独立成本诊断 |
+| 模型预算 | 生产审查有调用配置与 usage/cache hit 记录；当前未提交的 paired runner 增加 run 级请求 attempt cap 和单次输出上限 | 生产路径仍缺统一硬总预算；HTTP attempt 数不是账单调用数 |
 | 应用编排 | CLI/Web/Agent 有现有链路 | 配置重复、共享 dict、阶段耦合 |
 | 持久化运行 | 评测有完成任务 checkpoint | 生产 Web 是线程/内存队列，无持久化阶段恢复 |
-| 工程验证 | d9e9b16 时 160 项测试通过 | 不是审查质量验收 |
+| 工程验证 | 历史记录：d9e9b16 时 160 项测试通过；2026-10-14 D1/D2 交付记录称 181 项通过 | 两次是不同历史快照，不是本轮重跑，也不是审查质量验收 |
 | 质量实验 | 历史负结果；最新 1 PR 两组均成功 | 尚无可信整体提升，未完成全量新旧对照 |
+
+评测数据状态也要按用途解释：`datasets/dev/split.json` 定义 9 个 dev、15 个 holdout，规则为按 repository 划分，并排除一个 head 已不可达的 PR；但原始 25 个 PR 均于 2026-10-13 历史基线/Critic 实验接触，因此 15 个 holdout 不是未见测试。仓库有 `datasets/golden/synthetic-dev.json`（4 个合成案例）；ReviewBench 金标签外部路径记录为 `/private/tmp/ai-review-reviewbench/golden/`，当前本机存在 219 个文件，但位于可能被清理的临时目录，非仓库固定资产。`paired.py` 本身没有读取 gold 标签；本轮未运行付费模型、未执行评测。
+
+本轮未提交的 paired 护栏把 `max_output_tokens`（默认兼容值 32768）及 `max_http_attempts` 写入 protocol；HTTP attempt cap 在进程内跨 task、arm、外层 attempt 和 response_format fallback 共享，并从两个标准 arm 的正常 checkpoint 恢复已知累计数。它不是跨并发进程或强杀窗口的绝对费用硬上限；远端计费也不能由本地发送计数精确推导。usage 完整性按 `prompt_tokens`、`completion_tokens`、`total_tokens` 三个真实整数检查，记录显式列出已知 usage 与 unknown attempt 数，部分usage仍保留原记录但不算完整，缺 usage 不记作 0。错误 taxonomy 区分连接/读写/连接池 timeout、整次 stream timeout、输出截断、预算耗尽与fatal停止；硬 deadline 仍未解决，当前 stream total timeout 只在收到事件后检查。预算耗尽或 fatal stop 会阻止后续发送，不新增自动重试；已在途请求不能撤销。41 个 provider/paired/reviewer engine 定向测试通过；未使用真实模型。
+
+离线 chunk 实际路径：`base/head diff + hunks → changed file nodes → 文件级 import/name-match graph → 按强边优先、token 数与连接度约束做 greedy units → 每个 hunk 按行/超长行按字符拆成 fragments`。Python AST 的属性调用只保留末尾方法名，弱名字边仅是候选；强 import 表示导入可解析，不表示存在真实运行时调用。变更文件决定规划切片，未变更 caller 可出现在 external caller 候选，但不作为 unit 成员。fragment 有 hunk/序号，尚无完整原行范围回映射与跨组核验。
+
+这些离线预算与生产预算不同：planner 的 token budget 只数 diff fragments；lazy definitions/evidence 不计。生产 `build_review_context` 的 `max_patch_tokens` 约束拼接的 patch，不是完整 system/user prompt 总量；grounded 源证据又有独立 budget，且最多 12 个 changed-file seeds、每文件最多 2 hunks。超出会通过 partial/omitted 状态报告，但各预算并未形成统一总账。此前离线最小例子 `diff budget=128`，生产 context 得到 881 token 且 `truncated=False`，显示两者不能互称同一预算。
+
+关系标签、Bug 证据和整体质量是三个不同置信度维度。关系标签目前是强/弱分类，无校准概率、alias/type/scope binding 完整度或边级人工 gold；Grounded 字段/原文引用可验证部分出处和因果链格式，但不是独立证明；质量可信度当前受 25 PR 历史接触污染、无未见 holdout、无盲化人工完整标注限制。`confidence` 不得解释为现实正确概率。
+
+腾讯参考为用户附件《给270万行代码开“上帝视角”：Agent 自主定位根因实践》。文章讲腾讯广告共享拓扑/知识底座、异常线索驱动的多源取证、结构化证据与经验回写。对 PR review 的可借鉴设计推断是：保留边来源/不确定性，按候选疑点请求原始代码并增量收敛；文章没有提供可比较的 PR 审查算法或精度数据，也依赖生产日志/监控等 PR 仓库场景未必存在的运行证据。
 
 历史约 4% grounded recall 是工程试验，不是新策略有效性证明。最新小批量旧流程 0 项，新流程系统确认 1 项/待核实 2 项；人工将确认项列为未证实，不能计作 TP。详细依据见 [实验记录](evaluation/flash-small-2026-10-14.md)。
 
@@ -45,7 +57,7 @@ D2 静态索引和基础分组不调用模型；D3 可在静态解析仍无法�
 
 交付：有类型协议、一个公共编排入口、各入口契约测试；功能开关默认沿用原行为。不要同时修改提示词和过滤策略，以便分离重构与语义变更。
 
-### D2：依赖索引与确定性图分组
+### D2（历史设计/实现记录，不作为已验收能力）
 
 在 src/analyzer 增加符号/引用索引与分组模块。Python AST 首先支持本项目；TS/JS 通过 Tree-sitter 及导入解析逐步补齐。图的每条边标注来源与确定度。索引键包括源码 hash 和解析器版本。
 
@@ -128,9 +140,11 @@ base 也必须与实际 diff 的比较基点一致。图规划 CLI 是用户明�
 - 本地进程在模型成功后、结果落盘前崩溃：持久化与发布幂等；模型结果和费用无法事务回滚，未知结果可人工恢复。
 - checkpoint 原子替换中断、文件存储故障、进程重启、版本升级：恢复真源明确；成功标记必须对应持久产物；旧版本/策略输入不被误复用。若部署 SQLite 或外部 broker/SQL，再按该后端补故障恢复验收，不将其设为本地版前提。
 
-## 下一轮起点
+## 下一步（待用户/主 Agent 决策，不按旧 D3 顺序自动开工）
 
-先做 D1 与 D2 的行为保持实现、无付费模型的图分组测试及覆盖报告，再接 D3 修正入口核验与上下文重复，并定义可恢复阶段契约。D4 先验收单机文件 checkpoint/产物的持久恢复；SQLite 和外部队列都只有遇到明确需求才考虑。D5 决定是否默认上线。每阶段独立提交，记录实施状态/验证/已知边界；不将设计状态写成完成。
+建议先选一个真实失败反例，做无模型、无付费的最小语义绑定/分组 fixture，分别测关系 precision/recall 和所有 changed hunk 覆盖；再以 fake provider 验证截断、预算耗尽、工具错误是否保留 `needs_context` 与 partial；之后以小批量人工盲标真实 PR 检查触发输入、可达路径、预期/实际和 PR 因果。只有这些结果与完整成本预估提交后，再决定是否授权一轮真实模型比较。以上是本轮建议，不是用户已批准的完整 D3 或重写架构。
+
+目标组合可表述为：确定性可绑定关系用于小范围语义 chunk；无法绑定的候选保留来源和不确定性；发现阶段围绕疑点请求原文证据；跨 chunk 契约边进入总览核查。要避免固定只取前 N 个文件导致漏掉 changed files，初轮应逐 hunk 作归属/遗漏清单，再按总预算优先检索，不保证全部内容都读完。证据包必须含 frozen side/SHA/path/line range/原文、边的生成依据和未决点；摘要只能导航，不能替代证据。稳定上下文去重与阶段缓存只有在 usage/缓存命中记录上测出后才能声称节省。
 
 ## 提交规范
 
@@ -138,7 +152,7 @@ base 也必须与实际 diff 的比较基点一致。图规划 CLI 是用户明�
 
 提交说明记录问题、实现边界和验证结果；不把单元测试通过写成审查能力提升。不为格式单独制造零碎提交，独立紧急修复可例外。已发布历史不因本次规范擅自重写；不提交 .env、依赖目录或庞大的实验日志。开发使用 codex/ 分支，保持 Draft PR，未经用户要求不合并 main。
 
-## D1/D2 本轮交付（2026-10-14）
+## 历史交付记录：D1/D2 原型（2026-10-14）
 
 - src/application/review.py：公共模型配置、主审/Critic Provider 生命周期及冻结仓库 reader 所有权，CLI/Web/Agent 均接入。Critic 使用自身模型的思考配置；构造或执行失败时已创建资源也关闭。
 - src/application/protocol.py：有类型 AgentContext，拒绝未知字段/非法赋值；运行、阶段、预算与覆盖协议。现有工具注册与 transport 编排壳保留，未将 D4 队列/持久化伪装成已完成。
@@ -155,8 +169,8 @@ ai-pr-review-plan --repo-path /path/to/repo --base origin/main --head HEAD \
 
 budget 目前只约束拼接后的 diff fragment tokens，定义以 EvidenceRef 保存，由 D3 计入最终上下文预算；系统指令、证据、模型输出均不在该数值内。tokenizer 估算也不等于模型实际计费。JS 和其他语言当前仍明确标注索引关系不支持，不能称全语言调用图。
 
-验收：181 项 pytest 测试通过；新增模块和测试完整 Ruff 检查通过，既有修改文件 F 检查及 diff whitespace 检查通过。新增 21 项行为测试覆盖资源释放、类型约束、确定性分组、循环/重名/公共节点、长行拆分、25 文件覆盖、删除/重命名、TS 导入、缓存失效和不读未提交内容。
+历史记录称当时 181 项 pytest 通过；新增模块和测试完整 Ruff 检查通过，既有修改文件 F 检查及 diff whitespace 检查通过。新增 21 项行为测试覆盖资源释放、类型约束、确定性分组、循环/重名/公共节点、长行拆分、25 文件覆盖、删除/重命名、TS 导入、缓存失效和不读未提交内容。这是 2026-10-14 工程/fixture 证据，不是 2026-10-15 当前验证，也不是关系准确率或找 Bug 能力评测。
 
 真实仓库固定范围 89943fe → 13e9a3e，在 1,000 diff tokens 预算下规划 22 个 hunk、14 个单元，最大单元 986 tokens；238 条 import 关系、970 条弱符号关系。关系数不是已证明调用路径数。此次未调用付费模型，没有新的 Precision/Recall 或 token 节省比例。
 
-下一步 D3 才将单元接入发现与核验，修正实际入口可达性与预算重复，并定义可恢复阶段边界；D4 才接文件 checkpoint、锁和显式恢复。SQLite/外部队列不是预定升级项。不要把 plan JSON 当作完成的审查报告。
+历史方案曾计划由 D3 将单元接入发现与核验、D4 接文件 checkpoint；这不是当前获批的先后顺序。先依据用户最新关注的 chunk 与置信度，选择最小可验证失败修复。不要把 plan JSON 当作完成的审查报告。
