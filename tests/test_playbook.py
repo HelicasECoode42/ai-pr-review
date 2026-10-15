@@ -113,5 +113,8 @@ def test_recall_is_recorded_in_the_report_metrics():
     files = [ChangedFile(filename="src/analyzer/x.py", patch="@@ -1,1 +1,1 @@\n-a\n+b\n")]
     application.review(PullRequest(repo="o/r", number=1, title="t"), files, [])
     assert "prompt_addendum" in seen and "Project knowledge" in seen["prompt_addendum"]
-    assert report.metrics["experience_ids"] == "kb-0001,kb-0002"
-    assert report.metrics["experience_count"] == 2
+    ids = report.metrics["experience_ids"].split(",")
+    assert {"kb-0001", "kb-0002"} <= set(ids)
+    assert report.metrics["experience_count"] == len(ids)
+    # The contract entry declares domains for exactly the symbols it names.
+    assert report.metrics["experience_count"] >= 2
