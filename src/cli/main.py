@@ -155,9 +155,12 @@ def analyze(
         help="Output language (auto-detected from PR if not set).",
     ),
     agent_mode: str = typer.Option(
-        "off",
+        "auto",
         "--agent-mode",
-        help="Agent mode: off (legacy, default), auto, rule_only, one_shot_ai, two_stage.",
+        help=(
+            "Orchestration: auto (default; picks rule_only/one_shot_ai/two_stage from the diff), "
+            "rule_only, one_shot_ai, two_stage, or off (legacy single-pass path)."
+        ),
     ),
 ) -> None:
     settings = get_settings()

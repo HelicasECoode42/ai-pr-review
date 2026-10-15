@@ -295,7 +295,7 @@ uv run python -m src.cli.main owner/repo 123 \
 | `--output` / `-o` | 报告输出路径 |
 | `--format` | `markdown`，默认，或 `json` |
 | `--ai` / `--no-ai` | 是否调用 AI 模型 |
-| `--agent-mode` | 审查引擎：`off`（默认，旧路径）、`auto`、`rule_only`、`one_shot_ai`、`two_stage` |
+| `--agent-mode` | 编排方式：`auto`（**默认**，按 diff 规模自动选 `rule_only` / `one_shot_ai` / `two_stage`）、`rule_only`、`one_shot_ai`、`two_stage`、`off`（旧单遍路径） |
 | `--language` | `en`，默认，或 `zh` |
 | `--reviewer-version` | 报告中的 reviewer 来源标记，例如 `pr-branch` / `main-fallback` |
 | `--execution-status` | 报告中的执行状态标记，例如 `success` / `degraded` |

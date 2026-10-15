@@ -171,3 +171,69 @@ def test_application_tolerates_a_provider_without_usage_records():
     assert result is report
     assert "usage_total_tokens" not in result.metrics
     assert result.metrics["publish_min_confidence"] == 0.80
+
+
+class _Snapshot:
+    """Minimal frozen snapshot: one caller outside the diff, one inside."""
+
+    base = "1" * 40
+    head = "2" * 40
+
+    def __init__(self):
+        self.sources = {
+            "src/a.py": "def foo(x):\n    return x\n",
+            "src/other.py": "from a import foo\nfoo(1)\n",
+        }
+
+    def read(self, path, side="head"):
+        return self.sources.get(path)
+
+    def search(self, symbol, side="head", limit=6):
+        return [("src/a.py", 1), ("src/other.py", 2)][:limit]
+
+
+def test_contract_callers_are_pulled_in_and_changed_files_are_skipped():
+    from src.analyzer.repository_context import EvidenceBundle
+    from src.reviewer.grounded_review import _add_contract_callers
+
+    files = [ChangedFile(filename="src/a.py", patch=CODE_PATCH)]
+    bundle = EvidenceBundle(_Snapshot(), budget=6000)
+    _add_contract_callers(bundle, _Snapshot(), files, suggestion("src/a.py", 11))
+    kinds = {e["path"]: e["kind"] for e in bundle.excerpts}
+    # The changed file is already visible in the diff; only the caller was added.
+    assert kinds.get("src/other.py") == "candidate_caller"
+    assert "src/a.py" not in kinds
+
+
+def test_contract_caller_lookup_failure_is_recorded():
+    from src.analyzer.repository_context import EvidenceBundle
+    from src.reviewer.grounded_review import _add_contract_callers
+
+    class Broken(_Snapshot):
+        def search(self, symbol, side="head", limit=6):
+            raise RuntimeError("search backend down")
+
+    bundle = EvidenceBundle(Broken(), budget=6000)
+    _add_contract_callers(bundle, Broken(), [ChangedFile(filename="src/a.py", patch=CODE_PATCH)],
+                          suggestion("src/a.py", 11))
+    assert [o["reason"] for o in bundle.omitted] == ["caller_search_failed"]
+
+
+def test_documentation_candidates_do_not_trigger_caller_search():
+    from src.analyzer.repository_context import EvidenceBundle
+    from src.reviewer.grounded_review import _add_contract_callers
+
+    files = [ChangedFile(filename="docs/x.md", patch=DOC_PATCH)]
+    bundle = EvidenceBundle(_Snapshot(), budget=6000)
+    _add_contract_callers(bundle, _Snapshot(), files, suggestion("docs/x.md", 1))
+    assert bundle.excerpts == [] and bundle.omitted == []
+
+
+def test_default_orchestration_is_auto():
+    """The agent path is the default; `off` is the explicit legacy opt-out."""
+    import inspect
+
+    from src.cli.main import analyze
+
+    info = inspect.signature(analyze).parameters["agent_mode"].default
+    assert info.default == "auto"

@@ -20,6 +20,10 @@ from src.reviewer.model_payload import parse_model_payload
 from src.reviewer.prompt import build_user_prompt
 from src.reviewer.provider import ProviderError
 
+# How many caller locations to pull in for one candidate. Bounded because the
+# evidence budget, not the search backend, is the scarce resource.
+CALLER_EVIDENCE_LIMIT = 3
+
 DISCOVERY_SYSTEM = """You review code changes against a frozen base/head repository snapshot.
 Find concrete correctness, security, reliability, interface-contract and maintainability defects.
 Check callers, return values, error propagation, missing branches, resource lifetime and cross-layer contracts.
@@ -32,7 +36,9 @@ in a changed file; code evidence and comment anchor need not be the same line.
 Retain plausible candidates for verification even when confidence is low. Never invent missing code.
 You can ask for repository evidence using context_requests:[{tool:'search',symbol:'name',side:'head|base'},
 {tool:'read',path:'relative/source/path',line:123,side:'head|base'}]. Only read/search are available.
-Search for the specific caller or contract you need, not generic common identifiers.
+Request evidence BEFORE you commit to a candidate list: state what you still need, and prefer the
+specific caller, interface contract or configuration that governs the changed line over re-reading a
+definition you already have. Search for the specific symbol or contract you need, not generic common identifiers.
 Return a JSON OBJECT only. Context requests are data for this host, NOT native tool calls.
 Never emit DSML/XML tags. If requesting context, return only {"context_requests":[...]}.
 Otherwise return the final object with summary, risk_level and suggestions.
@@ -47,6 +53,8 @@ Return dismissed only with exact counter-evidence that disproves the scenario. M
 needs_context, not dismissed. Absence of a check in a short excerpt does not prove absence in the repository.
 Do not suppress a candidate merely for low discovery confidence. Do not use majority votes as evidence.
 You may request read/search context in the same format as discovery. Do not create new findings.
+When a candidate rests on how a changed symbol is used, request that caller or contract specifically
+instead of restating the definition you were already given.
 Return JSON {items:[{candidate_id,decision:confirmed|dismissed|needs_context,confidence,
 trigger,call_path,expected_behavior,actual_behavior,introduced_by,reason,
 evidence:[{path,side:head|base,line,quote}],counter_evidence:[{path,side,line,quote}]}],context_requests:[]}.
@@ -162,6 +170,34 @@ def _valid_citation(citation, snapshot, bundle, files):
         return False
 
 
+def _add_contract_callers(bundle, snapshot, files, suggestion) -> None:
+    """Add bounded caller evidence for a candidate's enclosing symbol.
+
+    A changed definition is rarely wrong on its own: the defect usually shows up
+    where it is called. Searching the frozen snapshot one hop is cheap and lands
+    in the same `omitted`/`evicted` accounting as every other excerpt, so a
+    failed lookup is recorded rather than assumed to mean "no caller exists".
+    """
+    from src.reviewer.suggestion_filter import locate_symbol
+
+    symbol, status, _ = locate_symbol(files, suggestion.file_path, suggestion.line)
+    if status != "resolved" or not symbol:
+        return
+    changed = {f.filename for f in files}
+    try:
+        hits = snapshot.search(symbol, side="head", limit=CALLER_EVIDENCE_LIMIT)
+    except Exception as exc:  # a search backend must not break the review
+        bundle.omitted.append(
+            {"path": suggestion.file_path, "side": "head", "reason": "caller_search_failed",
+             "detail": f"{type(exc).__name__}: {exc}"}
+        )
+        return
+    for path, line in hits:
+        if path in changed or path == suggestion.file_path:
+            continue  # callers already in the diff are visible without help
+        bundle.add(path, line, kind="candidate_caller")
+
+
 def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewContext,
                     max_suggestions=20, language="en",
                     evidence_tokens=6000, verify_behavior=True, max_suggestions_per_file=5) -> GroundedResult:
@@ -228,6 +264,8 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
                 eligible.append((index, suggestion))
                 # Candidate-specific complete definition before behavioral verification.
                 bundle.add(suggestion.file_path, suggestion.line, kind="candidate_definition")
+                # One hop along the contract: where else is this symbol used?
+                _add_contract_callers(bundle, snapshot, files, suggestion)
         seen.add(identity); candidates.append(item)
 
     verification_calls, failed = 0, False
