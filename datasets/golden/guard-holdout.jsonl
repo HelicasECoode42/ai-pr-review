@@ -1,0 +1,14 @@
+{"id": "h-equiv-commute", "expects": "equivalent", "base": "return x + 1", "head": "return 1 + x"}
+{"id": "h-equiv-demorgan", "expects": "equivalent", "base": "return x != 1 and x != 2", "head": "return not (x == 1 or x == 2)"}
+{"id": "h-equiv-negated-compare", "expects": "equivalent", "base": "return a < b", "head": "return not (b <= a)"}
+{"id": "h-equiv-double", "expects": "equivalent", "base": "return x * 2", "head": "return x + x"}
+{"id": "h-equiv-empty-check", "expects": "equivalent", "base": "return len(xs) == 0", "head": "return not xs"}
+{"id": "h-equiv-guard-swap", "expects": "equivalent", "base": "return a if 0 <= i < len(a) else None", "head": "return None if i < 0 or i >= len(a) else a"}
+{"id": "h-equiv-clamp", "expects": "equivalent", "base": "return v if v > 0 else 0", "head": "return max(v, 0)"}
+{"id": "h-witness-divisor", "expects": "witness", "base": "return sum(xs) / k if k else 0", "head": "return sum(xs) / k"}
+{"id": "h-witness-lower-bound", "expects": "witness", "base": "return xs[k] if 0 <= k < len(xs) else None", "head": "return xs[k] if k < len(xs) else None"}
+{"id": "h-witness-negative-clamp", "expects": "witness", "base": "return a if a > 0 else 0", "head": "return a"}
+{"id": "h-witness-floor", "expects": "witness", "base": "return x // 2 if x >= 0 else 0", "head": "return x // 2"}
+{"id": "h-witness-off-by-one", "expects": "witness", "base": "return xs[i] if i < len(xs) else None", "head": "return xs[i] if i <= len(xs) else None"}
+{"id": "h-witness-none-handling", "expects": "witness", "base": "return len(x) if x is not None else 0", "head": "return len(x)"}
+{"id": "h-witness-bool-swap", "expects": "witness", "base": "return x > 0 or y > 0", "head": "return x > 0 and y > 0"}

@@ -34,6 +34,13 @@ jobs:
       - name: Interface audit
         run: uv run python scripts/interface_audit.py
 
+      # Held-out evaluation of the witness criteria: fourteen cases disjoint from
+      # the dev set, half equivalence-preserving rewrites that must not produce a
+      # witness. Free, deterministic, and the only check that speaks to
+      # generalisation rather than to the tuning set.
+      - name: Criteria holdout
+        run: uv run python scripts/holdout_eval.py
+
   vscode-extension:
     # Shelved by ADR-001: the extension is not a supported product, so its build
     # must not block a merge. `npm audit` stays gating: marking the whole JOB as
