@@ -428,3 +428,79 @@ def test_witness_is_recorded_when_a_real_behaviour_change_is_confirmed(repo):
     assert verdicts["witness_eval"]["status"] == "differs"
     assert verdicts["witness_eval"]["base_value"] == repr(("name", 42))
     assert report.metrics["witness_blocked_count"] == 0
+
+
+@pytest.fixture
+def falsy_guard_repo(tmp_path):
+    """safe-division: behaviour differs only for count=None, which the contract excludes."""
+    git(tmp_path, "init")
+    git(tmp_path, "config", "user.email", "fixture@example.invalid")
+    git(tmp_path, "config", "user.name", "Fixture")
+    (tmp_path / "avg.py").write_text(
+        "def average(total, count):\n    return total / count if count else 0\n"
+    )
+    git(tmp_path, "add", "."); git(tmp_path, "commit", "-m", "base")
+    base = git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "avg.py").write_text(
+        "def average(total, count):\n    return 0 if count == 0 else total / count\n"
+    )
+    git(tmp_path, "add", "."); git(tmp_path, "commit", "-m", "head")
+    head = git(tmp_path, "rev-parse", "HEAD")
+    return tmp_path, base, head
+
+
+def falsy_guard_payloads():
+    suggestion = {
+        "file_path": "avg.py", "line": 2, "severity": "medium", "confidence": .85,
+        "title": "Narrowed falsy guard turns None count into a TypeError",
+        "reason": "the truthiness guard accepted every falsy count, the equality guard does not",
+        "recommendation": "keep the truthiness guard", "evidence": ["return 0 if count == 0 else total / count"],
+        "failure_scenario": "average(total, None) now raises",
+    }
+    verdict_item = {
+        "candidate_id": 0, "decision": "confirmed", "confidence": .85,
+        "trigger": "average is called with count None", "call_path": ["avg.py:2"],
+        "expected_behavior": "returns 0", "actual_behavior": "raises TypeError",
+        "introduced_by": "the guard was narrowed", "reason": "the falsy case is no longer handled",
+        "evidence": [
+            {"path": "avg.py", "side": "head", "line": 2,
+             "quote": "return 0 if count == 0 else total / count"},
+            {"path": "avg.py", "side": "base", "line": 2,
+             "quote": "return total / count if count else 0"},
+        ],
+        "counter_evidence": [],
+    }
+    return ({"summary": "guard narrowed", "risk_level": "medium", "suggestions": [suggestion]},
+            {"items": [verdict_item]})
+
+
+def run_with_contract(repo, responses, contract_domains):
+    root, base, head = repo
+    snapshot = GitSnapshot(root, base, head)
+    files = parse_diff(git(root, "diff", base, head))
+    pr = PullRequest(repo="fixture/repo", number=1, title="Guard", base_sha=base, head_sha=head)
+    context = build_review_context(pr, files, include_context_pack=False, allow_remote_file_fetch=False)
+    provider = Provider(responses)
+    report = review_with_ai(pr, files, [], provider, 20, min_confidence=.65,
+                            repository_snapshot=snapshot, follow_changes=True,
+                            review_context=context, contract_domains=contract_domains)
+    return report, provider
+
+
+def test_declared_contract_blocks_a_witness_built_outside_it(falsy_guard_repo):
+    payloads = falsy_guard_payloads()
+    report, _ = run_with_contract(falsy_guard_repo, list(payloads), {"count": "int"})
+    assert report.suggestions == []
+    verdicts = {v["filter"]: v for v in report.behavior_verifications[0]["filter_verdicts"]}
+    assert verdicts["witness_eval"]["passed"] is False
+    assert "outside the declared contract" in verdicts["witness_eval"]["reason"]
+    assert report.metrics["witness_blocked_count"] == 1
+
+
+def test_without_a_declared_contract_the_behaviour_claim_is_published(falsy_guard_repo):
+    """Honest boundary: behaviour alone cannot settle a contract question."""
+    payloads = falsy_guard_payloads()
+    report, _ = run_with_contract(falsy_guard_repo, list(payloads), {})
+    assert len(report.suggestions) == 1
+    verdicts = {v["filter"]: v for v in report.behavior_verifications[0]["filter_verdicts"]}
+    assert verdicts["witness_eval"]["status"] == "differs"

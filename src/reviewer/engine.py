@@ -400,6 +400,7 @@ def review_with_ai(
     enable_evidence_gate: bool = True,
     review_context: "ReviewContext | None" = None,
     prompt_addendum: str = "",
+    contract_domains: dict | None = None,
     unit_review_max_units: int = 0,
     unit_review_workers: int = 1,
     unit_provider_factory=None,
@@ -425,6 +426,7 @@ def review_with_ai(
                         pr, unit_files, unit_provider, snapshot, unit_ctx, max_suggestions,
                         language, repository_evidence_tokens, verify_behavior,
                         max_suggestions_per_file=max_suggestions_per_file,
+                        contract_domains=contract_domains,
                     )
                 finally:
                     if unit_provider_factory is not None:
@@ -455,7 +457,8 @@ def review_with_ai(
                         )
                 result = review_grounded(pr, files, provider, snapshot, ctx, max_suggestions,
                                          language, repository_evidence_tokens, verify_behavior,
-                                         max_suggestions_per_file=max_suggestions_per_file)
+                                         max_suggestions_per_file=max_suggestions_per_file,
+                                         contract_domains=contract_domains)
                 return build_grounded_report(
                     pr, files, findings, result, ctx, reviewer_version=reviewer_version,
                     execution_status=execution_status, review_meta=review_meta, pr_syntax_ok=pr_syntax_ok,

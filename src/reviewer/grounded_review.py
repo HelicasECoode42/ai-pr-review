@@ -212,7 +212,8 @@ def _unit_coverage(snapshot, files, context: ReviewContext, audit: dict) -> dict
 
 def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewContext,
                     max_suggestions=20, language="en",
-                    evidence_tokens=6000, verify_behavior=True, max_suggestions_per_file=5) -> GroundedResult:
+                    evidence_tokens=6000, verify_behavior=True, max_suggestions_per_file=5,
+                    contract_domains: dict | None = None) -> GroundedResult:
     """Ground discovery and verification in a frozen snapshot.
 
     Publication here is decided by proof, not by the model's self-reported
@@ -351,6 +352,7 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
             filters = confirmation_verdicts(
                 decision=decision, item=item, evidence=evidence, counter=counter,
                 snapshot=snapshot, bundle=bundle, files=files, sent_text=context.text,
+                contract_domains=contract_domains,
             )
             by_name = {verdict.name: verdict for verdict in filters}
             validated = by_name["source_provenance"].passed

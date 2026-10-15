@@ -7,6 +7,9 @@ which every filter returns a verdict, including the reason it rejected:
 
     chain_completeness -> source_provenance -> witness_eval -> decision_vocabulary
 
+``witness_eval`` also consults the declared contract domains, so a witness built
+from an input the interface excludes does not count as a witness.
+
 Rules:
 
 * ``source_provenance`` (H3): a cited line must have been inside the patch text
@@ -29,7 +32,7 @@ from src.reviewer.witness import WitnessResult, evaluate_equivalence, expression
 
 # Version of the confirmation rules. Bump it whenever a filter or a threshold
 # changes: a report records which rules produced it (H6).
-CRITERIA_VERSION = "grounded-v2: chain+provenance+witness"
+CRITERIA_VERSION = "grounded-v3: chain+provenance+witness+contract"
 
 _CONFIRMED_CHAIN_FIELDS = (
     "trigger", "expected_behavior", "actual_behavior", "introduced_by", "reason",
@@ -123,6 +126,20 @@ def witness_for_evidence(evidence: list[dict]) -> WitnessResult | None:
     return evaluate_equivalence(pairs[0][0][1], pairs[0][1][1])
 
 
+def domain_violation(witness: dict, domains: dict[str, str]) -> str | None:
+    """Which declared contract a witness input breaks, if any.
+
+    A witness built from an input the interface excludes is not evidence that the
+    code is wrong: it shows the guard handles a case the caller cannot produce.
+    """
+    from src.knowledge.playbook import violates_domain
+
+    for name, declared in domains.items():
+        if name in witness and violates_domain(witness[name], declared):
+            return f"{name}={witness[name]!r} is outside the declared contract {name}: {declared}"
+    return None
+
+
 def confirmation_verdicts(
     *,
     decision: str,
@@ -133,6 +150,7 @@ def confirmation_verdicts(
     bundle,
     files,
     sent_text: str,
+    contract_domains: dict[str, str] | None = None,
 ) -> list[FilterVerdict]:
     """Run the chain in order and return every verdict, pass or fail."""
     chain_ok = all(
@@ -173,11 +191,15 @@ def confirmation_verdicts(
                 {"status": "not_applicable"},
             ))
         elif result.status == "differs":
+            violation = domain_violation(result.witness, contract_domains or {})
             verdicts.append(FilterVerdict(
-                "witness_eval", True, "witness found: the versions differ on a concrete input",
+                "witness_eval", violation is None,
+                "witness found: the versions differ on a concrete input" if violation is None
+                else f"witness input is outside the declared contract: {violation}",
                 {"status": result.status, "domain_size": result.domain_size,
                  "witness": result.witness, "base_value": result.base_value,
-                 "head_value": result.head_value},
+                 "head_value": result.head_value,
+                 **({"contract_violation": violation} if violation else {})},
             ))
         elif result.status == "no_witness":
             verdicts.append(FilterVerdict(

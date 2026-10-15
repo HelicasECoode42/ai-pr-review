@@ -43,6 +43,9 @@ def language_of(path: str) -> str:
     return _LANGUAGE_BY_SUFFIX.get(Path(path).suffix.lower(), Path(path).suffix.lstrip(".").lower())
 _VALID_KINDS = {"contract", "project_rule", "false_positive_pattern", "retrieval_hint"}
 _VALID_STATUS = {"candidate", "authoritative", "expired", "rejected"}
+# Declared value domains for a contract entry. A witness input outside the
+# declared domain is not evidence that the code is wrong.
+_VALID_DOMAINS = {"int", "sequence", "non_empty_str", "number"}
 _FRONT_MATTER = re.compile(r"^---\s*\n(.*?)\n---\s*\n?(.*)$", re.DOTALL)
 
 
@@ -55,6 +58,7 @@ class PlaybookEntry:
     scope: dict = field(default_factory=dict)
     source: str = ""
     intent_symptoms: tuple[str, ...] = ()
+    domain: dict = field(default_factory=dict)
     version: int = 1
     status: str = "candidate"
     supersedes: str | None = None
@@ -63,7 +67,7 @@ class PlaybookEntry:
         return {
             "id": self.id, "kind": self.kind, "statement": self.statement,
             "scope": self.scope, "status": self.status, "version": self.version,
-            "intent_symptoms": list(self.intent_symptoms),
+            "intent_symptoms": list(self.intent_symptoms), "domain": self.domain,
         }
 
 
@@ -94,10 +98,17 @@ def parse_entry(text: str, *, origin: str = "") -> PlaybookEntry:
     symptoms = meta.get("intent_symptoms") or ()
     if isinstance(symptoms, str):
         symptoms = (symptoms,)
+    domain = meta.get("domain") or {}
+    if not isinstance(domain, dict):
+        raise PlaybookError(f"{origin}: domain must be a mapping of name -> type")
+    for name, declared in domain.items():
+        if declared not in _VALID_DOMAINS:
+            raise PlaybookError(f"{origin}: unknown domain type {declared!r} for {name!r}")
     return PlaybookEntry(
         id=entry_id, kind=kind, statement=statement, body=match.group(2).strip(),
         scope=scope, source=str(meta.get("source", "")),
         intent_symptoms=tuple(str(item) for item in symptoms),
+        domain={str(name): str(declared) for name, declared in domain.items()},
         version=int(meta.get("version", 1)), status=status,
         supersedes=meta.get("supersedes"),
     )
@@ -166,6 +177,28 @@ def expired_by_symbols(entries: list[PlaybookEntry], symbol_exists) -> list[Play
         if symbols and not any(symbol_exists(symbol) for symbol in symbols):
             expired.append(entry)
     return expired
+
+
+def contract_domains(entries: list[PlaybookEntry]) -> dict[str, str]:
+    """Merged declared domains from authoritative contract entries."""
+    domains: dict[str, str] = {}
+    for entry in entries:
+        if entry.kind == "contract" and entry.status == "authoritative":
+            domains.update(entry.domain)
+    return domains
+
+
+def violates_domain(value: object, declared: str) -> bool:
+    """Whether a witness value falls outside a declared contract domain."""
+    if declared == "int":
+        return isinstance(value, bool) or not isinstance(value, int)
+    if declared == "number":
+        return isinstance(value, bool) or not isinstance(value, (int, float))
+    if declared == "sequence":
+        return not isinstance(value, (list, tuple, str))
+    if declared == "non_empty_str":
+        return not isinstance(value, str) or not value
+    return False
 
 
 def render(entries: list[PlaybookEntry], *, limit: int = 2000) -> str:

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from src.knowledge.playbook import (
     DEFAULT_PLAYBOOK,
+    contract_domains,
     language_of,
     load_playbook,
     recall,
@@ -130,6 +131,8 @@ class ReviewApplication:
             # them as guidance. Entries never override the criteria, and the ids
             # used are recorded so a report says which knowledge was in play.
             recalled = self._recall_playbook(files, defaults)
+            if recalled and "contract_domains" not in defaults:
+                defaults["contract_domains"] = contract_domains(recalled)
             if recalled and "prompt_addendum" not in defaults:
                 defaults["prompt_addendum"] = render(recalled)
             report = self.engine(

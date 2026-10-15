@@ -31,3 +31,22 @@ status: authoritative
 
 In the measured run the discovery round requested nothing at all, so every
 candidate reached verification without caller evidence.
+
+---
+id: kb-0003
+scope:
+  repo: "*"
+  languages: [python]
+  symbols: ["average", "lookup", "pick"]
+kind: contract
+statement: "`count`, `index`, `total` and `values` are the numeric/sequence types their signatures imply; the guards are not required to tolerate None, bool or string values."
+source: "gold case safe-division: the falsy-guard narrowing only differs for count=None, which the interface excludes"
+domain: {count: int, index: int, total: int, values: sequence}
+version: 1
+status: authoritative
+---
+
+A witness built from an input outside the declared domain shows that the guard
+handles a case the caller cannot produce. It is not evidence of a defect, and it
+must not be published as a confirmed behaviour change. Real out-of-domain
+defects still need their own evidence.
