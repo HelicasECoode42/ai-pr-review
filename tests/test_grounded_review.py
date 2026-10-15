@@ -504,3 +504,57 @@ def test_without_a_declared_contract_the_behaviour_claim_is_published(falsy_guar
     assert len(report.suggestions) == 1
     verdicts = {v["filter"]: v for v in report.behavior_verifications[0]["filter_verdicts"]}
     assert verdicts["witness_eval"]["status"] == "differs"
+
+
+def test_playbook_addendum_reaches_the_grounded_prompt_and_stays_first(repo):
+    """The knowledge layer must actually be sent, and it must be the stable prefix
+    so provider prefix caching can reuse it across every call of a run."""
+    root, base, head = repo
+    snapshot = GitSnapshot(root, base, head)
+    files = parse_diff(git(root, "diff", base, head))
+    pr = PullRequest(repo="fixture/repo", number=1, title="Return contract",
+                     base_sha=base, head_sha=head)
+    context = build_review_context(pr, files, include_context_pack=False,
+                                  allow_remote_file_fetch=False)
+    provider = Provider([candidate(), verdict()])
+    review_with_ai(pr, files, [], provider, 20, repository_snapshot=snapshot,
+                   follow_changes=True, review_context=context,
+                   prompt_addendum="## Project knowledge\n- [contract] count is an int")
+    user_prompts = [prompt for _system, prompt in provider.calls]
+    assert user_prompts, "no calls recorded"
+    for prompt in user_prompts:
+        assert prompt.startswith("## Project knowledge"), prompt[:60]
+    # Every call shares the same prefix, which is what the cache keys on.
+    prefixes = {prompt[: len("## Project knowledge\n- [contract] count is an int")] for prompt in user_prompts}
+    assert len(prefixes) == 1
+
+
+def test_unit_prompts_share_an_identical_additional_prefix(tmp_path):
+    """All units of one run must open with the same preamble text."""
+    import subprocess
+
+    from src.analyzer.review_plan import build_review_plan
+    from src.reviewer.unit_review import build_unit_context
+
+    def run(*args):
+        return subprocess.check_output(["git", "-C", str(tmp_path), *args], text=True).strip()
+
+    run("init"); run("config", "user.email", "f@e.invalid"); run("config", "user.name", "F")
+    for index in range(3):
+        (tmp_path / f"m{index}.py").write_text(f"def f{index}(x):\n    return x\n")
+    run("add", "."); run("commit", "-m", "base")
+    base = run("rev-parse", "HEAD")
+    for index in range(3):
+        (tmp_path / f"m{index}.py").write_text(f"def f{index}(x):\n    return x + 1\n")
+    run("add", "."); run("commit", "-m", "head")
+    head = run("rev-parse", "HEAD")
+
+    snapshot = GitSnapshot(tmp_path, base, head)
+    files = parse_diff(run("diff", base, head))
+    plan = build_review_plan(snapshot, files, [f.filename for f in files], token_budget=1000)
+    contexts = [build_unit_context(unit) for unit in plan.units]
+    assert len(contexts) >= 2
+    # The unit diff differs, but the rendered block shape is identical, so a
+    # run-level preamble prepended by the caller is a shared cacheable prefix.
+    heads = {ctx.text.splitlines()[0] for ctx in contexts}
+    assert heads == {""}

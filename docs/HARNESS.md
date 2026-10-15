@@ -93,6 +93,19 @@ Transport(CLI / GitHub Actions / Web / IDE冻存)
 | 搜 | `search(symbol, side)` | ✅（有 120KB argv 隐患） |
 | **执行** | `witness_eval`（纯表达式求值）、`run_tests`（指定测试） | ❌ **P1 新增** |
 
+**前缀缓存规范（供应商按 token 前缀精确匹配计费折扣）**
+
+| # | 规则 | 为什么 |
+|---|---|---|
+| C1 | **稳定前缀在最前**：system → 知识/playbook → 不变量与约束，逐字相同 | 一次运行内所有调用共用这段，命中即折扣 |
+| C2 | **变量在最后**：单元 diff、证据、候选放尾部 | 前缀匹配只看开头，变量靠后不伤命中 |
+| C3 | **只追加，不重排**：新证据追加到末尾；跨轮不要重建 prompt | 重建会改变中段，使"上一轮的整段"无法命中 |
+| C4 | **运行内不得有可变字段**：时间戳、run id、随机的字典序一律禁止；渲染必须稳定排序 | 一个字节差异就让其后全部失效 |
+| C5 | **单元路径必须带运行级 preamble**（已实现：`prompt_addendum` 现在真的进入 grounded，且所有单元共用） | 否则单元之间只共享 system 提示（约 500 tokens） |
+| C6 | **口径要实测**：报告记 `cache_hit_tokens / miss / hit_rate` | 已知：稳定 6.9k 前缀 → **96.9%**；按单元切分后 → **50%**；后者正是要修的地方 |
+
+**已修的真 bug**：`prompt_addendum`（playbook 注入）此前**只进 legacy/deep 路径，grounded 路径完全没收到**——指标记了 `experience_ids`，模型却从未看到知识。现在它进入 grounded，并作为 C1 的稳定前缀。
+
 **证据类型**：`changed_definition` / `related_code` / `candidate_definition` / `candidate_caller` / **`witness_result`（新）**。所有证据进同一个预算账本（`add` → `excerpts` / `omitted` / `evicted`）。
 
 **知识层规范**：

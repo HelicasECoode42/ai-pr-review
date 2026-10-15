@@ -214,7 +214,8 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
                     max_suggestions=20, language="en",
                     evidence_tokens=6000, verify_behavior=True, max_suggestions_per_file=5,
                     contract_domains: dict | None = None,
-                    discovery_rounds: int = 3, verify_rounds: int = 2) -> GroundedResult:
+                    discovery_rounds: int = 3, verify_rounds: int = 2,
+                    prompt_addendum: str = "") -> GroundedResult:
     """Ground discovery and verification in a frozen snapshot.
 
     Publication here is decided by proof, not by the model's self-reported
@@ -238,7 +239,10 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
     for round_index in range(discovery_budget):
         # Cross-file evidence changes the constraints; the prompt module owns
         # that choice so this path never rewrites prompt text by matching strings.
-        prompt = build_user_prompt(
+        # Order matters for provider prefix caching: everything identical across
+        # this run's calls (knowledge, invariants) goes first, then the diff, then
+        # evidence. The addendum was previously dropped on this path entirely.
+        prompt = (prompt_addendum + "\n" if prompt_addendum else "") + build_user_prompt(
             context.text, max_suggestions, language, cross_file_evidence=True
         )
         prompt += "\n## Frozen repository evidence\n" + bundle.render()
@@ -316,7 +320,8 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
         verdicts = {}
         verify_budget = max(1, verify_rounds)
         for round_index in range(verify_budget):
-            prompt = json.dumps({"candidates": [{"candidate_id": index,
+            prompt = (prompt_addendum + "\n" if prompt_addendum else "")
+            prompt += json.dumps({"candidates": [{"candidate_id": index,
                       "candidate": s.model_dump(mode="json")} for index, s in eligible]}, ensure_ascii=False)
             prompt += "\n## Changed diff\n" + context.text + "\n## Frozen repository evidence\n" + bundle.render()
             if round_index == verify_budget - 1:
