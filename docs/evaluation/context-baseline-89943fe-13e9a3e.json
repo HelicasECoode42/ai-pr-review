@@ -1,0 +1,295 @@
+{
+  "artifact": "chunk-context-baseline",
+  "inputs": {
+    "base": "89943fe1edd8a82a4f9455179d0820b3a64fdf8d",
+    "context_pack": false,
+    "head": "13e9a3ede9dfd6b0c801a50b47f3bd5b8bc4d57d",
+    "patch_token_budget": 6000,
+    "plan_token_budget": 1000,
+    "remote_fetch": false
+  },
+  "planner_plan": {
+    "base": "89943fe1edd8a82a4f9455179d0820b3a64fdf8d",
+    "budget_over_limit": [],
+    "budgets": [
+      {
+        "covers": "rendered diff fragments in the largest ReviewUnit; excludes lazy EvidenceRef source, planner prompts and any model output",
+        "limit": 1000,
+        "name": "diff_fragments_per_unit",
+        "used": 986
+      },
+      {
+        "covers": "sum over units; the cap is applied per unit, so this total is measured rather than bounded",
+        "limit": null,
+        "name": "diff_fragments_total",
+        "used": 6900
+      },
+      {
+        "covers": "head files parsed for relationships; base copies are not extra inventory",
+        "limit": 5000,
+        "name": "indexed_files",
+        "used": 151
+      },
+      {
+        "covers": "head and base characters read for parsing; not a model context budget",
+        "limit": 20000000,
+        "name": "indexed_source_chars",
+        "used": 1008765
+      }
+    ],
+    "coverage": {
+      "changed_files": 13,
+      "complete": true,
+      "excluded_files": 0,
+      "parsed_hunks": 22,
+      "planned_hunks": 22,
+      "unaccounted_files": [],
+      "unaccounted_hunks": [],
+      "unavailable_evidence_hunks": 0
+    },
+    "cuts": {
+      "cut_edges_strong": 17,
+      "cut_edges_targets_changed_symbol": 28,
+      "cut_edges_weak": 64,
+      "external_callers_of_changed": 39,
+      "slices": 23,
+      "split_symbols": 0,
+      "units": 14
+    },
+    "fragment_line_mapping": {
+      "slices": 23,
+      "slices_cutting_a_diff_line": 0,
+      "slices_with_a_line_span": 23
+    },
+    "head": "13e9a3ede9dfd6b0c801a50b47f3bd5b8bc4d57d",
+    "limitations": [
+      "evidence_refs_are_lazy_and_not_in_diff_token_budget",
+      "javascript_dynamic_imports_not_resolved",
+      "language_relationships_not_supported",
+      "no_typescript_type_resolution",
+      "references_are_syntactic_not_runtime_calls"
+    ],
+    "omission_reasons": {},
+    "paths_in_units": [
+      "docs/evaluation/flash-small-2026-10-14.md",
+      "docs/review-capability-improvement-plan.md",
+      "docs/review-slicing-and-boundaries.md",
+      "src/agent/runner.py",
+      "src/analyzer/repository_context.py",
+      "src/cli/main.py",
+      "src/evaluation/paired.py",
+      "src/reviewer/grounded_review.py",
+      "src/reviewer/provider.py",
+      "src/service/app.py",
+      "src/utils/config.py",
+      "tests/test_grounded_review.py",
+      "tests/test_provider.py"
+    ],
+    "plan_version": "syntax-plan-v2",
+    "relationships": {
+      "strong": 238,
+      "total": 1208,
+      "weak": 970
+    },
+    "slices": 23,
+    "token_budget": 1000,
+    "units": 14
+  },
+  "planner_revision": "537df8070ba3eb5a50f005c794388883897fb327",
+  "planner_vs_production": {
+    "changed_files": 13,
+    "context_hunks_complete": 18,
+    "context_hunks_total": 22,
+    "files_in_context_but_not_planned": [],
+    "files_planned_but_not_in_context": [],
+    "hunk_totals_match": true,
+    "hunks_planned_not_complete_in_context": 4,
+    "note": "The planner writes a standalone ReviewPlan; the production context builds a prompt. Planning a unit does not put it in front of the model, so these two numbers are reported side by side instead of being treated as one pipeline.",
+    "planned_hunks": 22,
+    "planned_hunks_total": 22
+  },
+  "planner_working_tree_dirty": true,
+  "production_context": {
+    "budget_over_limit": [],
+    "budgets": [
+      {
+        "covers": "project conventions and function index prepended to the prompt",
+        "limit": 1000,
+        "name": "context_pack",
+        "used": 0
+      },
+      {
+        "covers": "patch and substituted-file fragments put in the user prompt; excludes the system prompt, repository evidence reads and model output",
+        "limit": 6000,
+        "name": "patch_context",
+        "used": 5440
+      },
+      {
+        "covers": "cap on a single file's share of the patch context",
+        "limit": 750,
+        "name": "per_file_patch",
+        "used": 750
+      }
+    ],
+    "changed_files": 13,
+    "complete": true,
+    "coverage": [
+      {
+        "hunks_complete": 0,
+        "hunks_omitted": 0,
+        "hunks_partial": 1,
+        "hunks_total": 1,
+        "mode": "diff",
+        "path": "docs/evaluation/flash-small-2026-10-14.md",
+        "reason": "patch_clipped",
+        "status": "partial"
+      },
+      {
+        "hunks_complete": 1,
+        "hunks_omitted": 0,
+        "hunks_partial": 0,
+        "hunks_total": 1,
+        "mode": "diff",
+        "path": "docs/review-capability-improvement-plan.md",
+        "reason": null,
+        "status": "included"
+      },
+      {
+        "hunks_complete": 0,
+        "hunks_omitted": 0,
+        "hunks_partial": 1,
+        "hunks_total": 1,
+        "mode": "diff",
+        "path": "docs/review-slicing-and-boundaries.md",
+        "reason": "patch_clipped",
+        "status": "partial"
+      },
+      {
+        "hunks_complete": 2,
+        "hunks_omitted": 0,
+        "hunks_partial": 0,
+        "hunks_total": 2,
+        "mode": "diff",
+        "path": "src/agent/runner.py",
+        "reason": null,
+        "status": "included"
+      },
+      {
+        "hunks_complete": 4,
+        "hunks_omitted": 0,
+        "hunks_partial": 1,
+        "hunks_total": 5,
+        "mode": "diff",
+        "path": "src/analyzer/repository_context.py",
+        "reason": "patch_clipped",
+        "status": "partial"
+      },
+      {
+        "hunks_complete": 1,
+        "hunks_omitted": 0,
+        "hunks_partial": 0,
+        "hunks_total": 1,
+        "mode": "diff",
+        "path": "src/cli/main.py",
+        "reason": null,
+        "status": "included"
+      },
+      {
+        "hunks_complete": 2,
+        "hunks_omitted": 0,
+        "hunks_partial": 0,
+        "hunks_total": 2,
+        "mode": "diff",
+        "path": "src/evaluation/paired.py",
+        "reason": null,
+        "status": "included"
+      },
+      {
+        "hunks_complete": 2,
+        "hunks_omitted": 0,
+        "hunks_partial": 1,
+        "hunks_total": 3,
+        "mode": "diff",
+        "path": "src/reviewer/grounded_review.py",
+        "reason": "patch_clipped",
+        "status": "partial"
+      },
+      {
+        "hunks_complete": 2,
+        "hunks_omitted": 0,
+        "hunks_partial": 0,
+        "hunks_total": 2,
+        "mode": "diff",
+        "path": "src/reviewer/provider.py",
+        "reason": null,
+        "status": "included"
+      },
+      {
+        "hunks_complete": 1,
+        "hunks_omitted": 0,
+        "hunks_partial": 0,
+        "hunks_total": 1,
+        "mode": "diff",
+        "path": "src/service/app.py",
+        "reason": null,
+        "status": "included"
+      },
+      {
+        "hunks_complete": 1,
+        "hunks_omitted": 0,
+        "hunks_partial": 0,
+        "hunks_total": 1,
+        "mode": "diff",
+        "path": "src/utils/config.py",
+        "reason": null,
+        "status": "included"
+      },
+      {
+        "hunks_complete": 1,
+        "hunks_omitted": 0,
+        "hunks_partial": 0,
+        "hunks_total": 1,
+        "mode": "diff",
+        "path": "tests/test_grounded_review.py",
+        "reason": null,
+        "status": "included"
+      },
+      {
+        "hunks_complete": 1,
+        "hunks_omitted": 0,
+        "hunks_partial": 0,
+        "hunks_total": 1,
+        "mode": "diff",
+        "path": "tests/test_provider.py",
+        "reason": null,
+        "status": "included"
+      }
+    ],
+    "exclusion_reasons": {
+      "patch_clipped": 4
+    },
+    "files": {
+      "excluded": 0,
+      "included": 9,
+      "partial": 4,
+      "substituted": 0,
+      "unaccounted": [],
+      "with_diff_in_context": 13
+    },
+    "hunks": {
+      "complete": 18,
+      "omitted": 0,
+      "partial": 4,
+      "total": 22
+    },
+    "omission_reasons": {
+      "patch_clipped": 4
+    },
+    "patch_token_budget": 6000,
+    "scope": "build_review_context",
+    "status": "partial",
+    "token_count": 5882,
+    "truncated": true
+  },
+  "recorded_on": "2026-10-15"
+}

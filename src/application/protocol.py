@@ -95,6 +95,80 @@ class BudgetReport(FrozenContract):
         )
 
 
+class ChunkCoverage(FrozenContract):
+    """What happened to one changed file's diff while the prompt context was built.
+
+    ``mode`` distinguishes a real diff fragment from whole-file substitution,
+    because a substituted file has no per-hunk coverage at all and must not be
+    counted as if its hunks had been reviewed.
+    """
+
+    path: str
+    mode: Literal["diff", "substituted"] = "diff"
+    status: Literal["included", "partial", "excluded"] = "included"
+    hunks_total: int = Field(ge=0, default=0)
+    hunks_complete: int = Field(ge=0, default=0)
+    hunks_partial: int = Field(ge=0, default=0)
+    hunks_omitted: int = Field(ge=0, default=0)
+    reason: str | None = None
+
+
+class ChunkCoverageSummary(FrozenContract):
+    """Whether every changed file has an explicit coverage entry.
+
+    ``complete`` only states that no file was left unexplained; it does not
+    claim the diff was fully reviewed. ``hunks_*`` counts exclude substituted
+    files, whose hunk-level coverage is unknown by construction.
+    """
+
+    changed_files: int = Field(ge=0, default=0)
+    files_included: int = Field(ge=0, default=0)
+    files_partial: int = Field(ge=0, default=0)
+    files_excluded: int = Field(ge=0, default=0)
+    substituted_files: int = Field(ge=0, default=0)
+    hunks_total: int = Field(ge=0, default=0)
+    hunks_complete: int = Field(ge=0, default=0)
+    hunks_partial: int = Field(ge=0, default=0)
+    hunks_omitted: int = Field(ge=0, default=0)
+    unaccounted_files: tuple[str, ...] = ()
+    complete: bool = False
+
+    @classmethod
+    def from_entries(
+        cls, changed: list[str], entries: tuple[ChunkCoverage, ...]
+    ) -> ChunkCoverageSummary:
+        """Derive the summary, treating a missing or unprocessed entry as unaccounted."""
+        by_path = {entry.path: entry for entry in entries}
+        accounted = {
+            path
+            for path in changed
+            if path in by_path and by_path[path].reason != "not_processed"
+        }
+        summary = cls(
+            changed_files=len(changed),
+            files_included=sum(by_path[p].status == "included" for p in accounted),
+            files_partial=sum(by_path[p].status == "partial" for p in accounted),
+            files_excluded=sum(by_path[p].status == "excluded" for p in accounted),
+            substituted_files=sum(
+                by_path[p].mode == "substituted" for p in accounted
+            ),
+            hunks_total=sum(
+                by_path[p].hunks_total for p in accounted if by_path[p].mode == "diff"
+            ),
+            hunks_complete=sum(
+                by_path[p].hunks_complete for p in accounted if by_path[p].mode == "diff"
+            ),
+            hunks_partial=sum(
+                by_path[p].hunks_partial for p in accounted if by_path[p].mode == "diff"
+            ),
+            hunks_omitted=sum(
+                by_path[p].hunks_omitted for p in accounted if by_path[p].mode == "diff"
+            ),
+            unaccounted_files=tuple(sorted(p for p in changed if p not in accounted)),
+        )
+        return summary.model_copy(update={"complete": not summary.unaccounted_files})
+
+
 class ReviewRun(FrozenContract):
     run_id: str
     repo: str

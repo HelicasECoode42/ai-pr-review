@@ -74,6 +74,50 @@ planner 的四行分别是：`diff_fragments_per_unit`（真正被强制的每�
 
 固定引用规则（同一轮修改）：生产侧读取上下文只接受 40 位 commit SHA。此前 `_fetch_repo_file_text` 在指定 ref 失败时会回退到 `main`，等于把不属于该 PR 的代码放进审查上下文而报告仍声称描述该 PR；现在分支名、缺失 SHA 和读取失败都只返回 `None`，并由 `no_frozen_ref` / `patch_unavailable` 记录原因。
 
+## 生产侧 chunk 覆盖账本（2026-10-15 第二轮）
+
+planner 有 `coverage`/`coverage_summary`，但真正决定模型看到什么的是 `build_review_context`。现在它也有同构的账本：
+
+- `ChunkCoverage`：**每个变更文件一条**，字段 `mode`（`diff` / `substituted`）、`status`（`included` / `partial` / `excluded`）、`hunks_total/complete/partial/omitted`、`reason`。
+- `ChunkCoverageSummary.complete` 只声明"**没有文件没被解释**"，不声明"diff 被审完了"。循环里未被任何分支处理的文件保持 `not_processed`，会落进 `unaccounted_files`——这是防空转的回归信号。
+- `mode="substituted"`（整文件替换）单独计数并**不计入 hunk 统计**：这类文件的 hunk 级覆盖按定义就是未知的，混进去会让数字好看而不是真实。
+- `status` 三态严格区分：`excluded`（策略性忽略）、`partial`（进去了但只进去一部分）、以及 `excluded` + `reason="patch_budget_too_small"`（预算小到连一个 hunk 都没完整进去，此时说 `partial` 就是夸大）。
+
+**分母稳定性（本轮修掉的一个记账缺陷）**：此前预算耗尽的文件直接 `continue`，它的 hunks 从未被计数，于是 `hunks_total` 会随预算缩小而缩小——128 字节预算下分母从 22 掉到 18，任何"覆盖率"都会因此说谎。现在这类文件仍解析并记录 `hunks_total = hunks_omitted = len(hunks)`，**分母恒定**。
+
+## 冻结区间对照基线（planner vs production）
+
+`scripts/context_baseline.py` 在同一冻结区间上同时构建生产上下文与 planner 计划，产出 [context-baseline-89943fe-13e9a3e.json](evaluation/context-baseline-89943fe-13e9a3e.json)（`remote_fetch=false`、`context_pack=false`，无模型调用）。
+
+`89943fe → 13e9a3e`、13 个变更文件、22 个 hunk，`patch_token_budget` 从 1000 到 6000 的阶梯：
+
+| patch budget | 文件 included / partial / excluded | hunk complete / partial / omitted | 分母 |
+|---:|---|---|---:|
+| 1000 | 3 / 6 / 4 | 5 / 6 / 11 | 22 |
+| 2000 | 5 / 6 / 2 | 9 / 6 / 7 | 22 |
+| 4000 | 7 / 6 / 0 | 13 / 6 / 3 | 22 |
+| **6000（生产默认）** | **9 / 4 / 0** | **18 / 4 / 0** | **22** |
+
+同一产物里的对照字段：
+
+- `hunk_totals_match = true`：两条路径对"这次 diff 有多少个 hunk"的答案一致（都来自 `parse_file_hunks`），所以两侧数字可以并列看；
+- `planned_hunks = 22`，`context_hunks_complete = 18`，`hunks_planned_not_complete_in_context = 4`；
+- `files_planned_but_not_in_context = []`，`files_in_context_but_not_planned = []`。
+
+**这是一张诚实但有信息量的成绩单**：默认预算下没有任何文件被完全丢弃，但**22 个 hunk 里有 4 个只是部分进入 prompt**。仅按文件粒度记账（此前只有 `skipped_context_files`）会把 13 个文件全部记成"已包含"，这 4 个 hunk 的损失是不可见的。
+
+## 源码策略分歧（已用窄口径修复）
+
+planner 用 `repository_context.safe_source_path` 过滤路径；生产 `build_review_context` 此前**只**做 `_skip_patch_reason`（lockfile / demo / 评测 JSON）与二进制检查。结果是：`safe_source_path` 会拒绝的 `.env*`、`.pem`、`node_modules/` 等路径，在生产侧**会被拼进模型 prompt**，并可能随 GitHub 行内评论公开。
+
+修复采用**窄口径**而不是直接套用 `safe_source_path`，因为后者要求后缀在 `SOURCE_SUFFIXES` 内，会连带排除 `go.mod`、`requirements.txt`、`.css`、`.proto` 等正常需要审查的文件：
+
+- `_secret_adjacent_reason()`：拒绝 `.env*` / `.npmrc` / `.pypirc` / `.netrc` / `id_rsa` 等名称、`.pem/.key/.p12/.pfx/.keystore/.jks/.ppk` 后缀、以及 `.git`/`node_modules`/`vendor`/`dist`/`build` 目录下的路径；
+- 拒绝原因进入 `coverage.reason`（`secret_adjacent_path_not_analyzed` / `vendored_path_not_analyzed`），**不是静默跳过**；
+- 明确的边界测试：`go.mod`、`requirements.txt`、`app/styles.css` 仍然照常进入审查。
+
+这是一个**行为收窄**：如果用户希望生产侧完全对齐 planner 的 `safe_source_path`（会少审 `go.mod` 一类文件），需要显式决定，当前实现只在"密钥材料 + 已签入构建产物"这一子集上收窄。
+
 分组只沿 strong relationship 的无向邻接扩展。这里的节点是文件路径；strong 表示 import 在给定路径 inventory 中解析到唯一文件，不等于已证明运行时调用。弱引用不驱动合并，但会进入 `related_paths`。遍历受 `token_budget` 和 `public_degree` 限制；高连接节点可作为相关证据，不会强制把所有消费者合成一个超大单元。这是语法级启发式边界，不是函数级语义调用图或最优分组证明。
 
 ## 与主审查链的边界

@@ -7,11 +7,17 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from src.analyzer.diff_parser import parse_file_hunks
-from src.application.protocol import BudgetLine, BudgetReport, Omission
+from src.application.protocol import (
+    BudgetLine,
+    BudgetReport,
+    ChunkCoverage,
+    ChunkCoverageSummary,
+    Omission,
+)
 from src.models import ChangedFile, PullRequest, RiskFinding, FileStatus, StepStatus
 from src.github.client import GitHubClient, GitHubApiError
 from src.utils.config import get_settings
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import os
 import tiktoken
@@ -43,6 +49,9 @@ def tokenizer_name() -> str:
     return "cl100k_base" if _token_encoding() is not None else "utf8_byte_upper_bound"
 
 
+TRUNCATION_MARKER = "\n...[truncated]"
+
+
 def truncate_to_token_budget(text: str, budget: int) -> tuple[str, int, bool]:
     """Return text fitted to a token budget, consumed tokens and truncation flag."""
     if budget <= 0:
@@ -54,7 +63,7 @@ def truncate_to_token_budget(text: str, budget: int) -> tuple[str, int, bool]:
         tokens = encoding.encode(text or "", disallowed_special=())
     if len(tokens) <= budget:
         return text, len(tokens), False
-    marker = "\n...[truncated]"
+    marker = TRUNCATION_MARKER
     marker_tokens = (
         list(marker.encode("utf-8"))
         if encoding is None
@@ -67,6 +76,42 @@ def truncate_to_token_budget(text: str, budget: int) -> tuple[str, int, bool]:
         body = encoding.decode(tokens[:body_budget])
     fitted = body + marker
     return fitted, min(budget, count_tokens(fitted)), True
+
+
+def _covered_chars(fitted: str, clipped: bool, full_length: int) -> int:
+    """Characters of the original text that the fitted context provably keeps.
+
+    A fitted body is a token-aligned prefix of the input, so the character count
+    is an upper bound on what the model actually sees. A hunk straddling it must
+    therefore be treated as partial, never as complete.
+    """
+    if not clipped:
+        return full_length
+    if fitted.endswith(TRUNCATION_MARKER):
+        return len(fitted) - len(TRUNCATION_MARKER)
+    return len(fitted)
+
+
+def _hunk_buckets(hunk_texts: list[str], covered_chars: int) -> tuple[int, int, int]:
+    """Split hunks into (complete, partial, omitted) for a prefix cover of their join."""
+    complete = partial = omitted = 0
+    offset = 0
+    for raw in hunk_texts:
+        end = offset + len(raw)
+        if end <= covered_chars:
+            complete += 1
+        elif offset < covered_chars:
+            partial += 1
+        else:
+            omitted += 1
+        offset = end + 1  # the "\n" used to join hunks into one file_text
+    return complete, partial, omitted
+
+
+def _cover(entries: dict[str, ChunkCoverage], path: str, **fields) -> None:
+    """Record what happened to one changed file without ever dropping the entry."""
+    base = entries.get(path) or ChunkCoverage(path=path)
+    entries[path] = base.model_copy(update=fields)
 
 
 
@@ -92,6 +137,25 @@ SKIP_PATCH_REASONS: dict[str, str] = {
     "reports/": "generated report",
 }
 
+# Deliberately narrower than repository_context.safe_source_path: a reviewer still
+# needs to see go.mod, requirements.txt or a stylesheet, so only secret material
+# and checked-in build output are refused here.
+_VENDORED_DIRS = {".git", "node_modules", "vendor", "dist", "build"}
+_SECRET_ADJACENT_NAMES = {".npmrc", ".pypirc", ".netrc", ".htpasswd", "id_rsa", "id_ed25519"}
+_SECRET_ADJACENT_SUFFIXES = {".pem", ".key", ".p12", ".pfx", ".keystore", ".jks", ".ppk"}
+
+
+def _secret_adjacent_reason(filename: str) -> str | None:
+    """Why a changed path must not be pasted into a prompt or a public comment."""
+    path = PurePosixPath(filename)
+    if any(part in _VENDORED_DIRS for part in path.parts):
+        return "vendored_path_not_analyzed"
+    if path.name.startswith(".env") or path.name in _SECRET_ADJACENT_NAMES:
+        return "secret_adjacent_path_not_analyzed"
+    if path.suffix.lower() in _SECRET_ADJACENT_SUFFIXES:
+        return "secret_adjacent_path_not_analyzed"
+    return None
+
 
 @dataclass
 class ReviewContext:
@@ -107,6 +171,12 @@ class ReviewContext:
     omissions: list[Omission] = field(default_factory=list)
     budgets: BudgetReport = field(
         default_factory=lambda: BudgetReport(scope="build_review_context")
+    )
+    # One entry per changed file; a file still marked "not_processed" at the end
+    # is an accounting bug and shows up in coverage_summary.unaccounted_files.
+    coverage: tuple[ChunkCoverage, ...] = ()
+    coverage_summary: ChunkCoverageSummary = field(
+        default_factory=ChunkCoverageSummary
     )
 
 
@@ -444,6 +514,12 @@ def build_review_context(
         )
     skipped_files: list[tuple[str, str]] = []
     extra_omissions: list[Omission] = []
+    # A file never touched by the loop stays "not_processed" and is reported as
+    # unaccounted, so a missing branch cannot silently drop a changed file.
+    coverage_by_path = {
+        file.filename: ChunkCoverage(path=file.filename, status="excluded", reason="not_processed")
+        for file in files
+    }
     max_file_tokens = 0
     lockfiles_skipped = 0
     partial_flag = False
@@ -451,14 +527,29 @@ def build_review_context(
     for file in ordered_files:
         try:
             reason = _skip_patch_reason(file.filename)
+            if reason is None:
+                reason = _secret_adjacent_reason(file.filename)
             if reason is not None:
                 skipped_files.append((file.filename, reason))
+                _cover(coverage_by_path, file.filename, status="excluded", reason=reason)
                 if reason == "lockfile":
                     lockfiles_skipped += 1
                 continue
 
             if patch_budget <= 0:
+                # Count the dropped hunks even though they are not rendered: a
+                # shrinking budget must not shrink the denominator, or every
+                # coverage ratio silently starts lying.
+                dropped = parse_file_hunks(file)
                 skipped_files.append((file.filename, "patch_budget_exhausted"))
+                _cover(
+                    coverage_by_path,
+                    file.filename,
+                    status="excluded",
+                    reason="patch_budget_exhausted",
+                    hunks_total=len(dropped),
+                    hunks_omitted=len(dropped),
+                )
                 truncated = True
                 partial_flag = True
                 continue
@@ -466,12 +557,21 @@ def build_review_context(
             if file.patch and any(line.startswith(("Binary files ", "GIT binary patch"))
                                   for line in file.patch.splitlines()):
                 skipped_files.append((file.filename, "binary_content_not_analyzed"))
+                _cover(
+                    coverage_by_path,
+                    file.filename,
+                    status="excluded",
+                    reason="binary_content_not_analyzed",
+                )
                 partial_flag = True
                 continue
 
             # Check for binary or encoding issues before processing
             if _has_binary_extension(file.filename) or _patch_has_encoding_issues(file.filename, file.patch):
                 skipped_files.append((file.filename, "encoding_skipped"))
+                _cover(
+                    coverage_by_path, file.filename, status="excluded", reason="encoding_skipped"
+                )
                 partial_flag = True
                 continue
 
@@ -520,6 +620,14 @@ def build_review_context(
                         )
                     )
                     parts.extend(["", f"### {file.filename}", "```", file_text, "```"])
+                    _cover(
+                        coverage_by_path,
+                        file.filename,
+                        mode="substituted",
+                        status="partial" if clipped else "included",
+                        hunks_total=0,
+                        reason="full_file_substituted_for_missing_patch",
+                    )
                     patch_budget -= consumed
                     if patch_budget <= 0:
                         parts.append("\nPatch budget exhausted. Remaining files omitted.")
@@ -536,18 +644,24 @@ def build_review_context(
                     )
                     partial_flag = True
                     skipped_files.append((file.filename, miss_reason))
+                    _cover(
+                        coverage_by_path, file.filename, status="excluded", reason=miss_reason
+                    )
                     continue
 
             if not hunks:
                 reason = "patch_parse_failed" if parse_failed else "patch_without_hunks"
                 partial_flag = True
                 skipped_files.append((file.filename, reason))
+                _cover(coverage_by_path, file.filename, status="excluded", reason=reason)
                 continue
 
-            file_text = "\n".join(h.raw for h in hunks)
+            hunk_texts = [h.raw for h in hunks]
+            file_text = "\n".join(hunk_texts)
             # If hunks seem incomplete (e.g., new_count differs from added lines), attempt to fetch full file
             total_added = sum(len(h.added_lines) for h in hunks)
             total_hunk_lines = sum(h.new_count for h in hunks)
+            substituted_reason = None
             if allow_remote_file_fetch and total_hunk_lines > 0 and total_added < total_hunk_lines // 2:
                 # Hunk likely truncated: read the frozen file and record that the
                 # context now carries whole-file code instead of the diff.
@@ -556,10 +670,11 @@ def build_review_context(
                 ) or _fetch_repo_file_text(pr.repo, file.filename, pr.base_sha)
                 if file_contents:
                     file_text = file_contents
+                    substituted_reason = "full_file_substituted_for_truncated_hunk"
                     extra_omissions.append(
                         Omission(
                             path=file.filename,
-                            reason="full_file_substituted_for_truncated_hunk",
+                            reason=substituted_reason,
                             detail=(
                                 f"diff hunk showed {total_added} added of"
                                 f" {total_hunk_lines} new lines"
@@ -567,10 +682,43 @@ def build_review_context(
                         )
                     )
 
-            file_text, consumed, clipped = truncate_to_token_budget(file_text, min(patch_budget, per_file_budget))
+            limit = min(patch_budget, per_file_budget)
+            file_text, consumed, clipped = truncate_to_token_budget(file_text, limit)
             truncated = truncated or clipped
             partial_flag = partial_flag or clipped
             max_file_tokens = max(max_file_tokens, consumed)
+            if substituted_reason is not None:
+                _cover(
+                    coverage_by_path,
+                    file.filename,
+                    mode="substituted",
+                    status="partial" if clipped else "included",
+                    hunks_total=len(hunks),
+                    reason=substituted_reason,
+                )
+            else:
+                complete, part, omitted_hunks = _hunk_buckets(
+                    hunk_texts,
+                    _covered_chars(file_text, clipped, len("\n".join(hunk_texts))),
+                )
+                if not part and not omitted_hunks:
+                    chunk_status, chunk_reason = "included", None
+                elif complete or part:
+                    chunk_status, chunk_reason = "partial", "patch_clipped"
+                else:
+                    # Nothing of this file is provably in the prompt: saying
+                    # "partial" here would overstate what the model can see.
+                    chunk_status, chunk_reason = "excluded", "patch_budget_too_small"
+                _cover(
+                    coverage_by_path,
+                    file.filename,
+                    status=chunk_status,
+                    reason=chunk_reason,
+                    hunks_total=len(hunks),
+                    hunks_complete=complete,
+                    hunks_partial=part,
+                    hunks_omitted=omitted_hunks,
+                )
             if clipped:
                 extra_omissions.append(
                     Omission(
@@ -588,7 +736,11 @@ def build_review_context(
         except Exception as e:
             logger.warning(f"Failed to process patch for {getattr(file, 'filename', '?')}: {e}")
             partial_flag = True
-            skipped_files.append((getattr(file, "filename", "?"), "patch_processing_error"))
+            failed_path = getattr(file, "filename", "?")
+            skipped_files.append((failed_path, "patch_processing_error"))
+            _cover(
+                coverage_by_path, failed_path, status="excluded", reason="patch_processing_error"
+            )
             continue
 
     if lockfiles_skipped > 0 or skipped_files:
@@ -651,6 +803,10 @@ def build_review_context(
         ),
         omissions=tuple(omissions),
     )
+    coverage = tuple(coverage_by_path[file.filename] for file in files)
+    coverage_summary = ChunkCoverageSummary.from_entries(
+        [file.filename for file in files], coverage
+    )
     return ReviewContext(
         text=context_text,
         truncated=truncated,
@@ -660,4 +816,6 @@ def build_review_context(
         patch_token_budget=max_patch_tokens,
         omissions=omissions,
         budgets=budgets,
+        coverage=coverage,
+        coverage_summary=coverage_summary,
     )
