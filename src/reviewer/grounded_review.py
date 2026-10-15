@@ -6,7 +6,6 @@ import re
 from dataclasses import dataclass
 
 from src.analyzer.context_builder import ReviewContext, count_tokens
-from src.analyzer.diff_parser import parse_file_hunks
 from src.analyzer.repository_context import EvidenceBundle, Snapshot
 from src.models import (
     BudgetReport,
@@ -146,21 +145,34 @@ def _json(provider, system, prompt):
     return value
 
 
-def _valid_citation(citation, snapshot, bundle, files):
+def _quote_was_shown(quote: str, sent_text: str) -> bool:
+    """Was this exact source line part of the diff text we actually sent?
+
+    The check is on the prompt, not on the repository: a citation the model could
+    not have read is not evidence, no matter how well it matches the snapshot.
+    """
+    needle = "".join(quote.split())
+    if not needle:
+        return False
+    for line in sent_text.splitlines():
+        if line[:1] in {"+", "-", " "} and "".join(line[1:].split()) == needle:
+            return True
+    return False
+
+
+def _valid_citation(citation, snapshot, bundle, files, sent_text=None):
     try:
         path, side, line, quote = citation["path"], citation["side"], int(citation["line"]), citation["quote"]
         if side not in {"head", "base"} or line < 1 or not isinstance(quote, str) or not quote.strip():
             return False
+        # Provenance first: the line must have been inside an evidence excerpt we
+        # rendered, or inside the patch text we sent. Being merely inside the
+        # changed file's hunks is not enough - a hunk the context omitted was
+        # never shown, and a finding about it would be unverifiable to the model.
         seen = any(e["path"] == path and e["side"] == side and e["start_line"] <= line <= e["end_line"]
                    for e in bundle.excerpts)
-        if not seen:
-            for file in files:
-                if path not in {file.filename, file.previous_filename}:
-                    continue
-                for hunk in parse_file_hunks(file):
-                    start = hunk.new_start if side == "head" else hunk.old_start
-                    size = hunk.new_count if side == "head" else hunk.old_count
-                    seen |= start <= line < start + size
+        if not seen and sent_text is not None:
+            seen = _quote_was_shown(quote, sent_text)
         if not seen:
             return False
         text = snapshot.read(path, side)
@@ -352,8 +364,12 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
             item = verdicts.get(index, {"candidate_id": index, "decision": "needs_context", "reason": "No verdict returned"})
             decision = item.get("decision")
             evidence, counter = item.get("evidence") or [], item.get("counter_evidence") or []
-            validated = bool(evidence) and all(_valid_citation(c, snapshot, bundle, files) for c in evidence)
-            counter_valid = bool(counter) and all(_valid_citation(c, snapshot, bundle, files) for c in counter)
+            validated = bool(evidence) and all(
+                _valid_citation(c, snapshot, bundle, files, context.text) for c in evidence
+            )
+            counter_valid = bool(counter) and all(
+                _valid_citation(c, snapshot, bundle, files, context.text) for c in counter
+            )
             chain = all(isinstance(item.get(k), str) and item[k].strip()
                         for k in ("trigger", "expected_behavior", "actual_behavior", "introduced_by", "reason"))
             call_path = item.get("call_path")
