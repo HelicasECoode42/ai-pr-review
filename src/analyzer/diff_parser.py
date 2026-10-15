@@ -5,18 +5,34 @@ import logging
 
 from src.models import ChangedFile, ChangedLine, DiffHunk
 
+from src.utils.degradation import record_degradation
+
 logger = logging.getLogger(__name__)
 
 HUNK_RE = re.compile(r"@@ -(?P<old_start>\d+)(?:,(?P<old_count>\d+))? \+(?P<new_start>\d+)(?:,(?P<new_count>\d+))? @@")
 
+NO_PATCH_WARNING = "has no patch from the API; its changed lines were not scanned"
 
-def parse_file_hunks(file: ChangedFile) -> list[DiffHunk]:
+
+def parse_file_hunks(
+    file: ChangedFile, warnings: list[str] | None = None
+) -> list[DiffHunk]:
+    """Parse a file's patch into hunks.
+
+    `warnings` is optional: when a caller passes a list, a patch that cannot be
+    parsed is recorded there as well as in the log, so "no hunks" never silently
+    means "nothing changed".
+    """
     try:
         if not file or not file.patch:
             return []
         return _parse_patch(file.filename, file.patch)
     except Exception as e:
-        logger.warning(f"Failed to parse patch for {file.filename}: {e}")
+        record_degradation(
+            warnings,
+            f"Failed to parse patch for {file.filename}: {type(e).__name__}: {e}",
+            logger=logger,
+        )
         return []
 
 

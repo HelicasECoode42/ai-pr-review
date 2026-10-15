@@ -1,13 +1,32 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 
-from src.analyzer.diff_parser import parse_file_hunks
+from src.analyzer.diff_parser import NO_PATCH_WARNING, parse_file_hunks
 from src.models import ChangedFile, RiskFinding, Severity
 from src.utils import detect_programming_language
+from src.utils.degradation import record_degradation
 from src.utils.rule_loader import load_rules
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class SignalScan:
+    """One rule-scan pass: what it found, and what it could not finish.
+
+    The warnings are the same strings that reach the log, so a caller can put
+    them in front of a user instead of leaving them in a log nobody reads.
+    """
+
+    findings: tuple[RiskFinding, ...] = ()
+    warnings: tuple[str, ...] = field(default=())
+
+
+def _warn(warnings: list[str] | None, message: str) -> None:
+    """Record one degradation in both the log and the caller-visible list."""
+    record_degradation(warnings, message, logger=logger)
 
 # Files excluded from rule scanning (demo reports, generated artifacts)
 _SKIP_SCAN_PREFIXES = (
@@ -58,47 +77,69 @@ def reload_rules(user_rules_path: str | None = None) -> None:
 
 
 
-def scan_risks(files: list[ChangedFile] | None) -> list[RiskFinding]:
-    """Run path, line, test and AST scans; cross-file analysis is orchestrated separately."""
+def scan_signals(
+    files: list[ChangedFile] | None, *, include_cross_file: bool = True
+) -> SignalScan:
+    """Run the rule scans and report both findings and what could not be scanned.
+
+    A scan that skipped a file is not the same as a scan that found nothing, so
+    the degradations travel with the result instead of only reaching the log.
+    """
+    warnings: list[str] = []
+    findings: list[RiskFinding] = []
     _ensure_rules_loaded()
     if not files:
-        return []
-    findings: list[RiskFinding] = []
+        return SignalScan(findings=(), warnings=())
+
     for file in files:
         if _should_skip_scan(file.filename):
             continue
+        if not file.patch:
+            # GitHub omits the patch for very large files. Saying nothing here
+            # would make "not scanned" look like "nothing to report".
+            _warn(
+                warnings,
+                f"{file.filename} {NO_PATCH_WARNING}.",
+            )
         try:
             findings.extend(_scan_path_risk(file))
-            findings.extend(_scan_line_rules(file))
-            findings.extend(_scan_test_deletions(file))
-        except Exception as e:
-            logger.warning(f"Failed to scan file {file.filename}: {e}")
+            findings.extend(_scan_line_rules(file, warnings))
+            findings.extend(_scan_test_deletions(file, warnings))
+        except Exception as exc:
+            _warn(warnings, f"Failed to scan {file.filename}: {type(exc).__name__}: {exc}")
             continue
 
     # ── AST rules (imported lazily to avoid circular deps) ──
     try:
         from src.analyzer.ast_rules import scan_ast_risks
-        findings.extend(scan_ast_risks(files))
+        findings.extend(scan_ast_risks(files, warnings))
     except ImportError:
         logger.debug("AST rules module not available; skipping.")
-    except Exception as e:
-        logger.warning(f"AST rules scan failed: {e}")
+    except Exception as exc:
+        _warn(warnings, f"AST rules scan failed: {type(exc).__name__}: {exc}")
 
-    return findings
+    if include_cross_file:
+        try:
+            from src.analyzer.cross_file import analyze_cross_file_impact
+
+            findings.extend(analyze_cross_file_impact(files, warnings))
+        except Exception as exc:
+            _warn(warnings, f"Cross-file signal collection failed: {type(exc).__name__}: {exc}")
+
+    return SignalScan(findings=tuple(findings), warnings=tuple(warnings))
+
+
+def scan_risks(files: list[ChangedFile] | None) -> list[RiskFinding]:
+    """Findings only; cross-file analysis is orchestrated separately.
+
+    Kept for callers that do not need the degradation list.
+    """
+    return list(scan_signals(files, include_cross_file=False).findings)
 
 
 def collect_signals(files: list[ChangedFile] | None) -> list[RiskFinding]:
-    """Collect all signals at one explicit orchestration boundary."""
-    findings = scan_risks(files)
-    if not files:
-        return findings
-    try:
-        from src.analyzer.cross_file import analyze_cross_file_impact
-
-        findings.extend(analyze_cross_file_impact(files))
-    except Exception as exc:
-        logger.warning("Cross-file signal collection failed: %s", exc)
-    return findings
+    """Findings only; use `scan_signals` when the caller also needs warnings."""
+    return list(scan_signals(files).findings)
 
 
 def _scan_path_risk(file: ChangedFile) -> list[RiskFinding]:
@@ -125,12 +166,18 @@ def _is_test_file(filename: str) -> bool:
     return "test" in filename.lower() or filename.lower().startswith("tests/")
 
 
-def _scan_line_rules(file: ChangedFile) -> list[RiskFinding]:
+def _scan_line_rules(
+    file: ChangedFile, warnings: list[str] | None = None
+) -> list[RiskFinding]:
     findings: list[RiskFinding] = []
     try:
-        hunks = parse_file_hunks(file)
-    except Exception as e:
-        logger.warning(f"Failed to parse hunks for {file.filename}: {e}")
+        hunks = parse_file_hunks(file, warnings)
+    except Exception as exc:
+        _warn(
+            warnings,
+            f"Line rules skipped {file.filename} (hunk parse failed):"
+            f" {type(exc).__name__}: {exc}",
+        )
         return []
 
     lang = detect_programming_language(file.filename)
@@ -163,24 +210,28 @@ def _scan_line_rules(file: ChangedFile) -> list[RiskFinding]:
                     )
                 except Exception as exc:
                     # A rule that raised produced no finding for a reason; say so.
-                    logger.warning(
-                        "Line rule %s failed on %s: %s: %s",
-                        rule_id,
-                        file.filename,
-                        type(exc).__name__,
-                        exc,
+                    _warn(
+                        warnings,
+                        f"Line rule {rule_id} failed on {file.filename}:"
+                        f" {type(exc).__name__}: {exc}",
                     )
                     continue
     return findings
 
 
-def _scan_test_deletions(file: ChangedFile) -> list[RiskFinding]:
+def _scan_test_deletions(
+    file: ChangedFile, warnings: list[str] | None = None
+) -> list[RiskFinding]:
     if "test" not in file.filename.lower() and "spec" not in file.filename.lower():
         return []
     try:
-        hunks = parse_file_hunks(file)
-    except Exception as e:
-        logger.warning(f"Failed to parse test file {file.filename}: {e}")
+        hunks = parse_file_hunks(file, warnings)
+    except Exception as exc:
+        _warn(
+            warnings,
+            f"Test-deletion scan skipped {file.filename} (hunk parse failed):"
+            f" {type(exc).__name__}: {exc}",
+        )
         return []
 
     deleted_assertions = 0
@@ -190,11 +241,10 @@ def _scan_test_deletions(file: ChangedFile) -> list[RiskFinding]:
                 if "assert" in line or "expect(" in line or "should" in line:
                     deleted_assertions += 1
             except Exception as exc:
-                logger.warning(
-                    "Deleted-line scan skipped one line of %s: %s: %s",
-                    file.filename,
-                    type(exc).__name__,
-                    exc,
+                _warn(
+                    warnings,
+                    f"Deleted-line scan skipped one line of {file.filename}:"
+                    f" {type(exc).__name__}: {exc}",
                 )
                 continue
     if deleted_assertions == 0:

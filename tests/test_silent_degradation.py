@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
+from src.analyzer.risk_rules import collect_signals, scan_risks, scan_signals
+from src.application.protocol import AgentContext
 from src.cli.main import _warn_step_summary_failure
 from src.github.client import (
     GitHubApiError,
@@ -13,7 +16,9 @@ from src.github.client import (
     _changed_file,
 )
 from src.models import ChangedFile, PullRequest, ReviewReport, ReviewSuggestion, Severity
+from src.reviewer.engine import build_rule_only_report, review_with_ai
 from src.reviewer.evidence_validator import validate_ai_evidence
+from src.reviewer.provider import ProviderError
 
 
 class FakeResponse:
@@ -148,3 +153,81 @@ def test_evidence_gate_accepts_a_verifiable_citation():
     )
     assert rejected == []
     assert [s.file_path for s in accepted] == ["src/a.py"]
+
+
+class StubProvider:
+    def complete_json(self, _system: str, _user: str) -> str:
+        return '{"summary": "ok", "risk_level": "low", "suggestions": []}'
+
+
+class BrokenProvider:
+    def complete_json(self, _system: str, _user: str) -> str:
+        raise ProviderError("simulated outage")
+
+
+def test_scan_reports_a_file_whose_patch_the_api_omitted():
+    scan = scan_signals([ChangedFile(filename="src/big.py", patch=None)])
+    assert scan.warnings == (
+        "src/big.py has no patch from the API; its changed lines were not scanned.",
+    )
+
+
+def test_scan_stays_quiet_when_everything_parsed():
+    scan = scan_signals(
+        [ChangedFile(filename="src/a.py", patch="@@ -1,1 +1,1 @@\n-old\n+new\n")]
+    )
+    assert scan.warnings == ()
+
+
+def test_legacy_scan_wrappers_still_return_findings():
+    files = [ChangedFile(filename="src/big.py", patch=None)]
+    assert isinstance(scan_risks(files), list)
+    assert isinstance(collect_signals(files), list)
+
+
+def test_analyzer_warnings_reach_the_rule_only_report():
+    files = [ChangedFile(filename="src/big.py", patch=None)]
+    scan = scan_signals(files)
+    report = build_rule_only_report(
+        PullRequest(repo="owner/repo", number=1, title="t"),
+        files,
+        list(scan.findings),
+        analyzer_warnings=list(scan.warnings),
+    )
+    assert report.analysis_warnings == [
+        "src/big.py has no patch from the API; its changed lines were not scanned."
+    ]
+
+
+def test_analyzer_warnings_reach_the_ai_report():
+    report = review_with_ai(
+        PullRequest(repo="owner/repo", number=1, title="t"),
+        [ChangedFile(filename="src/big.py", patch=None)],
+        [],
+        StubProvider(),
+        5,
+        analyzer_warnings=["scan degradation"],
+    )
+    assert "scan degradation" in report.analysis_warnings
+
+
+def test_analyzer_warnings_survive_the_ai_failure_fallback():
+    report = review_with_ai(
+        PullRequest(repo="owner/repo", number=1, title="t"),
+        [ChangedFile(filename="src/big.py", patch=None)],
+        [],
+        BrokenProvider(),
+        5,
+        analyzer_warnings=["scan degradation"],
+    )
+    assert report.used_ai is False
+    assert "scan degradation" in report.analysis_warnings
+    assert any("AI review unavailable" in warning for warning in report.analysis_warnings)
+
+
+def test_agent_context_carries_analyzer_warnings():
+    context = AgentContext(repo="owner/repo", pr_number=1)
+    context.analyzer_warnings = ["scan degradation"]
+    assert context.analyzer_warnings == ["scan degradation"]
+    with pytest.raises(ValidationError):
+        AgentContext(repo="owner/repo", pr_number=1, unknown_field=True)

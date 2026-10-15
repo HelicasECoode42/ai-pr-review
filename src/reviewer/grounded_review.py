@@ -325,7 +325,8 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
 def build_grounded_report(pr, files, findings, result, context, *, reviewer_version="pr-branch",
                           execution_status="success", review_meta=None, pr_syntax_ok=True,
                           report_confidence="normal", degradation_reason=None,
-                          max_input_tokens: int | None = None):
+                          max_input_tokens: int | None = None,
+                          analyzer_warnings: list[str] | None = None):
     severity = max((s.severity for s in result.suggestions),
                    key=lambda s: {Severity.LOW: 1, Severity.MEDIUM: 2, Severity.HIGH: 3, Severity.CRITICAL: 4}[s],
                    default=Severity.LOW)
@@ -347,6 +348,8 @@ def build_grounded_report(pr, files, findings, result, context, *, reviewer_vers
     partial_warning = partial_inclusion_warning(context)
     if partial_warning:
         warnings.append(partial_warning)
+    # Scans that could not finish must reach the reader, not just the log.
+    warnings.extend(analyzer_warnings or [])
     from src.reviewer.budget import budget_warnings, run_budget_report
     evidence_budget = result.evidence_budget or BudgetReport(scope="repository_evidence")
     run_budget = run_budget_report((context.budgets, evidence_budget), cap=max_input_tokens)

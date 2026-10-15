@@ -14,8 +14,14 @@ from collections.abc import Callable
 from src.analyzer.diff_parser import parse_file_hunks
 from src.models import ChangedFile, DiffHunk, RiskFinding, Severity
 from src.utils import detect_programming_language
+from src.utils.degradation import record_degradation
 
 logger = logging.getLogger(__name__)
+
+
+def _warn(warnings: list[str] | None, message: str) -> None:
+    """Record one degradation in both the log and the caller-visible list."""
+    record_degradation(warnings, message, logger=logger)
 
 # ── Rule definition ─────────────────────────────────────
 
@@ -370,11 +376,14 @@ _RULE_MAP = _build_rule_map()
 
 # ── Public entry point ────────────────────────────────────
 
-def scan_ast_risks(files: list[ChangedFile] | None) -> list[RiskFinding]:
+def scan_ast_risks(
+    files: list[ChangedFile] | None, warnings: list[str] | None = None
+) -> list[RiskFinding]:
     """Scan changed Python files with AST-level rules.
 
     Only checks added/modified lines — never flags existing code.
-    Falls back gracefully on parse failures (non-compilable hunks).
+    Falls back gracefully on parse failures (non-compilable hunks), recording
+    each fallback in `warnings` when the caller passes a list.
     """
     if not files:
         return []
@@ -386,14 +395,13 @@ def scan_ast_risks(files: list[ChangedFile] | None) -> list[RiskFinding]:
             continue
 
         try:
-            hunks = parse_file_hunks(file)
+            hunks = parse_file_hunks(file, warnings)
         except Exception as exc:
             # No parsable hunks means no rule coverage for this file, not a clean file.
-            logger.warning(
-                "AST rule scan skipped %s (hunk parse failed): %s: %s",
-                file.filename,
-                type(exc).__name__,
-                exc,
+            _warn(
+                warnings,
+                f"AST rule scan skipped {file.filename} (hunk parse failed):"
+                f" {type(exc).__name__}: {exc}",
             )
             continue
 
@@ -417,11 +425,10 @@ def scan_ast_risks(files: list[ChangedFile] | None) -> list[RiskFinding]:
             try:
                 visitor.visit(tree)
             except Exception as exc:
-                logger.warning(
-                    "AST rule scan skipped a hunk of %s (%s: %s)",
-                    file.filename,
-                    type(exc).__name__,
-                    exc,
+                _warn(
+                    warnings,
+                    f"AST rule scan skipped a hunk of {file.filename}:"
+                    f" {type(exc).__name__}: {exc}",
                 )
                 continue
             findings.extend(visitor.findings)

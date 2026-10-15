@@ -29,6 +29,18 @@
 4. **证据门不再把工具缺口说成模型错误**（[evidence_validator.py](../src/reviewer/evidence_validator.py)）：文件没有可解析 hunk 时，其 added lines 不会进入证据表，此前任何落在该文件的建议都会被判为 *"Cited location is not an added line in this diff."*——即把"我们读不到"写成"模型编造"。现在这种建议记为 *"Changed file has no parseable diff hunk, so the citation cannot be verified."*（仍然拒绝，因为无法核验，但原因诚实）。
 5. **Web 历史列表**（[service/app.py](../src/service/app.py)）：损坏的历史条目仍被跳过（不能因为一条坏文件毁掉整个列表），但改为 `logging.warning`。
 
+## 2b. 本轮修复（2026-10-15 第四轮）：把降级送进报告
+
+上一轮结束时还剩一个真实缺口：分析器的降级**只进日志**，用户永远看不到。这一轮补上，做法是让降级同时进入"调用者可见的列表"，而不是只写日志。
+
+1. **单一决策点**：[`src/utils/degradation.py`](../src/utils/degradation.py) 的 `record_degradation(warnings, message, logger=...)` —— 一条记录**同时**进日志和调用者的 `warnings` 列表。各分析器只保留一个 3 行的 `_warn()` 包装，避免三处各写一份。
+2. **扫描结果带上降级**：[`risk_rules.scan_signals()`](../src/analyzer/risk_rules.py) 返回 `SignalScan(findings, warnings)`。`scan_risks()` / `collect_signals()` **保留原签名**返回纯 findings 列表（兼容旧调用点），只是薄包装。
+3. **`parse_file_hunks()` 可记录降级**：新增可选参数 `warnings`；patch 无法解析时同时记进列表。同时新增常量 `NO_PATCH_WARNING`——**GitHub 对超大文件会省略 `patch`，这是最常见的"未扫描"来源**，此前它与"没有发现问题"完全无法区分。
+4. **报告携带**：`build_rule_only_report()` / `review_with_ai()` / `build_grounded_report()` / `build_diagnostic_report()` 全部新增可选参数 `analyzer_warnings`，写入 `ReviewReport.analysis_warnings`。AI 失败回退到 rule-only 时**不再覆盖**分析器警告（曾经 `report.analysis_warnings = [...]` 会把它们冲掉，已修）。
+5. **三条调用链接上**：CLI 普通路径（`cli/main.py`）、Web 服务（`service/app.py`）、Agent runner（`runner.py`，`AgentContext` 新增 `analyzer_warnings` 字段）。离线 `src/evaluation/reviewbench.py` 仍用旧的 `collect_signals`，不需要警告。
+
+**端到端验证**：`ChangedFile(patch=None)` → `scan_signals` 产出 `"src/big.py has no patch from the API; its changed lines were not scanned."` → 该字符串出现在 rule-only 报告与 AI 报告的 `analysis_warnings` 里；干净文件产出 0 条警告（不制造噪声）。
+
 ## 3. 当前清单（生产路径，`src/` 排除 `src/evaluation/`）
 
 | 类型 | 数量 | 说明 |
@@ -46,6 +58,7 @@
 
 ## 4. 已知缺口（明确不假装已解决）
 
-- **分析器层的 warning 只进日志，未进报告**。`collect_signals()` 只返回 `findings`，要把分析降级上抛成 `analysis_warnings` 需要改它的返回契约（会影响所有调用点）。这是把类别 B 提升为"用户可见"的下一步。
-- **`src/evaluation/` 的 6 处未处理**：离线评测 harness，失败会污染实验数据，但优先级低于生产路径。
+- **`src/evaluation/` 的 6 处宽泛 `except Exception` 未处理**：离线评测 harness，失败会污染实验数据，但优先级低于生产路径。它仍使用旧的 `collect_signals`（不消费 warnings）。
+- **文件"无 patch"以外的空 hunk 情形**：`parse_file_hunks` 内部对"patch 存在但解析失败"已改为可记录；但**文件本身没有新增行**（纯删除、纯重命名、二进制）仍然安静地产生 0 findings——这是正确行为，不是降级，因此不记警告。
 - 本轮**没有**改动 provider 的重试策略、超时语义或费用相关行为——那些属于"远端调用不可回滚"的既有边界，不在"消除静默降级"的范围内。
+- 已解决（保留记录）：分析器警告进不了报告——见 §2b。

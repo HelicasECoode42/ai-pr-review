@@ -295,7 +295,7 @@ def analyze(
     # catch errors and emit a diagnostics report instead of crashing the workflow.
     try:
         # Local imports to avoid import-time failures when modules are broken
-        from src.analyzer.risk_rules import collect_signals
+        from src.analyzer.risk_rules import scan_signals
         from src.output.json_report import render_json
         from src.output.markdown import render_markdown
         from src.models import ReviewMeta
@@ -348,7 +348,9 @@ def analyze(
 
     # Safe execution path
     try:
-        findings = collect_signals(files)
+        scan = scan_signals(files)
+        findings = list(scan.findings)
+        analyzer_warnings = list(scan.warnings)
         report = build_rule_only_report(
             pr,
             files,
@@ -367,6 +369,7 @@ def analyze(
                 review_mode=review_mode,
             ),
             gh_client=github,
+            analyzer_warnings=analyzer_warnings,
         )
 
         if use_ai:
@@ -400,6 +403,7 @@ def analyze(
                     ),
                     two_stage=two_stage,
                     gh_client=github,
+                    analyzer_warnings=analyzer_warnings,
                 )
 
         # ── FixTracking: compare against previous review ─────────

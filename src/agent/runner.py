@@ -81,7 +81,6 @@ class ReviewAgentRunner:
 
     def _register_tools(self) -> None:
         """Register all available agent tools into the registry."""
-        from src.analyzer.risk_rules import scan_risks
         from src.github.client import GitHubClient
         from src.output.json_report import render_json
         from src.output.markdown import render_markdown
@@ -107,15 +106,21 @@ class ReviewAgentRunner:
 
         # ── scan_risks ──────────────────────────────────
         def _scan(ctx: AgentContext) -> None:
-            ctx.findings = scan_risks(ctx.files)
+            from src.analyzer.risk_rules import scan_signals
+            scan = scan_signals(ctx.files, include_cross_file=False)
+            ctx.findings = list(scan.findings)
+            ctx.analyzer_warnings = list(scan.warnings)
 
         self._registry.register(AgentTool(name="scan_risks", execute=_scan))
 
         # ── analyze_cross_file ──────────────────────────
         def _cross_file(ctx: AgentContext) -> None:
             from src.analyzer.cross_file import analyze_cross_file_impact
-            cross = analyze_cross_file_impact(ctx.files)
+            warnings: list[str] = []
+            cross = analyze_cross_file_impact(ctx.files, warnings)
             ctx.cross_file_findings = cross
+            if warnings:
+                ctx.analyzer_warnings = [*ctx.analyzer_warnings, *warnings]
             # Merge into findings for downstream review
             if cross:
                 ctx.findings = list(ctx.findings) + cross
@@ -142,6 +147,7 @@ class ReviewAgentRunner:
                 report_confidence=ctx.report_confidence,
                 pr_syntax_ok=ctx.pr_syntax_ok,
                 review_meta=review_meta,
+                analyzer_warnings=ctx.analyzer_warnings,
             )
 
         self._registry.register(AgentTool(name="build_rule_only_report", execute=_rule_report))
@@ -167,6 +173,7 @@ class ReviewAgentRunner:
                 pr_syntax_ok=ctx.pr_syntax_ok,
                 review_meta=review_meta,
                 two_stage=(ctx.strategy == "two_stage"),
+                analyzer_warnings=ctx.analyzer_warnings,
             )
 
         self._registry.register(AgentTool(name="one_shot_ai_review", execute=_ai_review))

@@ -155,6 +155,7 @@ def build_diagnostic_report(
     reviewer_version: str = "pr-branch",
     execution_status: str = "failed",
     language: str = "en",
+    analyzer_warnings: list[str] | None = None,
 ) -> ReviewReport:
     """Build a minimal diagnostic report when all other paths fail (Level 3 fallback).
 
@@ -186,7 +187,10 @@ def build_diagnostic_report(
         summary=summary,
         risk_level=Severity.LOW,
         used_ai=False,
-        analysis_warnings=[f"Diagnostic report generated due to: {error}"],
+        analysis_warnings=[
+            *(analyzer_warnings or []),
+            f"Diagnostic report generated due to: {error}",
+        ],
         reviewer_version=reviewer_version,
         execution_status=execution_status,
         degradation_reason=error,
@@ -280,6 +284,7 @@ def build_rule_only_report(
     pr_syntax_ok: bool = True,
     review_meta: ReviewMeta | None = None,
     gh_client: "GitHubClient | None" = None,
+    analyzer_warnings: list[str] | None = None,
 ) -> ReviewReport:
     additions = sum(f.additions for f in files)
     deletions = sum(f.deletions for f in files)
@@ -337,6 +342,7 @@ def build_rule_only_report(
         rule_findings=findings,
         suggestions=suggestions,
         used_ai=False,
+        analysis_warnings=list(analyzer_warnings or []),
         reviewer_version=reviewer_version,
         execution_status=execution_status,
         degradation_reason=degradation_reason,
@@ -399,6 +405,7 @@ def review_with_ai(
     verify_behavior: bool = True,
     repository_evidence_tokens: int = 6000,
     max_input_tokens: int | None = None,
+    analyzer_warnings: list[str] | None = None,
 ) -> ReviewReport:
     try:
         # The main review must start from the PR text and diff alone. Rule
@@ -417,6 +424,7 @@ def review_with_ai(
                     execution_status=execution_status, review_meta=review_meta, pr_syntax_ok=pr_syntax_ok,
                     report_confidence=report_confidence, degradation_reason=degradation_reason,
                     max_input_tokens=max_input_tokens,
+                    analyzer_warnings=analyzer_warnings,
                 )
             if repository_snapshot is not None:
                 return grounded(repository_snapshot)
@@ -513,6 +521,9 @@ def review_with_ai(
         # suggestions rather than an unfiltered model draft.
         risk_level = _max_severity([suggestion.severity for suggestion in suggestions])
         warnings: list[str] = []
+        # Scans that could not finish must reach the reader, not just the log.
+        if analyzer_warnings:
+            warnings.extend(analyzer_warnings)
         if stage_audit and any(s["status"] != "success" for s in stage_audit):
             warnings.append("Two-stage failures recorded; inspect stage_results for coverage.")
         hidden = total_from_model - independent_suggestion_count
@@ -643,7 +654,8 @@ def review_with_ai(
                                             report_confidence="partial",
                                             pr_syntax_ok=pr_syntax_ok,
                                             review_meta=review_meta,
-                                            gh_client=gh_client)
+                                            gh_client=gh_client,
+                                            analyzer_warnings=analyzer_warnings)
         except Exception as rule_exc:
             # Level 3: diagnostic report — rules also failed
             logger.warning("Rule-only fallback also failed: %s", rule_exc)
@@ -653,6 +665,7 @@ def review_with_ai(
                 reviewer_version=reviewer_version,
                 execution_status="failed",
                 language=language,
+                analyzer_warnings=analyzer_warnings,
             )
         report.ai_failure_reason = str(exc)
         # Re-build completeness to reflect AI-attempted-but-failed state
@@ -664,7 +677,8 @@ def review_with_ai(
             pr_syntax_ok=pr_syntax_ok,
         )
         report.analysis_warnings = [
-            f"AI review unavailable: {exc}. Showing rule-based analysis only."
+            f"AI review unavailable: {exc}. Showing rule-based analysis only.",
+            *(analyzer_warnings or []),
         ]
         return report
     except Exception as exc:
@@ -676,6 +690,7 @@ def review_with_ai(
             reviewer_version=reviewer_version,
             execution_status="failed",
             language=language,
+            analyzer_warnings=analyzer_warnings,
         )
 
 

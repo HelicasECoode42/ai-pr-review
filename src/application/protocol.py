@@ -62,6 +62,8 @@ class AgentContext(BaseModel):
     files: list[ChangedFile] = Field(default_factory=list)
     findings: list[RiskFinding] = Field(default_factory=list)
     cross_file_findings: list[RiskFinding] = Field(default_factory=list)
+    # Analyses that could not finish; surfaced in the report, not just the log.
+    analyzer_warnings: list[str] = Field(default_factory=list)
     report: ReviewReport | None = None
     markdown: str = ""
     json_report: str | dict = Field(default_factory=dict)
