@@ -12,9 +12,44 @@ Do not suggest changes to lines that did not change in this PR.
 
 Return valid JSON only."""
 
+# The two evidence constraints that differ between a diff-only review and one
+# that may cite frozen repository evidence. They live here as data so no caller
+# has to rewrite prompt text with str.replace(), which fails silently when the
+# wording changes.
+UNCHANGED_LINES_CONSTRAINT = "- Do not comment on unchanged lines or deletion-only lines."
+CROSS_FILE_ANCHOR_CONSTRAINT = (
+    "- Evidence may cite unchanged callers or deleted BASE code;"
+    " anchor comments in changed HEAD files."
+)
+EVIDENCE_EXCERPT_CONSTRAINT = (
+    "- `evidence` must contain an exact non-empty excerpt from the suggestion's cited added line."
+)
+CROSS_FILE_EVIDENCE_CONSTRAINT = (
+    "- `evidence` must quote actual repository code relevant to the failure,"
+    " independent of the HEAD anchor."
+)
 
-def build_user_prompt(context: str, max_suggestions: int, language: str = "en") -> str:
+
+def build_user_prompt(
+    context: str,
+    max_suggestions: int,
+    language: str = "en",
+    *,
+    cross_file_evidence: bool = False,
+) -> str:
+    """Build the review prompt.
+
+    `cross_file_evidence` selects the evidence constraints in one place. The
+    grounded path used to rewrite this text with str.replace(), which silently
+    became a no-op as soon as the wording here changed.
+    """
     lang_instruction = _language_instruction(language)
+    if cross_file_evidence:
+        anchor_constraint = CROSS_FILE_ANCHOR_CONSTRAINT
+        evidence_constraint = CROSS_FILE_EVIDENCE_CONSTRAINT
+    else:
+        anchor_constraint = UNCHANGED_LINES_CONSTRAINT
+        evidence_constraint = EVIDENCE_EXCERPT_CONSTRAINT
     return f"""Review this Pull Request context and produce a concise structured review.
 
 {lang_instruction}
@@ -41,10 +76,10 @@ Required JSON schema:
 Constraints:
 - Return at most {max_suggestions} suggestions.
 - Prefer high-signal issues (security, data loss, crash) over low-value comments.
-- Do not comment on unchanged lines or deletion-only lines.
+{anchor_constraint}
 - If no strong issue exists, return an empty suggestions array.
 - Every suggestion must include diff evidence in the reason field.
-- `evidence` must contain an exact non-empty excerpt from the suggestion's cited added line.
+{evidence_constraint}
 - `failure_scenario` must state a concrete input, state, or execution path and its observable failure.
 - For uncertain findings, set confidence below 0.65 rather than omitting.
 - recommendation must be actionable: include a specific fix, not just "fix this".

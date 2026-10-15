@@ -171,12 +171,11 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
     payload = None
     discovery_trace = []
     for round_index in range(3):
-        prompt = build_user_prompt(context.text, max_suggestions, language)
-        # Replace legacy constraints that would erase cross-file/deletion evidence.
-        prompt = prompt.replace("- Do not comment on unchanged lines or deletion-only lines.",
-                                "- Evidence may cite unchanged callers or deleted BASE code; anchor comments in changed HEAD files.")
-        prompt = prompt.replace("- `evidence` must contain an exact non-empty excerpt from the suggestion's cited added line.",
-                                "- `evidence` must quote actual repository code relevant to the failure, independent of the HEAD anchor.")
+        # Cross-file evidence changes the constraints; the prompt module owns
+        # that choice so this path never rewrites prompt text by matching strings.
+        prompt = build_user_prompt(
+            context.text, max_suggestions, language, cross_file_evidence=True
+        )
         prompt += "\n## Frozen repository evidence\n" + bundle.render()
         prompt += "\nIf context is insufficient, return context_requests with your draft candidates."
         if round_index == 2:
