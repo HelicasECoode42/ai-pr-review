@@ -6,7 +6,14 @@ from collections.abc import Callable
 from contextlib import ExitStack
 
 from src.models import ChangedFile, PullRequest, ReviewReport, RiskFinding
+from src.reviewer.usage import summarize_usage
 from src.utils.config import Settings
+
+
+def _usage_records(provider: object) -> list[dict]:
+    """Return a provider's usage records, or nothing when it exposes none."""
+    records = getattr(provider, "usage_records", None)
+    return list(records) if isinstance(records, list) else []
 
 
 class ReviewApplication:
@@ -90,4 +97,20 @@ class ReviewApplication:
                 defaults["repository_snapshot"] = GitHubSnapshot(
                     reader, pr.repo, pr.base_sha, pr.head_sha, [f.filename for f in files]
                 )
-            return self.engine(pr=pr, files=files, findings=findings, provider=provider, **defaults)
+            report = self.engine(
+                pr=pr, files=files, findings=findings, provider=provider, **defaults
+            )
+            # Stamp what this run actually cost and which single threshold governs
+            # publishing, at the boundary that owns both the providers and the
+            # settings. The workflow reads these instead of keeping its own copy.
+            # A provider that exposes no usage records contributes nothing rather
+            # than a fabricated zero.
+            metrics = getattr(report, "metrics", None)
+            if isinstance(metrics, dict):
+                records = _usage_records(provider)
+                if critic is not provider:
+                    records.extend(_usage_records(critic))
+                if records:
+                    metrics.update(summarize_usage(records))
+                metrics["publish_min_confidence"] = s.publish_min_confidence
+            return report

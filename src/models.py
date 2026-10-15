@@ -239,6 +239,11 @@ class ReviewSuggestion(BaseModel):
     source: str = "ai"
     evidence: list[str] = Field(default_factory=list)
     failure_scenario: str = ""
+    # Where this suggestion sits in the code, so a reader can jump straight to
+    # the function to change. `unavailable` always carries a reason.
+    symbol: str | None = None
+    symbol_status: str = "unavailable"  # resolved | unavailable | not_applicable
+    symbol_reason: str | None = None
 
 
 class ReviewReport(BaseModel):

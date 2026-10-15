@@ -163,8 +163,15 @@ def _valid_citation(citation, snapshot, bundle, files):
 
 
 def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewContext,
-                    max_suggestions=20, min_confidence=.65, language="en",
+                    max_suggestions=20, language="en",
                     evidence_tokens=6000, verify_behavior=True, max_suggestions_per_file=5) -> GroundedResult:
+    """Ground discovery and verification in a frozen snapshot.
+
+    Publication here is decided by proof, not by the model's self-reported
+    confidence: a candidate needs a validated behaviour chain and a HEAD source
+    citation. `min_comment_confidence` therefore does not apply to this path,
+    and it is no longer accepted as a parameter that suggested it did.
+    """
     bundle = EvidenceBundle(snapshot, budget=evidence_tokens)
     bundle.follow(files)
     discovery_calls = 0

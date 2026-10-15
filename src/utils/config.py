@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     # Optional run-level cap on model input tokens (patch context + evidence).
     # None means measured and reported, but not enforced.
     max_review_input_tokens: int | None = None
+    # Confidence floor for publishing an inline comment. It is stamped into the
+    # report so the workflow reads one source instead of hardcoding its own.
+    publish_min_confidence: float = 0.80
     review_reasoning_effort: str | None = None
     critic_model: str | None = None
 

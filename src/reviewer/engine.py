@@ -417,7 +417,7 @@ def review_with_ai(
             from src.reviewer.grounded_review import review_grounded, build_grounded_report
             def grounded(snapshot):
                 result = review_grounded(pr, files, provider, snapshot, ctx, max_suggestions,
-                                         min_confidence, language, repository_evidence_tokens, verify_behavior,
+                                         language, repository_evidence_tokens, verify_behavior,
                                          max_suggestions_per_file=max_suggestions_per_file)
                 return build_grounded_report(
                     pr, files, findings, result, ctx, reviewer_version=reviewer_version,

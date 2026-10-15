@@ -143,6 +143,19 @@ SKIP_PATCH_REASONS: dict[str, str] = {
 _VENDORED_DIRS = {".git", "node_modules", "vendor", "dist", "build"}
 _SECRET_ADJACENT_NAMES = {".npmrc", ".pypirc", ".netrc", ".htpasswd", "id_rsa", "id_ed25519"}
 _SECRET_ADJACENT_SUFFIXES = {".pem", ".key", ".p12", ".pfx", ".keystore", ".jks", ".ppk"}
+_DOCUMENTATION_SUFFIXES = frozenset({".md", ".markdown", ".rst", ".txt", ".adoc"})
+
+
+def _documentation_reason(filename: str) -> str | None:
+    """Documentation has no runtime behaviour, so it must not eat patch budget.
+
+    Kept out of ``_skip_patch_reason`` on purpose: that helper also decides
+    whether a path is safe to index, and documentation still belongs in the
+    repository index even when it is not reviewed line by line.
+    """
+    if PurePosixPath(filename).suffix.lower() in _DOCUMENTATION_SUFFIXES:
+        return "documentation_only_change"
+    return None
 
 
 def _secret_adjacent_reason(filename: str) -> str | None:
@@ -529,6 +542,8 @@ def build_review_context(
             reason = _skip_patch_reason(file.filename)
             if reason is None:
                 reason = _secret_adjacent_reason(file.filename)
+            if reason is None:
+                reason = _documentation_reason(file.filename)
             if reason is not None:
                 skipped_files.append((file.filename, reason))
                 _cover(coverage_by_path, file.filename, status="excluded", reason=reason)
