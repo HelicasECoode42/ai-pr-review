@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     # Optional run-level cap on model input tokens (patch context + evidence).
     # None means measured and reported, but not enforced.
     max_review_input_tokens: int | None = None
+    # Knowledge layer (P3): where the playbook lives and how many entries to
+    # offer one review. Empty path disables recall.
+    playbook_path: str = "knowledge/playbook.md"
+    playbook_recall_k: int = 5
     # Confidence floor for publishing an inline comment. It is stamped into the
     # report so the workflow reads one source instead of hardcoding its own.
     publish_min_confidence: float = 0.80

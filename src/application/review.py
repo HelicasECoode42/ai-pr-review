@@ -2,12 +2,23 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from contextlib import ExitStack
+from pathlib import Path
 
+from src.knowledge.playbook import (
+    DEFAULT_PLAYBOOK,
+    language_of,
+    load_playbook,
+    recall,
+    render,
+)
 from src.models import ChangedFile, PullRequest, ReviewReport, RiskFinding
 from src.reviewer.usage import summarize_usage
 from src.utils.config import Settings
+
+logger = logging.getLogger(__name__)
 
 
 def _usage_records(provider: object) -> list[dict]:
@@ -56,6 +67,19 @@ class ReviewApplication:
             reasoning_effort=effort,
         )
 
+    def _recall_playbook(self, files: list[ChangedFile], defaults: dict):
+        """Scope-matched playbook entries, or nothing when the store is absent."""
+        path = Path(self.settings.playbook_path or DEFAULT_PLAYBOOK)
+        try:
+            entries = load_playbook(path)
+        except Exception as exc:  # a broken playbook must not break a review
+            logger.warning("Playbook at %s could not be loaded: %s", path, exc)
+            return []
+        paths = [file.filename for file in files]
+        languages = sorted({language_of(path) for path in paths})
+        return recall(entries, repo=defaults.get("repo") or "", paths=paths,
+                      languages=languages, k=self.settings.playbook_recall_k)
+
     def review(
         self, pr: PullRequest, files: list[ChangedFile], findings: list[RiskFinding], **options
     ) -> ReviewReport:
@@ -97,6 +121,12 @@ class ReviewApplication:
                 defaults["repository_snapshot"] = GitHubSnapshot(
                     reader, pr.repo, pr.base_sha, pr.head_sha, [f.filename for f in files]
                 )
+            # Knowledge layer (P3): recall scope-matched playbook entries and offer
+            # them as guidance. Entries never override the criteria, and the ids
+            # used are recorded so a report says which knowledge was in play.
+            recalled = self._recall_playbook(files, defaults)
+            if recalled and "prompt_addendum" not in defaults:
+                defaults["prompt_addendum"] = render(recalled)
             report = self.engine(
                 pr=pr, files=files, findings=findings, provider=provider, **defaults
             )
@@ -112,6 +142,9 @@ class ReviewApplication:
                     records.extend(_usage_records(critic))
                 if records:
                     metrics.update(summarize_usage(records))
+                if recalled:
+                    metrics["experience_ids"] = ",".join(entry.id for entry in recalled)
+                    metrics["experience_count"] = len(recalled)
                 metrics["publish_min_confidence"] = s.publish_min_confidence
                 # Which verification rules produced this report, so a change in
                 # behaviour can be attributed to a criteria change (ADR-006).
