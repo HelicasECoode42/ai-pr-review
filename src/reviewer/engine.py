@@ -403,6 +403,7 @@ def review_with_ai(
     contract_domains: dict | None = None,
     unit_review_max_units: int = 0,
     unit_review_workers: int = 1,
+    unit_review_cost_ceiling_tokens: int = 0,
     unit_provider_factory=None,
     repository_snapshot=None,
     follow_changes: bool = False,
@@ -436,6 +437,8 @@ def review_with_ai(
                 # Large diffs are reviewed one semantic unit at a time. The gate is
                 # deliberate: this path costs one review per unit, so it only runs
                 # when the prompt was truncated and the unit count is capped.
+                skip_details: dict = {}
+                warnings = list(analyzer_warnings or [])
                 if unit_review_max_units and ctx.truncated and len(files) > 2:
                     from src.reviewer.unit_review import run_units_for_review
 
@@ -444,8 +447,9 @@ def review_with_ai(
                         snapshot, files,
                         token_budget=ctx.patch_token_budget or repository_evidence_tokens,
                         max_units=unit_review_max_units, max_workers=unit_review_workers,
+                        cost_ceiling_tokens=unit_review_cost_ceiling_tokens,
                     )
-                    if unit_details.get("units_reviewed"):
+                    if merged is not None and unit_details.get("units_reviewed"):
                         merged.bundle["unit_details"] = unit_details
                         return build_grounded_report(
                             pr, files, findings, merged, ctx, reviewer_version=reviewer_version,
@@ -453,19 +457,34 @@ def review_with_ai(
                             pr_syntax_ok=pr_syntax_ok, report_confidence=report_confidence,
                             degradation_reason=degradation_reason,
                             max_input_tokens=max_input_tokens,
-                            analyzer_warnings=analyzer_warnings,
+                            analyzer_warnings=warnings,
+                        )
+                    if unit_details.get("unit_review_skipped_cost"):
+                        # Refused before spending anything; the reason is recorded
+                        # rather than the run silently costing 73 CNY.
+                        skip_details = unit_details
+                        warnings.append(
+                            "Per-unit review refused before dispatch: estimated "
+                            f"{unit_details['estimated_tokens']:,} tokens for "
+                            f"{unit_details['units_where_attempted']} of "
+                            f"{unit_details['units_planned']} units exceeds the ceiling "
+                            f"{unit_details['cost_ceiling_tokens']:,}."
                         )
                 result = review_grounded(pr, files, provider, snapshot, ctx, max_suggestions,
                                          language, repository_evidence_tokens, verify_behavior,
                                          max_suggestions_per_file=max_suggestions_per_file,
                                          contract_domains=contract_domains)
-                return build_grounded_report(
+                report = build_grounded_report(
                     pr, files, findings, result, ctx, reviewer_version=reviewer_version,
                     execution_status=execution_status, review_meta=review_meta, pr_syntax_ok=pr_syntax_ok,
                     report_confidence=report_confidence, degradation_reason=degradation_reason,
                     max_input_tokens=max_input_tokens,
-                    analyzer_warnings=analyzer_warnings,
+                    analyzer_warnings=warnings,
                 )
+                if skip_details:
+                    report.metrics["unit_review_skipped_cost"] = 1
+                    report.metrics["unit_review_estimated_tokens"] = skip_details["estimated_tokens"]
+                return report
             if repository_snapshot is not None:
                 return grounded(repository_snapshot)
             from src.analyzer.repository_context import GitHubSnapshot

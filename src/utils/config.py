@@ -21,10 +21,15 @@ class Settings(BaseSettings):
     # Optional run-level cap on model input tokens (patch context + evidence).
     # None means measured and reported, but not enforced.
     max_review_input_tokens: int | None = None
-    # Per-unit review (P4). 0 disables it; otherwise it applies only when the
-    # prompt was truncated, and never reviews more than this many units.
-    unit_review_max_units: int = 12
+    # Per-unit review (P4). OFF by default: measured on a 251-file PR it covered
+    # 9/146 units (6%) for 558,691 tokens (~4.5 CNY) - less coverage than the
+    # truncation path for tens of times the cost. Enable only when full coverage
+    # matters more than price. Never reviews more than this many units.
+    unit_review_max_units: int = 0
     unit_review_workers: int = 4
+    # Dispatch-time cost ceiling (H13). The per-unit path is refused when its
+    # estimated cost exceeds this, and the refusal is recorded in the report.
+    unit_review_cost_ceiling_tokens: int = 400_000
     # Knowledge layer (P3): where the playbook lives and how many entries to
     # offer one review. Empty path disables recall.
     playbook_path: str = "knowledge/playbook.md"

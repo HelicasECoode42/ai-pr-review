@@ -31,6 +31,11 @@ UNIT_CONTEXT_SCOPE = "build_unit_context"
 # limit and the reviewer's budget, not this machine, so the cap stays small.
 MAX_UNIT_WORKERS = 8
 
+# Measured on a real 251-file PR: 558,691 tokens over 9 reviewed units, i.e.
+# ~4.7 model calls per unit with the prompt and evidence re-sent each round. Used
+# only to refuse an obviously unaffordable dispatch before spending anything.
+MEASURED_TOKENS_PER_UNIT = 62_077
+
 
 def build_unit_context(unit) -> ReviewContext:
     """Build a prompt context containing exactly one unit's diff fragments.
@@ -284,6 +289,7 @@ def run_units_for_review(
     token_budget: int,
     max_units: int,
     max_workers: int = 1,
+    cost_ceiling_tokens: int = 0,
 ) -> tuple[Any, dict]:
     """Plan the diff into units, review them, and merge into one result.
 
@@ -294,6 +300,17 @@ def run_units_for_review(
 
     plan = build_review_plan(snapshot, files, [f.filename for f in files],
                              token_budget=max(128, token_budget))
+    if cost_ceiling_tokens:
+        planned = min(len(plan.units), max_units) if max_units else len(plan.units)
+        estimate = planned * MEASURED_TOKENS_PER_UNIT
+        if estimate > cost_ceiling_tokens:
+            return None, {
+                "unit_review_skipped_cost": 1,
+                "units_planned": len(plan.units),
+                "units_where_attempted": planned,
+                "estimated_tokens": estimate,
+                "cost_ceiling_tokens": cost_ceiling_tokens,
+            }
     summary = review_by_units(plan, files, run_unit, max_units=max_units,
                              max_workers=max_workers)
     merged = merge_grounded_results([outcome.result for outcome in summary.reviewed])

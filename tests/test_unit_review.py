@@ -293,3 +293,59 @@ def test_unit_review_is_off_by_default(tmp_path):
     assert "unit_review" not in report.metrics
     # The single-pass path makes far fewer calls than one per unit.
     assert provider.calls <= 3
+
+
+def test_unit_review_is_refused_before_dispatch_when_it_would_cost_too_much(tmp_path):
+    """H13: the expensive path must be refused before spending, with a reason."""
+    import subprocess
+
+    from src.analyzer.context_builder import build_review_context
+    from src.analyzer.repository_context import GitSnapshot
+    from src.evaluation.reviewbench import parse_diff
+    from src.models import PullRequest
+    from src.reviewer.engine import review_with_ai
+
+    def run(*args):
+        return subprocess.check_output(["git", "-C", str(tmp_path), *args], text=True).strip()
+
+    run("init")
+    run("config", "user.email", "f@e.invalid")
+    run("config", "user.name", "F")
+    for index in range(3):
+        lines = [f"def f{index}(x):", "    total = 0"]
+        lines += [f"    total += x + {i}" for i in range(30)]
+        (tmp_path / f"m{index}.py").write_text("\n".join(lines + ["    return total"]) + "\n")
+    run("add", "."); run("commit", "-m", "base")
+    base = run("rev-parse", "HEAD")
+    for index in range(3):
+        lines = [f"def f{index}(x):", "    acc = 0"]
+        lines += [f"    acc += x + {i}" for i in range(30)]
+        (tmp_path / f"m{index}.py").write_text("\n".join(lines + ["    return acc"]) + "\n")
+    run("add", "."); run("commit", "-m", "head")
+    head = run("rev-parse", "HEAD")
+
+    class Scripted:
+        usage_records: list = []
+
+        def complete_json(self, system, prompt):
+            import json
+            return json.dumps({"summary": "s", "risk_level": "low", "suggestions": []})
+
+        def close(self):
+            pass
+
+    snapshot = GitSnapshot(tmp_path, base, head)
+    files = parse_diff(run("diff", base, head))
+    pr = PullRequest(repo="fixture/repo", number=1, title="t", base_sha=base, head_sha=head)
+    context = build_review_context(pr, files, include_context_pack=False,
+                                  allow_remote_file_fetch=False, max_patch_tokens=200)
+    report = review_with_ai(
+        pr, files, [], Scripted(), 20, repository_snapshot=snapshot, follow_changes=True,
+        review_context=context, unit_review_max_units=8, unit_review_workers=1,
+        unit_review_cost_ceiling_tokens=1,   # anything positive is refused
+        unit_provider_factory=Scripted,
+    )
+    assert "unit_review" not in report.metrics          # never dispatched
+    assert report.metrics["unit_review_skipped_cost"] == 1
+    assert report.metrics["unit_review_estimated_tokens"] > 1
+    assert any("Per-unit review refused before dispatch" in w for w in report.analysis_warnings)

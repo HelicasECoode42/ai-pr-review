@@ -124,6 +124,8 @@ class ReviewApplication:
                 )
             defaults.setdefault("unit_review_max_units", s.unit_review_max_units)
             defaults.setdefault("unit_review_workers", s.unit_review_workers)
+            defaults.setdefault("unit_review_cost_ceiling_tokens",
+                                s.unit_review_cost_ceiling_tokens)
             defaults.setdefault(
                 "unit_provider_factory", lambda: self._provider(s.review_model)
             )

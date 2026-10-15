@@ -223,6 +223,10 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
     """
     bundle = EvidenceBundle(snapshot, budget=evidence_tokens)
     bundle.follow(files)
+    # Counts a confirmed candidate whose witness was rejected. Initialised before
+    # any branch: a run with no eligible candidates must still report a number
+    # rather than fail while building the audit.
+    witness_blocked = 0
     discovery_calls = 0
     payload = None
     discovery_trace = []
@@ -336,7 +340,6 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
                 decisions.append({"decision": "unverified", "reason": str(exc), "stage": "behavior_verification"})
                 break
             break
-        witness_blocked = 0
         for index, suggestion in eligible:
             item = verdicts.get(index, {"candidate_id": index, "decision": "needs_context", "reason": "No verdict returned"})
             decision = item.get("decision")
