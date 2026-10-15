@@ -15,6 +15,18 @@
 # This file installs the reviewer from the tool repository and runs it against
 # the caller's checked-out repository. It never runs the caller's own source as
 # the reviewer, which is what the self-review workflow in this repository does.
+#
+# SECURITY: `uvx --from git+…@reviewer_ref` executes whatever that ref points to
+# *at run time*, inside your CI, with your secrets. `reviewer_ref` therefore
+# defaults to a moving branch and must be pinned to a tag or commit SHA for any
+# repository that matters:
+#
+#   with:
+#     reviewer_ref: v0.1.0        # or a full 40-character commit SHA
+#
+# The reviewer also uses the caller's own OPENAI_API_KEY and uploads the diff and
+# evidence excerpts to the configured OPENAI_BASE_URL. Set max_input_tokens to cap
+# what one pull request can spend.
 name: AI PR Review (reusable)
 
 on:
@@ -30,7 +42,7 @@ on:
         type: string
         default: "auto"
       reviewer_ref:
-        description: "Ref of ai-pr-review to run (branch, tag or SHA)"
+        description: "Ref of ai-pr-review to run. Pin to a tag or commit SHA; 'main' executes moving code."
         required: false
         type: string
         default: "main"

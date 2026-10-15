@@ -130,6 +130,7 @@ jobs:
 - 超过 10 条行内评论时只发前 10 条，并**在日志里报告被丢弃的条数**；每条发布失败也会计数汇总。
 - artifact：`pr-review.json`（完整报告，含 usage 与 cache 命中、预算账本、覆盖率、待补上下文候选）。
 - **未验证**：这个 reusable workflow 目前只做过 YAML 校验与逻辑复核，**没有在第三方仓库实跑过**。
+- **安全**：`reviewer_ref` 决定在**你的 CI 里、用你的 secrets** 执行哪个版本的远端代码，默认 `main` 是**移动目标**。请固定到 tag 或 40 位 commit SHA。工具会把 diff 与证据摘录发往 `OPENAI_BASE_URL` 指定的服务；请用 `max_input_tokens` 给单个 PR 设上限。
 
 ### Web Console
 
