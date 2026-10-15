@@ -1,4 +1,4 @@
-"""Two-tier scanning: sweep everything, deep-review only what is flagged."""
+"""Two-tier scanning: full sweep, selective deep review, rule hits never missed."""
 
 from __future__ import annotations
 
@@ -7,7 +7,8 @@ from src.analyzer.tiered_scan import TriagePolicy, triage
 from src.models import ChangedFile, RiskFinding
 
 PLAIN = "@@ -10,3 +10,4 @@ def helper(x):\n ctx\n-old\n+new\n"
-SENSITIVE = "@@ -10,3 +10,4 @@ def login(user):\n ctx\n-token = 1\n+token = load_secret()\n"
+RISKY = "@@ -10,3 +10,4 @@ def run(cmd):\n ctx\n-old\n+exec(cmd)\n"
+TOPIC = "@@ -10,3 +10,4 @@ def call(client):\n ctx\n-old\n+token = 1\n"
 
 
 def bundle(*patches: tuple[str, str]):
@@ -27,39 +28,43 @@ def test_every_hunk_is_swept_whatever_is_flagged():
     assert scan.summary()["swept_share"] == 1.0
 
 
-def test_a_rule_hit_reaches_deep_review():
+def test_a_rule_hit_always_reaches_deep_review():
     files, hunks = bundle(("src/a.py", PLAIN), ("src/b.py", PLAIN))
     scan = triage(files, hunks, [finding("src/b.py", 11)])
-    flagged = {path for path, _hunk, _score, _reasons in scan.suspicious}
-    assert "src/b.py" in flagged
-    reasons = [r for _p, _h, _s, rs in scan.suspicious for r in rs]
-    assert any(r.startswith("rule_hits") for r in reasons)
+    assert "src/b.py" in {path for path, _h, _s, _r in scan.suspicious}
 
 
-def test_sensitive_tokens_raise_a_hunk_above_the_threshold():
-    files, hunks = bundle(("src/login.py", SENSITIVE))
-    scan = triage(files, hunks, [])
-    assert scan.summary()["hunks_deep_review"] == 1
-
-
-def test_budget_caps_deep_review_and_the_rest_is_counted():
+def test_a_rule_hit_survives_a_tight_budget():
     files, hunks = bundle(("src/a.py", PLAIN), ("src/b.py", PLAIN))
-    findings = [finding("src/a.py", 11), finding("src/b.py", 11)]
-    scan = triage(files, hunks, findings, budget=1)
-    summary = scan.summary()
-    assert summary["hunks_deep_review"] == 1
-    assert summary["not_deep_reasons"]["budget_exhausted"] == 1
+    scan = triage(files, hunks, [finding("src/b.py", 11)], budget=1)
+    assert [path for path, _h, _s, _r in scan.suspicious] == ["src/b.py"]
 
 
-def test_low_signal_hunks_are_accounted_for_not_ignored():
-    files, hunks = bundle(("src/deep/inner.py", PLAIN))
-    scan = triage(files, hunks, [])
-    summary = scan.summary()
+def test_a_dangerous_operation_flags_but_a_topic_word_does_not():
+    risky_files, risky_hunks = bundle(("src/run.py", RISKY))
+    assert triage(risky_files, risky_hunks, []).summary()["hunks_deep_review"] == 1
+    # "token" is a topic word in this repository, not a risky operation.
+    topic_files, topic_hunks = bundle(("src/deep/call.py", TOPIC))
+    assert triage(topic_files, topic_hunks, []).summary()["hunks_deep_review"] == 0
+
+
+def test_churn_and_publicness_alone_never_flag_a_hunk():
+    big = "@@ -1,200 +1,200 @@\n" + " ctx\n" * 200
+    files, hunks = bundle(("src/api.py", big))
+    summary = triage(files, hunks, []).summary()
     assert summary["hunks_deep_review"] == 0
     assert summary["not_deep_reasons"] == {"below_threshold": 1}
 
 
-def test_threshold_is_a_declared_policy_not_a_magic_number():
+def test_budget_trimming_is_counted_not_hidden():
+    files, hunks = bundle(("src/a.py", RISKY), ("src/b.py", RISKY))
+    summary = triage(files, hunks, [], budget=1).summary()
+    assert summary["hunks_deep_review"] == 1
+    assert summary["not_deep_reasons"]["budget_exhausted"] == 1
+
+
+def test_the_policy_is_declared_not_magic():
     policy = TriagePolicy()
-    assert policy.score(rule_hits=0, sensitive=False, churn=0, public_interface=False) == 0.0
-    assert policy.score(rule_hits=1, sensitive=False, churn=0, public_interface=False) == 10.0
+    assert policy.score(rule_hits=0, risky=False, churn=0, public_interface=False) == 0.0
+    assert policy.score(rule_hits=0, risky=True, churn=0, public_interface=False) == 10.0
+    assert policy.score(rule_hits=1, risky=False, churn=0, public_interface=False) == 10.0

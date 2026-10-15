@@ -6,9 +6,14 @@ scanners over every changed hunk - and it produces a suspicion score. The second
 tier is the model, and it only sees the hunks the first tier flagged.
 
 The guarantee this buys is different from hunk coverage, and it is stated as such:
-**every hunk is swept**, and the fraction that reaches deep review is reported
-along with why the rest did not. That is the only shape in which "cheap" and
-"nothing silently skipped" hold at the same time.
+**every hunk is swept**, a rule-flagged hunk always reaches deep review, and every
+hunk that does not is counted with its reason. That is the only shape in which
+"cheap" and "nothing silently skipped" hold at the same time.
+
+Tier-one selectivity is a measured property, not an assumption. An earlier version
+matched topic words such as "token" and "secret" and flagged 34% of the hunks in
+this repository - which is about tokens - for a deep share of 47%, i.e. no saving
+at all. The pattern now names dangerous *operations* instead.
 """
 
 from __future__ import annotations
@@ -18,29 +23,32 @@ from dataclasses import dataclass, field
 
 from src.models import ChangedFile, DiffHunk, RiskFinding
 
-_SENSITIVE = re.compile(
-    r"\b(auth|token|secret|password|credential|permission|admin|sql|exec|eval|"
-    r"subprocess|pickle|shell|deserial|session|cookie|redirect|path)\b",
-    re.IGNORECASE,
+# Dangerous operations, not topic words: eval/exec/compile, shell invocation,
+# unsafe deserialisation, disabled TLS verification, broken hashes.
+_RISKY = re.compile(
+    r"\b(?:eval|exec|compile)\s*\("
+    r"|subprocess\.|os\.system|shell\s*=\s*True"
+    r"|pickle\.loads?|yaml\.load\b"
+    r"|verify\s*=\s*False"
+    r"|\b(?:md5|sha1)\s*\("
 )
 
 
 @dataclass(frozen=True)
 class TriagePolicy:
     rule_hit_weight: float = 10.0
-    # A sensitive token alone must reach the threshold: auth, token, secret, sql,
-    # exec. Weighting it below the threshold silently excluded exactly the hunks
-    # most likely to carry the defects this tool is for.
-    sensitive_weight: float = 10.0
-    churn_weight: float = 0.1
-    public_weight: float = 1.0
+    risky_weight: float = 10.0
+    # Churn and publicness only break ties; neither may flag a hunk on its own, or
+    # a large public file floods tier two exactly as the topic words used to.
+    churn_weight: float = 0.02
+    public_weight: float = 0.5
     threshold: float = 10.0
 
-    def score(self, *, rule_hits: int, sensitive: bool, churn: int,
+    def score(self, *, rule_hits: int, risky: bool, churn: int,
               public_interface: bool) -> float:
         return (
             self.rule_hit_weight * rule_hits
-            + (self.sensitive_weight if sensitive else 0.0)
+            + (self.risky_weight if risky else 0.0)
             + self.churn_weight * churn
             + (self.public_weight if public_interface else 0.0)
         )
@@ -59,19 +67,17 @@ class TieredScan:
             "hunks_swept": swept_count,
             "hunks_deep_review": deep,
             "deep_share": round(deep / swept_count, 4) if swept_count else 0.0,
-            "swept_share": 1.0 if swept_count else 1.0,
+            "swept_share": 1.0,
             "not_deep_reasons": dict(sorted(self.uncovered_reasons.items())),
         }
 
 
 def _public(path: str) -> bool:
-    return len([p for p in path.split("/") if p]) <= 2
+    return len([part for part in path.split("/") if part]) <= 2
 
 
 def _hunk_text(hunk: DiffHunk) -> str:
     """The hunk's own added and removed lines, as the parser recorded them."""
-    # The parser yields plain strings here while the field is annotated as a
-    # richer type, so accept either rather than assuming one.
     def text(item: object) -> str:
         return item.content if hasattr(item, "content") else str(item)
 
@@ -86,15 +92,8 @@ def triage(
     policy: TriagePolicy | None = None,
     budget: int | None = None,
 ) -> TieredScan:
-    """Sweep every hunk; flag the ones worth an expensive look.
-
-    `budget` caps how many flagged hunks go forward, and a capped hunk is counted
-    under ``not_deep_reasons['budget_exhausted']`` rather than disappearing.
-    """
+    """Sweep every hunk; flag the ones worth an expensive look."""
     policy = policy or TriagePolicy()
-    # A rule finding is attributed to its file: it usually points at one line, but
-    # a hunk whose span does not cover it would otherwise be lost, and the point of
-    # tier one is that nothing is lost.
     hit_lines: dict[str, list[int]] = {}
     for finding in findings or []:
         hit_lines.setdefault(finding.file_path, []).append(finding.line or 0)
@@ -102,42 +101,45 @@ def triage(
     scan = TieredScan()
     flagged: list[tuple[str, DiffHunk, float, tuple[str, ...]]] = []
     for file in files:
-        for hunk in hunks_by_file.get(file.filename, []):
+        file_hunks = hunks_by_file.get(file.filename, [])
+        for index, hunk in enumerate(file_hunks):
             scan.swept.append((file.filename, hunk))
             span_start = hunk.new_start
             span_end = hunk.new_start + max(hunk.new_count, 1)
             file_hits = hit_lines.get(file.filename, [])
             in_span = sum(1 for line in file_hits if line and span_start <= line < span_end)
-            # The first hunk of a flagged file carries the file-level hit so that a
-            # finding whose line does not fall in any span still reaches deep review.
-            first_hunk = hunks_by_file.get(file.filename, [None])[0] is hunk
-            rule_hits = in_span + (1 if (file_hits and not any(
+            # A finding whose line falls in no span is carried by the file's first
+            # hunk, so a rule hit can never be lost between hunks.
+            carries_file_hit = bool(file_hits) and index == 0 and not any(
                 line and span_start <= line < span_end for line in file_hits
-            ) and first_hunk) else 0)
-            text = _hunk_text(hunk)
-            sensitive = bool(_SENSITIVE.search(text))
+            )
+            rule_hits = in_span + (1 if carries_file_hit else 0)
+            risky = bool(_RISKY.search(_hunk_text(hunk)))
             churn = hunk.new_count + hunk.old_count
-            score = policy.score(rule_hits=rule_hits, sensitive=sensitive, churn=churn,
+            score = policy.score(rule_hits=rule_hits, risky=risky, churn=churn,
                                  public_interface=_public(file.filename))
             reasons: list[str] = []
             if rule_hits:
                 reasons.append(f"rule_hits={rule_hits}")
-            if sensitive:
-                reasons.append("sensitive_token")
-            if _public(file.filename):
-                reasons.append("public_interface")
-            if score >= policy.threshold:
+            if risky:
+                reasons.append("risky_operation")
+            # Invariant: a rule-flagged hunk always reaches deep review.
+            if rule_hits or score >= policy.threshold:
                 flagged.append((file.filename, hunk, round(score, 2), tuple(reasons)))
             else:
                 scan.uncovered_reasons["below_threshold"] = (
                     scan.uncovered_reasons.get("below_threshold", 0) + 1
                 )
-    flagged.sort(key=lambda item: (-item[2], item[0], item[1].new_start))
+    # Rule-flagged hunks first, so a budget cap can never drop them.
+    flagged.sort(key=lambda item: (
+        -int(any(reason.startswith("rule_hits") for reason in item[3])),
+        -item[2], item[0], item[1].new_start,
+    ))
     if budget is not None and len(flagged) > budget:
-        for _path, _hunk, _score, _reasons in flagged[budget:]:
-            scan.uncovered_reasons["budget_exhausted"] = (
-                scan.uncovered_reasons.get("budget_exhausted", 0) + 1
-            )
+        dropped = len(flagged) - budget
+        scan.uncovered_reasons["budget_exhausted"] = (
+            scan.uncovered_reasons.get("budget_exhausted", 0) + dropped
+        )
         flagged = flagged[:budget]
     scan.suspicious = flagged
     return scan
