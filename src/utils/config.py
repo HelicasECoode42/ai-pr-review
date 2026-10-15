@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     enable_critic: bool = False
     enable_repository_review: bool = True
     repository_evidence_tokens: int = 6000
+    # Optional run-level cap on model input tokens (patch context + evidence).
+    # None means measured and reported, but not enforced.
+    max_review_input_tokens: int | None = None
     review_reasoning_effort: str | None = None
     critic_model: str | None = None
 

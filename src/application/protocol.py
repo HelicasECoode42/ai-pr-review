@@ -1,4 +1,9 @@
-"""Typed contracts for transport-independent execution and planning."""
+"""Typed contracts for transport-independent execution and planning.
+
+Budget and omission contracts live in `src.models` so the report contract can
+carry a run-level view; they are re-exported here for the modules that already
+import them from this path.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +11,33 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.models import ChangedFile, PullRequest, ReviewReport, RiskFinding
+from src.models import (
+    BudgetLine,
+    BudgetReport,
+    ChangedFile,
+    FrozenContract,
+    Omission,
+    PullRequest,
+    ReviewReport,
+    RiskFinding,
+    RunBudgetReport,
+)
+
+__all__ = [
+    "AgentContext",
+    "BudgetLedger",
+    "BudgetLine",
+    "BudgetReport",
+    "ChunkCoverage",
+    "ChunkCoverageSummary",
+    "Coverage",
+    "FrozenContract",
+    "Omission",
+    "ReviewRun",
+    "RunBudgetReport",
+    "StageInput",
+    "StageOutput",
+]
 
 
 class AgentContext(BaseModel):
@@ -36,10 +67,6 @@ class AgentContext(BaseModel):
     json_report: str | dict = Field(default_factory=dict)
 
 
-class FrozenContract(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-
 class Coverage(FrozenContract):
     path: str
     hunk_id: str | None = None
@@ -51,48 +78,6 @@ class BudgetLedger(FrozenContract):
     token_limit: int = Field(gt=0)
     estimated_tokens: int = Field(ge=0, default=0)
     calls: int = Field(ge=0, default=0)
-
-
-class BudgetLine(FrozenContract):
-    """One token budget inside one artifact.
-
-    ``covers`` states what the number bounds and what it deliberately excludes,
-    so two budgets can never be silently treated as the same budget.
-    ``limit=None`` marks a measurement with no enforced cap.
-    """
-
-    name: str
-    limit: int | None = Field(default=None, ge=0)
-    used: int = Field(ge=0)
-    covers: str
-
-
-class Omission(FrozenContract):
-    """Anything a budget, parser, policy or missing source kept out of an artifact."""
-
-    path: str
-    reason: str
-    hunk_id: str | None = None
-    detail: str | None = None
-
-
-class BudgetReport(FrozenContract):
-    """One artifact's budgets and omissions in a single auditable structure.
-
-    ``scope`` names the artifact, because budgets from different stages are not
-    interchangeable even when the unit and the field names match.
-    """
-
-    scope: str = ""
-    lines: tuple[BudgetLine, ...] = ()
-    omissions: tuple[Omission, ...] = ()
-
-    @property
-    def over_limit(self) -> tuple[str, ...]:
-        """Names of enforced budgets that were exceeded; empty means none were."""
-        return tuple(
-            line.name for line in self.lines if line.limit is not None and line.used > line.limit
-        )
 
 
 class ChunkCoverage(FrozenContract):

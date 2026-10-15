@@ -118,6 +118,21 @@ planner 用 `repository_context.safe_source_path` 过滤路径；生产 `build_r
 
 这是一个**行为收窄**：如果用户希望生产侧完全对齐 planner 的 `safe_source_path`（会少审 `go.mod` 一类文件），需要显式决定，当前实现只在"密钥材料 + 已签入构建产物"这一子集上收窄。
 
+## 一次运行的预算总账（2026-10-15 第三轮）
+
+前两轮给出的是**各产物自己的账本**（`scope=build_review_plan`、`build_review_context`）。它们各自正确，但没有任何地方能回答"这次审查一共往 prompt 里放了多少 token"。第三轮补上：
+
+- `RunBudgetReport`（定义在 [src/models.py](../src/models.py)，与 `BudgetReport` 同层，避免与报告契约循环依赖）：`reports` 是各 scope 的账本，`capped_scopes` 指明**哪些 scope 计入总量**，`cap` 是可选的全局上限。
+- `BudgetLine.aggregate`：默认 `True`；`per_file_patch` 这类"对子集的 cap"标为 `False`，**不会被加进总量**（否则单个文件的 cap 会被重复计入 patch 总量）。
+- `total_used` 统计 capped scope 里所有 aggregate 行——**与那一行自己有没有 limit 无关**：没有配置 limit 的输入仍然是输入。`cap=None` 时只测量、不判定超限，不会凭空造出一个上限。
+- `reviewer/budget.py` 定义 `REVIEW_INPUT_SCOPES = ("build_review_context", "repository_evidence")`，并提供 `budget_warnings()`：超限与超 cap 分别产出**读者可见**的 warning，进入 `ReviewReport.analysis_warnings`。
+- 证据侧也有账本：`EvidenceBundle.budget_report`（scope `repository_evidence`）把 `budget`/`tokens` 与 `omitted`/`evicted` 的原因变成同构条目，`source_unavailable` / `line_out_of_range` / `evidence_budget_exhausted` / `evidence_evicted_for_requested_context` 都能被一次运行统一汇总。
+- `ReviewReport.budget_report` 是新增的**附加字段**（JSON 报告经 `model_dump` 自动携带，不改现有字段），Web/VS Code 可以据此显示一次运行的输入总量。
+
+配置项 `MAX_REVIEW_INPUT_TOKENS`（`Settings.max_review_input_tokens`）默认 **None**：默认只测量并记录，**不改变任何现有行为**。参考 pr-agent 用 `max_model_tokens=32000` 统一钳制所有模型；本仓库现在有能力做同样的事，但**默认不打开**，因为收紧预算会减少模型可见的 diff，属于质量取舍而非纯可靠性问题。
+
+**边界（不要外推）**：`total_used` 只覆盖 patch 上下文与证据摘录，**不包含** system prompt、系统指令、模型输出与供应商侧的 KV 缓存；`cap` 也不是费用上限（计费按供应商实际输入/缓存/输出计）。
+
 分组只沿 strong relationship 的无向邻接扩展。这里的节点是文件路径；strong 表示 import 在给定路径 inventory 中解析到唯一文件，不等于已证明运行时调用。弱引用不驱动合并，但会进入 `related_paths`。遍历受 `token_budget` 和 `public_degree` 限制；高连接节点可作为相关证据，不会强制把所有消费者合成一个超大单元。这是语法级启发式边界，不是函数级语义调用图或最优分组证明。
 
 ## 与主审查链的边界
@@ -193,7 +208,9 @@ limitations: evidence_refs_are_lazy_and_not_in_diff_token_budget
 
 ## 验证记录与边界
 
-- 2026-10-15（本轮）：`pytest` **217 passed**；`ruff check --select E9,F63,F7,F82 src tests` 通过；新增模块与测试全量 Ruff 通过；`context_builder.py` 的既有 lint 数量未增加（长行内容集与 HEAD 对比无新增）。
+- 2026-10-15（第三轮）：`pytest` **236 passed**；CI 最低 Ruff gate 通过；改动文件全量 Ruff 通过，`context_builder.py` / `grounded_review.py` / `repository_context.py` / `engine.py` 的长行内容集相对 HEAD 无新增。
+- 2026-10-15（第二轮）：`pytest` 228 passed；离线对照基线见上节。
+- 2026-10-15（第一轮）：`pytest` 217 passed；`ruff check --select E9,F63,F7,F82 src tests` 通过；新增模块与测试全量 Ruff 通过；`context_builder.py` 的既有 lint 数量未增加。
 - 冻结离线基线：`scripts/plan_baseline.py --base 89943fe --head 13e9a3e --token-budget 1000` 产出 [plan-baseline-89943fe-13e9a3e.json](evaluation/plan-baseline-89943fe-13e9a3e.json)。结果 14 units、23 slices、22 planned hunks，`coverage_summary.complete=true`，`omission_reasons={}`，`budget_over_limit=[]`；`diff_fragments_per_unit.used=986/1000`，`relationships` 238 strong + 970 weak，`cuts` 记录 17 条被跨组切开的强边、39 个变更符号的外部调用方。23/23 slices 都有行区间，0 个切在行中间。这些数字与历史记录一致，说明新增账本没有改变分组结果；它证明的是会计与可复现性，不是分组质量或审查召回。
 - 基线的输入只有 git object：`load_frozen_plan_inputs` 先 `rev-parse` 成 40 位 SHA 再读，未提交的工作区内容不会进入产物（测试用 sentinel 验证）。
 - 历史记录：2026-10-14 D1/D2 交付称 181 项 pytest 通过；固定范围 `89943fe → 13e9a3e`、`token_budget=1000` 时 22 hunks、14 units、最大单元 986；索引 238 import 关系、970 弱符号关系。这些数字说明覆盖、确定性与 diff 预算约束；关系条数不是已证明调用路径条数。真实语义分组质量、Precision/Recall、实际模型 token 消耗与费用变化均未验证。本功能未使用付费模型。

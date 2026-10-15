@@ -32,6 +32,7 @@ from src.models import (
 )
 from src.reviewer.model_payload import ModelReviewPayload, parse_model_payload
 from src.reviewer.evidence_validator import validate_ai_evidence
+from src.reviewer.budget import budget_warnings, run_budget_report
 from src.reviewer.critic import CriticDecision, apply_critic, critique_batch, select_critic_candidates
 from src.reviewer.prompt import SYSTEM_PROMPT, build_user_prompt
 from src.reviewer.provider import ProviderError, ReviewModelProvider
@@ -397,6 +398,7 @@ def review_with_ai(
     follow_changes: bool = False,
     verify_behavior: bool = True,
     repository_evidence_tokens: int = 6000,
+    max_input_tokens: int | None = None,
 ) -> ReviewReport:
     try:
         # The main review must start from the PR text and diff alone. Rule
@@ -414,6 +416,7 @@ def review_with_ai(
                     pr, files, findings, result, ctx, reviewer_version=reviewer_version,
                     execution_status=execution_status, review_meta=review_meta, pr_syntax_ok=pr_syntax_ok,
                     report_confidence=report_confidence, degradation_reason=degradation_reason,
+                    max_input_tokens=max_input_tokens,
                 )
             if repository_snapshot is not None:
                 return grounded(repository_snapshot)
@@ -528,6 +531,10 @@ def review_with_ai(
         partial_warning = partial_inclusion_warning(ctx)
         if partial_warning:
             warnings.append(partial_warning)
+        # One run-level view of every budget that shaped this prompt, with an
+        # optional cap. Measured always; enforced only when a cap is configured.
+        run_budget = run_budget_report((ctx.budgets,), cap=max_input_tokens)
+        warnings.extend(budget_warnings(run_budget))
         skipped_ctx = [
             SkippedContextFile(file_path=fpath, reason=reason)
             for fpath, reason in ctx.skipped_files
@@ -592,6 +599,7 @@ def review_with_ai(
             critic_decisions=critic_decisions,
             pending_suggestions=pending_suggestions,
             stage_results=stage_audit,
+            budget_report=run_budget,
             metrics={
                 "raw_signal_count": len(findings),
                 "main_review_prompt_signal_count": 0,

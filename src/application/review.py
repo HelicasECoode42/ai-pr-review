@@ -64,6 +64,7 @@ class ReviewApplication:
                 "max_suggestions": s.max_suggestions,
                 "follow_changes": s.enable_repository_review,
                 "repository_evidence_tokens": s.repository_evidence_tokens,
+                "max_input_tokens": s.max_review_input_tokens,
                 "min_confidence": s.min_comment_confidence,
                 "max_suggestions_per_file": s.max_suggestions_per_file,
                 "verify_rule_signals": s.verify_rule_signals,

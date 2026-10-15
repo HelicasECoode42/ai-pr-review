@@ -2,7 +2,125 @@ from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class FrozenContract(BaseModel):
+    """Immutable, closed contract shared by plans, contexts and reports."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+
+class BudgetLine(FrozenContract):
+    """One token budget inside one artifact.
+
+    ``covers`` states what the number bounds and what it deliberately excludes,
+    so two budgets can never be silently treated as the same budget.
+    ``limit=None`` marks a measurement with no enforced cap. ``aggregate=False``
+    marks a sub-cap that must not be added to a run-level total, such as a cap
+    on one file's share of a larger context budget.
+    """
+
+    name: str
+    limit: int | None = Field(default=None, ge=0)
+    used: int = Field(ge=0)
+    covers: str
+    aggregate: bool = True
+
+
+class Omission(FrozenContract):
+    """Anything a budget, parser, policy or missing source kept out of an artifact."""
+
+    path: str
+    reason: str
+    hunk_id: str | None = None
+    detail: str | None = None
+
+
+class BudgetReport(FrozenContract):
+    """One artifact's budgets and omissions in a single auditable structure.
+
+    ``scope`` names the artifact, because budgets from different stages are not
+    interchangeable even when the unit and the field names match.
+    """
+
+    scope: str = ""
+    lines: tuple[BudgetLine, ...] = ()
+    omissions: tuple[Omission, ...] = ()
+
+    @property
+    def over_limit(self) -> tuple[str, ...]:
+        """Names of enforced budgets that were exceeded; empty means none were."""
+        return tuple(
+            line.name for line in self.lines if line.limit is not None and line.used > line.limit
+        )
+
+
+class RunBudgetReport(FrozenContract):
+    """Every scoped budget of one review run, plus an optional global cap.
+
+    The cap counts only the aggregate input budgets of the scopes named in
+    ``capped_scopes``. It does not claim to bound provider-internal work such as
+    prompt caching, and a run with no configured cap reports ``cap=None`` and
+    ``over_cap=False`` instead of inventing a limit.
+    """
+
+    scope: str = "review_run"
+    cap: int | None = Field(default=None, ge=0)
+    capped_scopes: tuple[str, ...] = ()
+    reports: tuple[BudgetReport, ...] = ()
+
+    @property
+    def scopes(self) -> tuple[str, ...]:
+        return tuple(report.scope for report in self.reports)
+
+    @property
+    def lines(self) -> tuple[BudgetLine, ...]:
+        return tuple(line for report in self.reports for line in report.lines)
+
+    @property
+    def omissions(self) -> tuple[Omission, ...]:
+        """All scoped omissions, deduplicated by (path, reason, hunk_id)."""
+        seen: set[tuple[str, str, str | None]] = set()
+        merged: list[Omission] = []
+        for report in self.reports:
+            for omission in report.omissions:
+                key = (omission.path, omission.reason, omission.hunk_id)
+                if key in seen:
+                    continue
+                seen.add(key)
+                merged.append(omission)
+        return tuple(merged)
+
+    @property
+    def total_used(self) -> int:
+        """Every aggregate input line of the capped scopes, sub-caps excluded.
+
+        A line's own ``limit`` is irrelevant here: an input with no configured
+        limit is still an input, and the run cap exists to bound the total.
+        """
+        scopes = set(self.capped_scopes)
+        return sum(
+            line.used
+            for report in self.reports
+            if report.scope in scopes
+            for line in report.lines
+            if line.aggregate
+        )
+
+    @property
+    def over_cap(self) -> bool:
+        return self.cap is not None and self.total_used > self.cap
+
+    @property
+    def over_limit(self) -> tuple[str, ...]:
+        """Enforced per-line violations, prefixed with their scope."""
+        return tuple(
+            f"{report.scope}:{line.name}"
+            for report in self.reports
+            for line in report.lines
+            if line.limit is not None and line.used > line.limit
+        )
 
 
 class Severity(str, Enum):
@@ -162,3 +280,5 @@ class ReviewReport(BaseModel):
     behavior_verifications: list[dict] = Field(default_factory=list)
     repository_context: dict = Field(default_factory=dict)
     metrics: dict[str, int | float] = Field(default_factory=dict)
+    # One run-level view of every scoped budget that shaped this review.
+    budget_report: RunBudgetReport = Field(default_factory=RunBudgetReport)

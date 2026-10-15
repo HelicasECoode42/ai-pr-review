@@ -12,7 +12,7 @@ from typing import Protocol
 
 from src.analyzer.context_builder import count_tokens, _skip_patch_reason
 from src.analyzer.diff_parser import parse_file_hunks
-from src.models import ChangedFile
+from src.models import BudgetLine, BudgetReport, ChangedFile, Omission
 
 SHA = re.compile(r"[0-9a-f]{40}")
 SOURCE_SUFFIXES = {".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".go", ".rs", ".c", ".h",
@@ -228,6 +228,41 @@ class EvidenceBundle:
     omitted: list[dict] = field(default_factory=list)
     evicted: list[dict] = field(default_factory=list)
     tokens: int = 0
+
+    @property
+    def budget_report(self) -> BudgetReport:
+        """This bundle's own budget and omissions, so a run can account for evidence too."""
+        omissions = [
+            Omission(
+                path=str(item.get("path", "?")),
+                reason=str(item.get("reason", "unspecified")),
+                detail=item.get("side"),
+            )
+            for item in self.omitted
+        ]
+        omissions += [
+            Omission(
+                path=str(item.get("path", "?")),
+                reason="evidence_evicted_for_requested_context",
+                detail=item.get("kind"),
+            )
+            for item in self.evicted
+        ]
+        return BudgetReport(
+            scope="repository_evidence",
+            lines=(
+                BudgetLine(
+                    name="evidence_excerpts",
+                    limit=self.budget,
+                    used=self.tokens,
+                    covers=(
+                        "frozen source excerpts placed in the prompt; excludes the system "
+                        "prompt, patch context and model output"
+                    ),
+                ),
+            ),
+            omissions=tuple(omissions),
+        )
 
     def add(self, path, line=1, side="head", kind="related_code"):
         text = self.snapshot.read(path, side)

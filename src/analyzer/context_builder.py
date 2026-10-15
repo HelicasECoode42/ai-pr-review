@@ -799,6 +799,7 @@ def build_review_context(
                 limit=per_file_budget,
                 used=max_file_tokens,
                 covers="cap on a single file's share of the patch context",
+                aggregate=False,
             ),
         ),
         omissions=tuple(omissions),
