@@ -210,11 +210,15 @@ P0 收口 ─► P1 装手 ─► P2 核验过滤器链 ─► P3 知识层 ─�
 
 **规范只允许一份——本文。** 其它文档只能是两类：
 
+**优势文档**：`ADVANTAGES.md`（我们强在哪、为什么；主张必须带实测或可核对来源）。
+
 **证据文档**（数据为准，不得写规范；与本文冲突时以本文为准）：
 `evaluation/identification-baseline.md`（识别基线实测）、`graph-planning-dataflow.md`（预算/覆盖实测）、`evaluation/` 下的结果与协议、`code-review-practices-and-prompt-design.md`（外部实践调研）、`error-handling-policy.md`、`review-guide.md`、`architecture.md`、`functions-index.md`、`contribution-guide.md`。
 
 **归档**（`docs/archive/`，历史记录，不再维护）：本次已归档 13 份。**待归档**：`agent-refactor-execution-plan.md`、`agent-refactor-review-and-refined-plan.md`、`rules-agent-synergy-plan.md`、`current-development-plan.md`、`review-capability-improvement-plan.md`、`web-console-demo-first-plan.md`、`sse-review-stream.md`、`video-product-brief.md`、`2026-05-29-summary.md`、`evaluation-driven-review.md`、`review-v2-development.md`、`PRD-review-capability-v2.md`、`review-research-and-development-standard.md`、`grouping-boundaries-and-options.md`、`review-slicing-and-boundaries.md`。
 
 归档标准：① 是否已被本文取代；② 是否仍被引用（引用者先改指向）；③ 是否含唯一实验数据（有则先并入证据文档）。
+
+**仓库瘦身（2026-10-16）**：删除零引用的 `src/evaluation/retry.py`、一次性迁移脚本 `tools/convert_to_utf8.py`、未被引用的 `demo-animation/`、以及误入库的构建产物 `vscode-extension/out/`（18 个文件，`npm run compile` 可重建）。保留：`.vsix`（冻存产品的存档件）、`tools/reviewbench/`（评测脚手架）、历史评测 JSON（被 `evaluation/dev-set.md` 引用为证据）。`src/evaluation/` 中仅被测试引用的 6 个模块（`adjudicate`/`critic_replay`/`experiment`/`improvement`/`paired`/`parallel_retry`）**保留**：它们是 RSI 翻转门禁与成对实验的现成基础设施，删除会拆掉 P3/P5 的地基；它们不在主路径上，不影响运行。
 
 **规矩**：新增规范类内容**只加进本文**；写新文档前先问"这是规范还是证据"——是规范就改本文。

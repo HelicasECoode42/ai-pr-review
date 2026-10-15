@@ -18,6 +18,10 @@ AI PR Review Assistant 是一个面向 GitHub Pull Request 的 AI 代码审查�
 
 本项目的规范只有一份：**[docs/HARNESS.md](docs/HARNESS.md)**（好 harness 的 15 条硬性条款、现状对照、能力差的根因、架构与判据规范、6 阶段计划 + RSI 循环、改动量估算）。任何 `*-plan.md` / `*-design.md` 与它冲突时以它为准。
 
+## 优势与依据
+
+我们与"一个会读 diff 的模型"的根本差别，以及每条主张的实测数据与外部对照，写在 **[docs/ADVANTAGES.md](docs/ADVANTAGES.md)**：切片与覆盖记账、agent harness（机械证伪 + 契约感知）、证据来源校验、token 与缓存计量、以及 review 产出本身的已知答案数字。
+
 ## 产品闭环
 
 ```text
