@@ -113,4 +113,9 @@ class ReviewApplication:
                 if records:
                     metrics.update(summarize_usage(records))
                 metrics["publish_min_confidence"] = s.publish_min_confidence
+                # Which verification rules produced this report, so a change in
+                # behaviour can be attributed to a criteria change (ADR-006).
+                from src.reviewer.grounded_review import CRITERIA_VERSION
+
+                metrics["criteria_version"] = CRITERIA_VERSION
             return report

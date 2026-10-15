@@ -23,6 +23,11 @@ from src.reviewer.provider import ProviderError
 # evidence budget, not the search backend, is the scarce resource.
 CALLER_EVIDENCE_LIMIT = 3
 
+# Version of the verification criteria in this module. Bump it whenever the
+# confirmation rules change, so a report says which rules produced it and a
+# change in behaviour can be attributed instead of guessed.
+CRITERIA_VERSION = "grounded-v1: chain+validated-citation+provenance"
+
 DISCOVERY_SYSTEM = """You review code changes against a frozen base/head repository snapshot.
 Find concrete correctness, security, reliability, interface-contract and maintainability defects.
 Check callers, return values, error propagation, missing branches, resource lifetime and cross-layer contracts.

@@ -42,7 +42,10 @@ class ObservedProvider:
         self.outputs: list[str] = []
 
     def complete_json(self, system_prompt: str, user_prompt: str) -> str:
-        if self.errors and self.errors[-1].status_code in FATAL_HTTP_STATUSES:
+        if self.errors and (
+            self.errors[-1].status_code in FATAL_HTTP_STATUSES
+            or self.errors[-1].kind in {"request_budget_exhausted", "run_stopped"}
+        ):
             raise self.errors[-1]
         self.calls += 1
         try:

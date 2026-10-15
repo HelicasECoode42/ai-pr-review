@@ -23,7 +23,10 @@ jobs:
       - run: uv run pytest -q
 
   vscode-extension:
-    name: VS Code extension build
+    # Shelved by ADR-001: the extension still compiles so it does not rot
+    # silently, but it is not a supported product and must not block a merge.
+    name: VS Code extension build (shelved, not a gate)
+    continue-on-error: true
     runs-on: ubuntu-latest
     defaults:
       run:

@@ -11,6 +11,7 @@ whole path is testable offline and the engine keeps ownership of the provider.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -25,6 +26,10 @@ from src.application.protocol import (
 from src.models import ChangedFile
 
 UNIT_CONTEXT_SCOPE = "build_unit_context"
+
+# Upper bound on concurrent unit reviews. The constraint is the provider's rate
+# limit and the reviewer's budget, not this machine, so the cap stays small.
+MAX_UNIT_WORKERS = 8
 
 
 def build_unit_context(unit) -> ReviewContext:
@@ -134,18 +139,36 @@ def review_by_units(
     run_unit: Callable[[ReviewContext, list[ChangedFile]], Any],
     *,
     max_units: int | None = None,
+    max_workers: int = 1,
 ) -> UnitReviewSummary:
     """Run one review per unit, bounded, recording every outcome.
 
-    A unit that raises is recorded as failed and does not abort the others: on a
-    large PR, losing one unit must not lose the whole report.
+    Units are independent, so they may run concurrently - the unit loop is I/O
+    bound on the provider, and a large PR is only affordable this way. Three
+    properties are kept regardless of concurrency:
+
+    * **Deterministic output.** Outcomes are ordered by the plan's unit order,
+      not by completion order, so two runs of the same input merge identically.
+    * **Failure isolation.** A unit that raises is recorded as failed and does
+      not abort the others, and does not take the pool down.
+    * **Per-unit budgets.** Each unit gets its own context and evidence budget,
+      so running units in parallel cannot silently pool or overspend a shared
+      budget. `run_unit` must be safe to call from several threads; callers give
+      each unit its own provider.
+
+    Concurrency is capped at `MAX_UNIT_WORKERS` to bound provider rate limits and
+    spend; callers should check estimated cost before raising it.
     """
+    if max_workers < 1:
+        raise ValueError(f"max_workers must be >= 1, got {max_workers}")
+    workers = min(max_workers, MAX_UNIT_WORKERS)
     summary = UnitReviewSummary()
     units = list(plan.units)
     if max_units is not None:
         summary.remaining_units = max(0, len(units) - max_units)
         units = units[:max_units]
-    for unit in units:
+
+    def run(unit) -> UnitOutcome:
         outcome = UnitOutcome(
             unit_id=unit.unit_id, status="skipped", estimated_tokens=unit.estimated_tokens
         )
@@ -155,7 +178,14 @@ def review_by_units(
         except Exception as exc:  # one unit must not take the run down
             outcome.status = "failed"
             outcome.error = f"{type(exc).__name__}: {exc}"
-        summary.outcomes.append(outcome)
+        return outcome
+
+    if workers > 1 and len(units) > 1:
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="review-unit") as pool:
+            outcomes = list(pool.map(run, units))
+    else:
+        outcomes = [run(unit) for unit in units]
+    summary.outcomes.extend(outcomes)
     return summary
 
 

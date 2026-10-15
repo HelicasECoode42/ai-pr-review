@@ -34,7 +34,7 @@ GitHub PR
 |---|---|---|
 | GitHub Actions | 团队协作中的 PR 审查者 | PR 创建或更新后自动审查，发布 summary comment 和高置信 inline comments |
 | Web Console | 评委、队友、非 IDE 用户 | 粘贴 GitHub PR URL 后直接分析任意 PR，可视化查看建议和完整报告 |
-| VS Code 插件 | 正在本地修代码的开发者 | 自动识别当前分支 PR，把 Review 结果同步到 Problems、Review Panel 和 CodeLens |
+| VS Code 插件（**已冻存**） | 正在本地修代码的开发者 | 自动识别当前分支 PR，把 Review 结果同步到 Problems、Review Panel 和 CodeLens。**暂不维护、暂不支持**（见 [决策记录](docs/decisions.md) ADR-001）；最后一个可用版本是 `vscode-extension/ai-pr-review-0.2.0.vsix` |
 
 底层 CLI 和 Review Engine 被多个入口复用，保证同一套分析逻辑可以运行在本地、CI、Web 服务和 IDE 插件中。
 
@@ -44,7 +44,7 @@ GitHub PR
 
 - **Web Console**：粘贴 PR URL → 一键分析 → 可视化建议与报告
 - **GitHub Actions**：PR 创建/更新后自动审查，发布 summary comment 和 inline review
-- **VS Code 插件**：Problems 面板跳转本地代码，Review Panel 展示完整报告
+- **VS Code 插件（已冻存，暂不支持）**：Problems 面板跳转本地代码，Review Panel 展示完整报告；代码与 `.vsix` 保留但不维护
 
 > Demo 视频：见上方百度网盘 / B 站链接（约五分钟）。如外链不便访问，推荐使用下方 Web Console 的 ✨ Try Demo 功能 — 加载预生成离线报告，无需 GitHub Token、模型 Key 和网络。
 

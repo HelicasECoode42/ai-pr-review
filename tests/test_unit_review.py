@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from src.analyzer.review_plan import build_review_plan
 from src.models import ChangedFile, ReviewSuggestion, Severity
 from src.reviewer.grounded_review import GroundedResult
@@ -102,7 +104,10 @@ def test_merge_dedupes_findings_and_offsets_candidate_ids():
                       candidates=[{"candidate_id": 0, "suggestion": {"title": "y"}}])
     second.decisions.append({"candidate_id": 0, "decision": "needs_context"})
     merged = merge_grounded_results([first, second])
-    assert [(s.file_path, s.line) for s in merged.suggestions] == [("src/a.py", 11), ("src/b.py", 1)]
+    assert [(s.file_path, s.line) for s in merged.suggestions] == [
+        ("src/a.py", 11),
+        ("src/b.py", 1),
+    ]
     assert [c["candidate_id"] for c in merged.candidates] == [0, 1]
     assert [d["candidate_id"] for d in merged.decisions] == [0, 1]
     assert merged.discovery_calls == 2 and merged.verification_calls == 2
@@ -124,3 +129,56 @@ def test_bundle_merge_sums_counters_and_keeps_caps():
     assert merged["token_budget"] == 6000
     assert merged["omitted"] == [1, 2]
     assert merged["snapshot"] == {"head": "a"}
+
+
+def test_concurrent_units_keep_plan_order_not_completion_order():
+    """Two runs of the same input must merge identically, so outcomes follow the
+    plan's unit order even when a later unit finishes first."""
+    import time
+
+    plan, files = plan_with_two_units()
+    seen: list[str] = []
+
+    def run_unit(ctx, unit_files_):
+        # Fail fast on the first call, slow on the rest: completion order differs
+        # from submission order.
+        delay = 0.0 if not seen else 0.05
+        seen.append(ctx.text[:8])
+        time.sleep(delay)
+        return grounded()
+
+    summary = review_by_units(plan, files, run_unit, max_workers=4)
+    assert [o.unit_id for o in summary.outcomes] == [u.unit_id for u in plan.units]
+
+
+def test_concurrent_units_isolate_failures():
+    plan, files = plan_with_two_units()
+    calls = {"n": 0}
+
+    def run_unit(ctx, unit_files_):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("first unit blew up")
+        return grounded()
+
+    summary = review_by_units(plan, files, run_unit, max_workers=4)
+    # Which unit fails depends on thread scheduling; that exactly one failed, and
+    # that the failure is recorded rather than propagated, is the guarantee.
+    assert sorted(o.status for o in summary.outcomes) == ["failed", "reviewed"]
+    assert summary.counts()["units_reviewed"] == 1
+    assert summary.counts()["units_failed"] == 1
+    failed = next(o for o in summary.outcomes if o.status == "failed")
+    assert "RuntimeError" in (failed.error or "")
+    assert [o.unit_id for o in summary.outcomes] == [u.unit_id for u in plan.units]
+
+
+def test_worker_count_is_validated_and_capped():
+    from src.reviewer.unit_review import MAX_UNIT_WORKERS
+
+    plan, files = plan_with_two_units()
+    with pytest.raises(ValueError):
+        review_by_units(plan, files, lambda c, f: grounded(), max_workers=0)
+    # Asking for more than the cap is clamped rather than rejected.
+    summary = review_by_units(plan, files, lambda c, f: grounded(),
+                              max_workers=MAX_UNIT_WORKERS * 10)
+    assert summary.counts()["units_reviewed"] == len(plan.units)

@@ -309,3 +309,25 @@ def test_grounded_report_names_unreviewed_units_and_counts_them():
     assert any("4 of 14 semantic review unit(s) were not reviewed" in w
                for w in report.analysis_warnings)
     assert report.report_confidence == "partial"
+
+
+def test_report_carries_schema_and_criteria_versions():
+    """A report must say which schema and which criteria produced it, and both
+    must survive a JSON round-trip (ADR-006)."""
+    from src.models import REPORT_SCHEMA_VERSION
+    from src.reviewer.grounded_review import CRITERIA_VERSION
+
+    report = ReviewReport(
+        pr=PullRequest(repo="o/r", number=1, title="t"), files=[], summary="s",
+        risk_level=Severity.LOW,
+    )
+    application = ReviewApplication(
+        Settings(enable_critic=False), provider_factory=lambda **kw: _Provider([]),
+        engine=lambda **kw: report,
+    )
+    result = application.review(PullRequest(repo="o/r", number=1, title="t"), [], [])
+    assert result.schema_version == REPORT_SCHEMA_VERSION
+    assert result.metrics["criteria_version"] == CRITERIA_VERSION
+    restored = ReviewReport.model_validate_json(result.model_dump_json())
+    assert restored.metrics["criteria_version"] == CRITERIA_VERSION
+    assert restored.schema_version == REPORT_SCHEMA_VERSION

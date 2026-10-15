@@ -246,7 +246,13 @@ class ReviewSuggestion(BaseModel):
     symbol_reason: str | None = None
 
 
+REPORT_SCHEMA_VERSION = "1"
+
+
 class ReviewReport(BaseModel):
+    # Report schema version. Bump only with a documented migration; consumers
+    # (workflow, IDE, Web) must tolerate unknown fields and absent new ones.
+    schema_version: str = REPORT_SCHEMA_VERSION
     pr: PullRequest
     files: list[ChangedFile]
     summary: str
@@ -284,6 +290,8 @@ class ReviewReport(BaseModel):
     candidate_audit: list[dict] = Field(default_factory=list)
     behavior_verifications: list[dict] = Field(default_factory=list)
     repository_context: dict = Field(default_factory=dict)
-    metrics: dict[str, int | float] = Field(default_factory=dict)
+    # Counters and small stamps. Values may be strings (e.g. criteria_version),
+    # so the type is wider than "numbers only" on purpose.
+    metrics: dict[str, int | float | str] = Field(default_factory=dict)
     # One run-level view of every scoped budget that shaped this review.
     budget_report: RunBudgetReport = Field(default_factory=RunBudgetReport)

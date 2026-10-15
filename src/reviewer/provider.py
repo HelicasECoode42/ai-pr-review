@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Callable
 from typing import Protocol
 
 import httpx
@@ -15,7 +16,11 @@ class ProviderError(Exception):
     ) -> None:
         super().__init__(message)
         self.status_code = status_code
-        self.kind = "http_error" if status_code is not None else kind
+        self.kind = (
+            ("http_error" if status_code is not None else kind)
+            if kind == "provider_error"
+            else kind
+        )
 
 
 class ReviewModelProvider(Protocol):
@@ -33,12 +38,15 @@ class OpenAICompatibleProvider:
         max_output_tokens: int | None = None,
         total_timeout: float | None = None,
         reasoning_effort: str | None = None,
+        request_attempt_hook: Callable[[], None] | None = None,
     ) -> None:
         self._model = model
         self._stream = stream
         self._max_output_tokens = max_output_tokens
         self._total_timeout = total_timeout
         self._reasoning_effort = reasoning_effort
+        self._request_attempt_hook = request_attempt_hook
+        self.http_attempts = 0
         self.usage_records: list[dict] = []
         self._client = httpx.Client(
             base_url=base_url.rstrip("/"),
@@ -63,6 +71,7 @@ class OpenAICompatibleProvider:
         try:
             if self._stream:
                 return self._complete_stream(payload)
+            self._begin_http_attempt()
             response = self._client.post("/chat/completions", json=payload)
             # Some OpenAI-compatible providers accept the chat API but reject
             # response_format. Retry once without it so the downstream JSON
@@ -70,8 +79,17 @@ class OpenAICompatibleProvider:
             if response.status_code == 400 and _rejects_response_format(response):
                 fallback_payload = dict(payload)
                 fallback_payload.pop("response_format")
+                self._begin_http_attempt()
                 response = self._client.post("/chat/completions", json=fallback_payload)
             response.raise_for_status()
+        except httpx.ConnectTimeout:
+            raise ProviderError("AI model connection timed out", kind="connect_timeout") from None
+        except httpx.ReadTimeout:
+            raise ProviderError("AI model response read timed out", kind="read_timeout") from None
+        except httpx.WriteTimeout:
+            raise ProviderError("AI model request write timed out", kind="write_timeout") from None
+        except httpx.PoolTimeout:
+            raise ProviderError("AI model connection pool timed out", kind="pool_timeout") from None
         except httpx.TimeoutException:
             raise ProviderError("AI model request timed out", kind="timeout") from None
         except httpx.HTTPStatusError as exc:
@@ -101,7 +119,8 @@ class OpenAICompatibleProvider:
 
         try:
             data = response.json()
-            content = data["choices"][0]["message"]["content"]
+            choice = data["choices"][0]
+            content = choice["message"]["content"]
             if not isinstance(content, str):
                 raise TypeError("Content is not text")
         except (ValueError, KeyError, IndexError, TypeError) as exc:
@@ -111,8 +130,14 @@ class OpenAICompatibleProvider:
                 "model": data.get("model", self._model),
                 "usage": data.get("usage"),
                 "request_id": data.get("id"),
+                "finish_reason": choice.get("finish_reason"),
             }
         )
+        if choice.get("finish_reason") == "length":
+            raise ProviderError(
+                "Model exhausted output token budget (truncated at token limit)",
+                kind="output_truncated",
+            )
         return content
 
     def _complete_stream(self, payload: dict) -> str:
@@ -121,6 +146,7 @@ class OpenAICompatibleProvider:
         # SSE keeps the connection active while the model reasons. It changes
         # transport only; model, temperature and review prompts stay identical.
         for attempt in range(2):
+            self._begin_http_attempt()
             with self._client.stream("POST", "/chat/completions", json=payload) as response:
                 if response.status_code >= 400:
                     response.read()
@@ -143,7 +169,7 @@ class OpenAICompatibleProvider:
                 for line in response.iter_lines():
                     if self._total_timeout and time.perf_counter() - started > self._total_timeout:
                         raise ProviderError(
-                            "Model call exceeded total time budget", kind="budget_exhausted"
+                            "Model call exceeded total time budget", kind="total_timeout"
                         )
                     if not line.startswith("data:"):
                         continue
@@ -184,7 +210,8 @@ class OpenAICompatibleProvider:
                 )
                 if exhausted:
                     raise ProviderError(
-                        "Model exhausted output token budget", kind="budget_exhausted"
+                        "Model exhausted output token budget (truncated at token limit)",
+                        kind="output_truncated",
                     )
                 if not done or not content:
                     raise ProviderError(
@@ -192,6 +219,11 @@ class OpenAICompatibleProvider:
                     )
                 return "".join(content)
         raise ProviderError("Model rejected structured response format")
+
+    def _begin_http_attempt(self) -> None:
+        if self._request_attempt_hook is not None:
+            self._request_attempt_hook()
+        self.http_attempts += 1
 
     def close(self) -> None:
         self._client.close()
