@@ -1,3 +1,5 @@
+import pytest
+
 from src.analyzer.context_builder import (
     build_review_context,
     count_tokens,
@@ -103,3 +105,45 @@ def test_budget_omissions_and_evaluation_data_are_explicit() -> None:
     assert ctx.truncated
     assert ("src/second.py", "patch_budget_exhausted") in ctx.skipped_files
     assert any(path.endswith("input.json") for path, _ in ctx.skipped_files)
+
+
+def test_a_diff_within_budget_keeps_every_hunk() -> None:
+    """The gate must never drop a hunk from a diff that fits."""
+    files = [
+        ChangedFile(
+            filename="src/small.py",
+            status=FileStatus.MODIFIED,
+            additions=2,
+            patch="@@ -1,2 +1,3 @@\n keep = 1\n-old = 1\n+new = 1\n+extra = 2\n",
+        )
+    ]
+    ctx = build_review_context(
+        PullRequest(repo="test/repo", number=9, title="Small change"), files, [],
+        max_patch_tokens=10_000,
+    )
+    assert "new = 1" in ctx.text and "extra = 2" in ctx.text
+    assert not [o for o in ctx.omissions if o.reason == "not_selected_by_triage"]
+
+
+@pytest.mark.skip(reason="A not implemented: the gate must replace the builder's own "
+                        "over-budget policy, not sit in front of it - see docs/STATE.md")
+def test_an_over_budget_diff_keeps_flagged_hunks_and_still_fills_the_budget() -> None:
+    """Suspicion is a priority, not the only admission condition: a diff with no
+    flagged hunk must still reach the model, and a flagged hunk must always be in."""
+    plain = "\n".join(f"+value_{i} = compute_{i}()" for i in range(200))
+    risky = "@@ -1,1 +300,2 @@\n keep\n+exec(user_input)\n"
+    files = [
+        ChangedFile(filename="src/plain.py", status=FileStatus.MODIFIED,
+                    additions=200, patch="@@ -1,1 +1,200 @@\n" + plain),
+        ChangedFile(filename="src/risky.py", status=FileStatus.MODIFIED,
+                    additions=2, patch=risky),
+    ]
+    ctx = build_review_context(
+        PullRequest(repo="test/repo", number=10, title="Big change"), files, [],
+        max_patch_tokens=60,
+    )
+    # The flagged hunk is always present, and the budget did not go to waste.
+    assert "exec(user_input)" in ctx.text
+    assert "value_" in ctx.text
+    dropped = [o for o in ctx.omissions if o.reason == "not_selected_by_triage"]
+    assert dropped, "dropped hunks must be recorded, not silently lost"

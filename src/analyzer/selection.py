@@ -19,6 +19,7 @@ and the uncovered set can be reported with the value that was left on the table.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from src.models import ChangedFile, DiffHunk
@@ -131,8 +132,13 @@ def select_hunks_optimal(
     policy: SelectionPolicy | None = None,
     import_edges: dict[str, int] | None = None,
     rule_hits: set[str] | None = None,
+    cost_of: Callable[[ChangedFile, DiffHunk], int] | None = None,
 ) -> SelectionResult:
     """0/1 knapsack over hunks: maximise total value within the token budget.
+
+    ``cost_of`` lets the caller express what a hunk costs. The default is the line
+    count, which understates a token budget by roughly an order of magnitude; the
+    context builder passes a real ``count_tokens`` so the budget means tokens.
 
     Density-greedy looks attractive but measurably starves large hunks, because
     the value function has fixed charges (rule hit, public interface, centrality)
@@ -147,7 +153,7 @@ def select_hunks_optimal(
     result = SelectionResult()
     for file in files:
         for hunk in hunks.get(file.filename, []):
-            tokens = max(1, hunk.new_count + hunk.old_count)
+            tokens = max(1, cost_of(file, hunk) if cost_of else hunk.new_count + hunk.old_count)
             value = int(round(policy.value(
                 lines_changed=tokens,
                 import_edges=edges.get(file.filename, 0),

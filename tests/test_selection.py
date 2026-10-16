@@ -77,3 +77,15 @@ def test_policy_weights_are_declared_not_hidden():
                         public_interface=False) == 1.0
     assert policy.value(lines_changed=1, import_edges=99, rule_hit=True,
                         public_interface=True) == 1.0 + 3.0 * 5 + 5.0 + 2.0
+
+
+def test_cost_of_lets_the_budget_be_token_denominated():
+    """A hunk costs what it costs: lines are a proxy, tokens are the real budget."""
+    files, hunks = files_and_hunks()
+
+    def cost_of(_file, hunk):
+        return 100  # every hunk is expensive, so one fills a 150-cost budget
+
+    result = select_hunks_optimal(files, hunks, budget=150, cost_of=cost_of)
+    assert len(result.selected) == 1
+    assert result.uncovered
