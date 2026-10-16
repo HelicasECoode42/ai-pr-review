@@ -17,7 +17,8 @@ def bundle(*patches: tuple[str, str]):
 
 
 def finding(path: str, line: int) -> RiskFinding:
-    return RiskFinding(file_path=path, line=line, severity="high", rule_id="r1",
+    # A suspicion rule: structural and path rules are context, not triggers.
+    return RiskFinding(file_path=path, line=line, severity="high", rule_id="ast-broad-except",
                        title="t", evidence="e", recommendation="r", confidence=0.9)
 
 
@@ -68,3 +69,31 @@ def test_the_policy_is_declared_not_magic():
     assert policy.score(rule_hits=0, risky=False, churn=0, public_interface=False) == 0.0
     assert policy.score(rule_hits=0, risky=True, churn=0, public_interface=False) == 10.0
     assert policy.score(rule_hits=1, risky=False, churn=0, public_interface=False) == 10.0
+
+
+def test_a_diff_that_fits_the_budget_is_reviewed_entirely():
+    """Triage chooses when the diff does not fit; if it fits, nothing is skipped."""
+    files, hunks = bundle(("src/a.py", PLAIN), ("src/b.py", PLAIN))
+    summary = triage(files, hunks, [], budget=1000).summary()
+    assert summary["hunks_deep_review"] == summary["hunks_swept"] == 2
+    assert "fits_budget" in {reason for _p, _h, _s, rs in
+                             triage(files, hunks, [], budget=1000).suspicious for reason in rs}
+
+
+def test_structural_and_path_rules_are_context_not_triggers():
+    from src.analyzer.tiered_scan import is_suspicion_finding
+
+    assert is_suspicion_finding("cross-file-call-impact") is False
+    assert is_suspicion_finding("risk-path-infra-reviewer") is False
+    assert is_suspicion_finding("ast-broad-except") is True
+    assert is_suspicion_finding("sql-string-concat") is True
+
+
+def test_a_context_rule_does_not_pull_a_hunk_into_deep_review():
+    files, hunks = bundle(("src/infra/deep.py", PLAIN))
+    context_rule = RiskFinding(file_path="src/infra/deep.py", line=11, severity="medium",
+                               rule_id="risk-path-infra-reviewer", title="t", evidence="e",
+                               recommendation="r", confidence=0.5)
+    summary = triage(files, hunks, [context_rule]).summary()
+    assert summary["hunks_deep_review"] == 0
+    assert summary["not_deep_reasons"]["context_signal_not_a_trigger"] == 1

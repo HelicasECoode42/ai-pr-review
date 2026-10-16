@@ -34,6 +34,30 @@ _RISKY = re.compile(
 )
 
 
+# Rules whose finding is evidence that a *defect may be present*. Path rules say a
+# file lives in an "infra" directory and cross-file rules say calls cross a file
+# boundary: those fire on every large PR and are context, not suspicion. Treating
+# them as triggers is what made tier one flag 20% of a 251-file PR, 100 of those
+# findings coming from the two structural families.
+SUSPICION_RULES: frozenset[str] = frozenset({
+    "ast-broad-except",
+    "ast-dangerous-exec",
+    "ast-unbounded-loop",
+    "sql-string-concat",
+    "dynamic-execution",
+    "secret-logging",
+    "shell-execution",
+})
+CONTEXT_RULE_PREFIXES: tuple[str, ...] = ("cross-file-", "risk-path-")
+
+
+def is_suspicion_finding(rule_id: str) -> bool:
+    """Defect-suspect rules only; structural and path signals are not triggers."""
+    if rule_id.startswith(CONTEXT_RULE_PREFIXES):
+        return False
+    return rule_id in SUSPICION_RULES
+
+
 @dataclass(frozen=True)
 class TriagePolicy:
     rule_hit_weight: float = 10.0
@@ -94,8 +118,27 @@ def triage(
 ) -> TieredScan:
     """Sweep every hunk; flag the ones worth an expensive look."""
     policy = policy or TriagePolicy()
+    # Triage exists to choose when the diff does not fit. If it fits, everything is
+    # reviewed and no suspicion signal is needed - otherwise a small PR whose only
+    # findings come from path rules would silently reach the model with nothing.
+    if budget is not None:
+        total_churn = sum(
+            hunk.new_count + hunk.old_count
+            for file in files for hunk in hunks_by_file.get(file.filename, [])
+        )
+        if total_churn <= budget:
+            scan = TieredScan()
+            for file in files:
+                for hunk in hunks_by_file.get(file.filename, []):
+                    scan.swept.append((file.filename, hunk))
+                    scan.suspicious.append((file.filename, hunk, 0.0, ("fits_budget",)))
+            return scan
     hit_lines: dict[str, list[int]] = {}
+    context_only = 0
     for finding in findings or []:
+        if not is_suspicion_finding(finding.rule_id):
+            context_only += 1
+            continue
         hit_lines.setdefault(finding.file_path, []).append(finding.line or 0)
 
     scan = TieredScan()
@@ -142,4 +185,6 @@ def triage(
         )
         flagged = flagged[:budget]
     scan.suspicious = flagged
+    if context_only:
+        scan.uncovered_reasons["context_signal_not_a_trigger"] = context_only
     return scan
