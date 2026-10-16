@@ -61,3 +61,4 @@ node_modules/
 *.vsix
 vscode-extension/vscode-extension/
 .pre-commit-home/
+docs/knowledge-authoring-requirements.md
