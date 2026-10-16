@@ -421,6 +421,18 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
     kept = published
     audit = bundle.audit()
     audit["witness_blocked"] = witness_blocked
+    # Impact closure: was the callers' side of every change actually visible? Hunk
+    # counting says how many lines were shown; this says how much of the change's
+    # influence surface was, which is what decides whether a defect is findable.
+    try:
+        from src.analyzer.diff_parser import parse_file_hunks
+        from src.analyzer.impact_closure import build_impact_closure, impact_coverage
+
+        hunks_by_file = {file.filename: parse_file_hunks(file) for file in files}
+        closure = build_impact_closure(files, hunks_by_file, snapshot)
+        audit["impact_closure"] = {**closure.summary(), **impact_coverage(closure, context.text)}
+    except Exception as exc:  # a metric must never take a review down
+        audit["impact_closure_error"] = f"{type(exc).__name__}: {exc}"
     audit["discovery_trace"] = discovery_trace
     return GroundedResult(payload.summary, kept, pending, candidates, decisions, audit,
                           discovery_calls, verification_calls, failed,
@@ -469,6 +481,11 @@ def build_grounded_report(pr, files, findings, result, context, *, reviewer_vers
         "main_review_prompt_signal_count": 0,
         "witness_blocked_count": int(result.bundle.get("witness_blocked", 0) or 0),
     }
+    closure = result.bundle.get("impact_closure")
+    if isinstance(closure, dict):
+        run_metrics["impact_closure_nodes"] = int(closure.get("closure_nodes", 0))
+        run_metrics["impact_closure_seen"] = int(closure.get("seen", 0))
+        run_metrics["impact_coverage"] = float(closure.get("coverage", 0.0))
     unit_details = result.bundle.get("unit_details")
     if isinstance(unit_details, dict):
         for key in ("units_planned", "units_reviewed", "units_failed", "units_skipped_by_budget",

@@ -555,3 +555,12 @@ def test_unit_prompts_share_an_identical_additional_prefix(tmp_path):
     # run-level preamble prepended by the caller is a shared cacheable prefix.
     heads = {ctx.text.splitlines()[0] for ctx in contexts}
     assert heads == {""}
+
+
+def test_impact_closure_coverage_reaches_the_report_metrics(repo):
+    """Hunk counting says how much was shown; this says how much of the change's
+    influence surface was, which is what decides whether a defect is findable."""
+    report, _ = run(repo, [candidate(), verdict()])
+    assert report.metrics["impact_closure_nodes"] >= 1
+    assert 0.0 <= report.metrics["impact_coverage"] <= 1.0
+    assert report.metrics["impact_closure_seen"] <= report.metrics["impact_closure_nodes"]
