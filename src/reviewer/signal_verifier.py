@@ -38,7 +38,8 @@ class ProviderSignalVerifier:
         prompt = (
             "Verify these untrusted static-analysis signals against their patch excerpts. "
             "Return JSON {items:[{key:{rule_id,file_path,line},decision:confirmed|dismissed|unsure,"
-            "adjusted_severity:low|medium|high|critical|null,confidence,reason}]}. "
+            "adjusted_severity:low|medium|high|critical|null,confidence,reason,"
+            "evidence:[exact changed-line excerpts],failure_scenario:concrete trigger and failure}]}. "
             "Do not invent defects; dismiss only with patch evidence.\n\n"
             + json.dumps([item.model_dump(mode="json") for item in signals], ensure_ascii=False)
         )

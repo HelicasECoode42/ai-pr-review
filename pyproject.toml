@@ -21,6 +21,7 @@ dependencies = [
     "structlog>=24.0",
     "tiktoken>=0.7",
     "tree-sitter>=0.22",
+    "tree-sitter-typescript>=0.23,<0.24",
     "typer>=0.12",
 ]
 
@@ -37,6 +38,7 @@ dev = [
 
 [project.scripts]
 ai-pr-review = "src.cli.main:app"
+ai-pr-review-plan = "src.cli.plan:app"
 ai-pr-review-web = "src.service.app:app"
 
 [build-system]

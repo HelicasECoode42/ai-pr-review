@@ -1,0 +1,348 @@
+{
+  "model": "deepseek-v4-flash",
+  "latency_seconds": 65.54204604099505,
+  "diff_sha256": "2fd9e45a62dfad1c13ebafa3d0e16ef8d54b3d8a29b8009ccc0830d8992d8ba4",
+  "strategy": {
+    "evidence": true,
+    "critic": false,
+    "context_pack": true,
+    "two_stage": false,
+    "verify_signals": false,
+    "min_confidence": 0.65,
+    "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "report": {
+    "pr": {
+      "repo": "PaulStSmith/figlet-comment-generator",
+      "number": 32,
+      "title": "BugFix: Link to Issues not working on VSCode",
+      "author": null,
+      "base_ref": "3750acad624b6b38b768aa8b9aa3ba1573e2f63e",
+      "head_ref": "1d0b6642fcf5ca31fc308c3d603b19ab02ea249e",
+      "head_sha": "1d0b6642fcf5ca31fc308c3d603b19ab02ea249e",
+      "html_url": null
+    },
+    "files": [
+      {
+        "filename": ".github/workflows/ci.yml",
+        "status": "modified",
+        "additions": 31,
+        "deletions": 30,
+        "changes": 61,
+        "previous_filename": null,
+        "patch_sha256": "f41f2ada46ed8bdbb286e7c7c35eaed53687a1006c56f802230c5c535720a20e"
+      },
+      {
+        "filename": ".github/workflows/publish-figlet-nuget.yml",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 2,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "09a302a0eda7a911c6b62323ebfd4fe77478126ac8afdd72c401fd7b0479ae9f"
+      },
+      {
+        "filename": ".github/workflows/publish-figlet-py.yml",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 2,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "913865cea6a22f123af75c061fc1147e25eb8112fe82e7eb30a655d804492724"
+      },
+      {
+        "filename": ".github/workflows/publish-figlet-ts.yml",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 2,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "618597b0441be6839d3390debfa63b1ee58f4c4c910aa0c71aa7d85a2f1832ca"
+      },
+      {
+        "filename": ".github/workflows/publish-figprint.yml",
+        "status": "modified",
+        "additions": 85,
+        "deletions": 39,
+        "changes": 124,
+        "previous_filename": null,
+        "patch_sha256": "a668c5d9ec054c3b31bc1beb3aa8466e8166fabbe6f8bbb22d5cc233f8de22ec"
+      },
+      {
+        "filename": ".github/workflows/publish-vs-extension.yml",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 3,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "5d554943c4e0c37687cb1df1f490ee0e8d6b6480332a49670fb49e447b4d5046"
+      },
+      {
+        "filename": ".github/workflows/publish-vscode-extension.yml",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 2,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "20870df4fd4be7337744a30f3dce38219a882db4d9ca3049fa16df3775803fc4"
+      },
+      {
+        "filename": "ChangeLog-2026.md",
+        "status": "modified",
+        "additions": 113,
+        "deletions": 0,
+        "changes": 113,
+        "previous_filename": null,
+        "patch_sha256": "a464812e9310d9216e2f40babde0e5a56d915a3e1795dcee2da56a3e23110515"
+      },
+      {
+        "filename": "ChangeLog.md",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 0,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "b48d02b35670eb4eec584a4aa44194caadf284c5bec3a09f318c5d34f212018b"
+      },
+      {
+        "filename": "FIGLet.VSCodeExtension/package.json",
+        "status": "modified",
+        "additions": 0,
+        "deletions": 12,
+        "changes": 12,
+        "previous_filename": null,
+        "patch_sha256": "8acb9235d88c7e7b413d832d53f082da477f03ef4c39b87678267d0b2acfd50b"
+      },
+      {
+        "filename": "FIGLet.VSCodeExtension/src/BannerUtils.ts",
+        "status": "modified",
+        "additions": 4,
+        "deletions": 7,
+        "changes": 11,
+        "previous_filename": null,
+        "patch_sha256": "aa8f8284d0ad65152329fa79cfb4f873be9cf022e9ae848594f668a1d7529ac1"
+      },
+      {
+        "filename": "FIGLet.VSCodeExtension/src/FIGLet/FIGFont.ts",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "752e57336322e74804c2cea01963e8dd5de5ade87e60eed6537f00dc2cc60b67"
+      },
+      {
+        "filename": "FIGLet.VSCodeExtension/src/FigletPanel.ts",
+        "status": "modified",
+        "additions": 5,
+        "deletions": 2,
+        "changes": 7,
+        "previous_filename": null,
+        "patch_sha256": "ff93e472beb8debee71018865704161bb7a9b275207b84f97961a34f7b213fe8"
+      },
+      {
+        "filename": "FIGLet.VSCodeExtension/src/FigletSettingsPanel.ts",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 5,
+        "changes": 8,
+        "previous_filename": null,
+        "patch_sha256": "85e33bf41b32837f14afcd0e4b1f8804700973a1d9cab2a50d84a87f1120d59c"
+      },
+      {
+        "filename": "FIGLet.VSCodeExtension/src/LanguageCommentStyles.ts",
+        "status": "modified",
+        "additions": 19,
+        "deletions": 5,
+        "changes": 24,
+        "previous_filename": null,
+        "patch_sha256": "a88af6eaba18a14536951f6d60b9b7289bcec04592b0bda16de9a6d6f3c21e64"
+      },
+      {
+        "filename": "FIGLet.VSCodeExtension/src/configuration.ts",
+        "status": "modified",
+        "additions": 0,
+        "deletions": 2,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "4c6cc42ed23a2d69a5a3f88f0f9d17358646bc6526d4cc6355a263983b41452e"
+      },
+      {
+        "filename": "FIGLet.VSCodeExtension/src/extension.ts",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 65,
+        "changes": 68,
+        "previous_filename": null,
+        "patch_sha256": "372089955df8b4ad671107c012a76c865f16b16baff32b5a43518a6871b7fe70"
+      },
+      {
+        "filename": "FIGLet.VSCodeExtension/src/webview/SettingsApp.tsx",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 6,
+        "changes": 7,
+        "previous_filename": null,
+        "patch_sha256": "d328591de7165ec89343cbefcb13b6f2d68db036e5e7e1f7e4c855f031a4a78d"
+      },
+      {
+        "filename": "FIGLet.VSCodeExtension/tsconfig.json",
+        "status": "modified",
+        "additions": 7,
+        "deletions": 0,
+        "changes": 7,
+        "previous_filename": null,
+        "patch_sha256": "e85426a5ddf34ad00b75e951267d00326be1819f01980cce8394319ac4cdfbf6"
+      },
+      {
+        "filename": "FIGPrint/readme.md",
+        "status": "modified",
+        "additions": 4,
+        "deletions": 0,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "43dde6ea61e3dd4cd5c3211b59bf8f9ba045205129aee3595827f632ea9884a3"
+      },
+      {
+        "filename": "readme.md",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 1,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "a935ddb4bb31938f9cede5576a6954ceb693a76fe907c092f46dc71491c0e444"
+      }
+    ],
+    "summary": "This PR removes the VS Code extension's `figlet.defaultFont` setting and `figlet.selectDefaultFont` command in favor of persisting the last used font in global state, adds a dedicated Batch (`::`) comment style, rewrites the FIGPrint WinGet publish workflow to generate the three manifests manually (with yaml-language-server schema headers and per-file upload error checks), reorders the ci.yml version-sync job, and refreshes docs/changelog. Reviewers should concentrate on the WinGet workflow rewrite (trigger paths and manifest content) and on any leftover references to the removed `figlet.defaultFont` / `figlet.selectDefaultFont` identifiers in the extension and package.json. Most of the webview/panel changes are truncated in this diff and were not verifiable.",
+    "risk_level": "low",
+    "rule_findings": [],
+    "suggestions": [],
+    "used_ai": true,
+    "ai_failure_reason": null,
+    "analysis_warnings": [
+      "2 suggestion(s) filtered out (low confidence, unchanged line, or duplicate)",
+      "Patch context was truncated to fit token budget; some files were not analyzed by AI."
+    ],
+    "context_truncated": true,
+    "context_token_count": 6791,
+    "patch_token_budget": 6000,
+    "context_tokenizer": "cl100k_base",
+    "hidden_suggestions_count": 2,
+    "skipped_context_files": [],
+    "hidden_rule_findings_count": 0,
+    "reviewer_version": "pr-branch",
+    "execution_status": "success",
+    "degradation_reason": null,
+    "report_confidence": "normal",
+    "completeness": [
+      {
+        "item": "PR 元信息获取",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "变更文件获取",
+        "status": "success",
+        "detail": "21 个文件"
+      },
+      {
+        "item": "AI 上下文文件",
+        "status": "success",
+        "detail": "全部文件进入上下文"
+      },
+      {
+        "item": "AI 分析",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "规则扫描",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "Patch 上下文",
+        "status": "partial",
+        "detail": "裁剪 — 超出 token 预算"
+      },
+      {
+        "item": "PR head 语法诊断",
+        "status": "success",
+        "detail": "未检测到语法错误"
+      }
+    ],
+    "pr_syntax_check_ok": true,
+    "review_meta": {
+      "reviewed_commit": "1d0b6642fcf5ca31fc308c3d603b19ab02ea249e",
+      "trigger_event": null,
+      "workflow_run_url": null,
+      "updated_at": null,
+      "review_mode": "full_pr"
+    },
+    "fix_tracking": [],
+    "confirmed_signals": [],
+    "dismissed_signals": [],
+    "unresolved_signals": [],
+    "unverified_signals": [],
+    "evidence_rejections": [],
+    "critic_decisions": [],
+    "stage_results": [],
+    "metrics": {
+      "raw_signal_count": 0,
+      "main_review_prompt_signal_count": 0,
+      "independent_suggestion_count": 0,
+      "evidence_rejected_suggestion_count": 0,
+      "critic_request_count": 0,
+      "critic_confirmed_count": 0,
+      "critic_dismissed_count": 0,
+      "critic_uncertain_count": 0,
+      "critic_unverified_count": 0,
+      "context_token_count": 6791,
+      "signal_verification_request_count": 0,
+      "telemetry_only_signal_count": 0,
+      "confirmed_signal_count": 0,
+      "dismissed_signal_count": 0,
+      "unresolved_signal_count": 0,
+      "unverified_signal_count": 0
+    }
+  },
+  "input_coverage": {
+    "binary_files": [],
+    "metadata_only_files": [],
+    "context_truncated": true,
+    "skipped_files": []
+  },
+  "request_count": 1,
+  "usage_records": [
+    {
+      "model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 7774,
+        "completion_tokens": 13450,
+        "total_tokens": 21224,
+        "prompt_tokens_details": {
+          "cached_tokens": 7552
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 12561
+        },
+        "prompt_cache_hit_tokens": 7552,
+        "prompt_cache_miss_tokens": 222
+      },
+      "request_id": "237e342c-d120-4aca-a06f-66ca75c25d45"
+    }
+  ],
+  "token_usage": {
+    "prompt_tokens": 7774,
+    "completion_tokens": 13450,
+    "total_tokens": 21224
+  },
+  "cost_usd": null,
+  "reviewer_commit": "acabdc0fafd67aa7946a451928f8c27e1a571202",
+  "working_tree_dirty": true,
+  "reviewer_source_sha256": "60cb296a54c9e453c85c74e32f03dc75024c44138263e2e885d21c1b315a658a",
+  "retry_transport": "streaming",
+  "timeout_seconds": 180,
+  "total_time_budget_seconds": 300,
+  "max_output_tokens": 32768
+}

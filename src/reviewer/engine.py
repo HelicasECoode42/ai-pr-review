@@ -5,7 +5,12 @@ import re
 
 from pydantic import ValidationError
 
-from src.analyzer.context_builder import build_review_context, tokenizer_name
+from src.analyzer.context_builder import (
+    ReviewContext,
+    build_review_context,
+    partial_inclusion_warning,
+    tokenizer_name,
+)
 from src.analyzer.signal_selection import select_verifiable_signals
 from typing import TYPE_CHECKING
 
@@ -27,6 +32,7 @@ from src.models import (
 )
 from src.reviewer.model_payload import ModelReviewPayload, parse_model_payload
 from src.reviewer.evidence_validator import validate_ai_evidence
+from src.reviewer.budget import budget_warnings, run_budget_report
 from src.reviewer.critic import CriticDecision, apply_critic, critique_batch, select_critic_candidates
 from src.reviewer.prompt import SYSTEM_PROMPT, build_user_prompt
 from src.reviewer.provider import ProviderError, ReviewModelProvider
@@ -67,7 +73,12 @@ def _build_completeness(
 
     # AI 上下文文件
     skipped_count = len(skipped_ctx)
-    if skipped_count == 0:
+    if ctx_truncated:
+        items.append(CompletenessItem(
+            item="AI 上下文文件", status=StepStatus.PARTIAL,
+            detail="上下文预算不足，部分补丁被裁剪或未进入上下文",
+        ))
+    elif skipped_count == 0:
         items.append(CompletenessItem(
             item="AI 上下文文件",
             status=StepStatus.SUCCESS,
@@ -144,6 +155,7 @@ def build_diagnostic_report(
     reviewer_version: str = "pr-branch",
     execution_status: str = "failed",
     language: str = "en",
+    analyzer_warnings: list[str] | None = None,
 ) -> ReviewReport:
     """Build a minimal diagnostic report when all other paths fail (Level 3 fallback).
 
@@ -175,7 +187,10 @@ def build_diagnostic_report(
         summary=summary,
         risk_level=Severity.LOW,
         used_ai=False,
-        analysis_warnings=[f"Diagnostic report generated due to: {error}"],
+        analysis_warnings=[
+            *(analyzer_warnings or []),
+            f"Diagnostic report generated due to: {error}",
+        ],
         reviewer_version=reviewer_version,
         execution_status=execution_status,
         degradation_reason=error,
@@ -269,6 +284,7 @@ def build_rule_only_report(
     pr_syntax_ok: bool = True,
     review_meta: ReviewMeta | None = None,
     gh_client: "GitHubClient | None" = None,
+    analyzer_warnings: list[str] | None = None,
 ) -> ReviewReport:
     additions = sum(f.additions for f in files)
     deletions = sum(f.deletions for f in files)
@@ -326,6 +342,7 @@ def build_rule_only_report(
         rule_findings=findings,
         suggestions=suggestions,
         used_ai=False,
+        analysis_warnings=list(analyzer_warnings or []),
         reviewer_version=reviewer_version,
         execution_status=execution_status,
         degradation_reason=degradation_reason,
@@ -380,29 +397,145 @@ def review_with_ai(
     enable_critic: bool = False,
     critic_provider: ReviewModelProvider | None = None,
     gh_client: "GitHubClient | None" = None,
+    enable_evidence_gate: bool = True,
+    review_context: "ReviewContext | None" = None,
+    prompt_addendum: str = "",
+    contract_domains: dict | None = None,
+    unit_review_max_units: int = 0,
+    unit_review_workers: int = 1,
+    unit_review_cost_ceiling_tokens: int = 0,
+    unit_evidence_tokens: int = 3000,
+    unit_checkpoint_path: str | None = None,
+    unit_max_attempts: int = 2,
+    unit_provider_factory=None,
+    repository_snapshot=None,
+    follow_changes: bool = False,
+    verify_behavior: bool = True,
+    repository_evidence_tokens: int = 6000,
+    max_input_tokens: int | None = None,
+    analyzer_warnings: list[str] | None = None,
 ) -> ReviewReport:
     try:
         # The main review must start from the PR text and diff alone. Rule
         # results are retained as audit signals, not injected as conclusions.
-        ctx = build_review_context(pr, files)
+        ctx = review_context if review_context is not None else build_review_context(
+            pr, files, include_context_pack=not follow_changes, allow_remote_file_fetch=not follow_changes
+        )
+        if follow_changes and not two_stage and (repository_snapshot is not None or (pr.head_sha and pr.base_sha)):
+            from src.reviewer.grounded_review import review_grounded, build_grounded_report
+            def run_one_unit(unit_ctx, unit_files, snapshot):
+                unit_provider = unit_provider_factory() if unit_provider_factory else provider
+                try:
+                    return review_grounded(
+                        pr, unit_files, unit_provider, snapshot, unit_ctx, max_suggestions,
+                        language, min(repository_evidence_tokens, unit_evidence_tokens),
+                        verify_behavior,
+                        max_suggestions_per_file=max_suggestions_per_file,
+                        contract_domains=contract_domains,
+                        # A unit is small: one discovery round and one verification
+                        # round. Each extra round re-sends the prompt and evidence.
+                        discovery_rounds=1, verify_rounds=1,
+                        prompt_addendum=prompt_addendum,
+                    )
+                finally:
+                    if unit_provider_factory is not None:
+                        unit_provider.close()
+
+            def grounded(snapshot):
+                # Large diffs are reviewed one semantic unit at a time. The gate is
+                # deliberate: this path costs one review per unit, so it only runs
+                # when the prompt was truncated and the unit count is capped.
+                skip_details: dict = {}
+                warnings = list(analyzer_warnings or [])
+                if unit_review_max_units and ctx.truncated and len(files) > 2:
+                    from src.reviewer.unit_review import run_units_for_review
+
+                    merged, unit_details = run_units_for_review(
+                        lambda unit_ctx, unit_files: run_one_unit(unit_ctx, unit_files, snapshot),
+                        snapshot, files,
+                        token_budget=ctx.patch_token_budget or repository_evidence_tokens,
+                        max_units=unit_review_max_units, max_workers=unit_review_workers,
+                        cost_ceiling_tokens=unit_review_cost_ceiling_tokens,
+                        checkpoint_path=unit_checkpoint_path,
+                        max_attempts=unit_max_attempts,
+                    )
+                    if merged is not None and unit_details.get("units_reviewed"):
+                        merged.bundle["unit_details"] = unit_details
+                        return build_grounded_report(
+                            pr, files, findings, merged, ctx, reviewer_version=reviewer_version,
+                            execution_status=execution_status, review_meta=review_meta,
+                            pr_syntax_ok=pr_syntax_ok, report_confidence=report_confidence,
+                            degradation_reason=degradation_reason,
+                            max_input_tokens=max_input_tokens,
+                            analyzer_warnings=warnings,
+                        )
+                    if unit_details.get("unit_review_skipped_cost"):
+                        # Refused before spending anything; the reason is recorded
+                        # rather than the run silently costing 73 CNY.
+                        skip_details = unit_details
+                        warnings.append(
+                            "Per-unit review refused before dispatch: estimated "
+                            f"{unit_details['estimated_tokens']:,} tokens for "
+                            f"{unit_details['units_where_attempted']} of "
+                            f"{unit_details['units_planned']} units exceeds the ceiling "
+                            f"{unit_details['cost_ceiling_tokens']:,}."
+                        )
+                result = review_grounded(pr, files, provider, snapshot, ctx, max_suggestions,
+                                         language, repository_evidence_tokens, verify_behavior,
+                                         max_suggestions_per_file=max_suggestions_per_file,
+                                         contract_domains=contract_domains,
+                                         prompt_addendum=prompt_addendum)
+                report = build_grounded_report(
+                    pr, files, findings, result, ctx, reviewer_version=reviewer_version,
+                    execution_status=execution_status, review_meta=review_meta, pr_syntax_ok=pr_syntax_ok,
+                    report_confidence=report_confidence, degradation_reason=degradation_reason,
+                    max_input_tokens=max_input_tokens,
+                    analyzer_warnings=warnings,
+                )
+                if skip_details:
+                    report.metrics["unit_review_skipped_cost"] = 1
+                    report.metrics["unit_review_estimated_tokens"] = skip_details["estimated_tokens"]
+                return report
+            if repository_snapshot is not None:
+                return grounded(repository_snapshot)
+            from src.analyzer.repository_context import GitHubSnapshot
+            from src.github.client import GitHubClient
+            from src.utils.config import get_settings
+            settings = get_settings()
+            # Earlier legacy callers have already closed their fetch client.
+            # Use a fresh scoped reader so HEAD evidence remains available.
+            token = gh_client.token if gh_client is not None else settings.github_token
+            with GitHubClient(token, timeout=settings.request_timeout_seconds) as reader:
+                snapshot = GitHubSnapshot(reader, pr.repo, pr.base_sha, pr.head_sha, [f.filename for f in files])
+                return grounded(snapshot)
+        stage_audit = []
         if two_stage:
             from src.reviewer.two_stage import two_stage_review
-            summary, risk_level, suggestions = two_stage_review(
+            stage_result = two_stage_review(
                 pr, files, [], provider,
                 max_suggestions=max_suggestions,
                 min_confidence=min_confidence,
                 max_suggestions_per_file=max_suggestions_per_file,
                 language=language,
+                review_context=ctx,
+                prompt_addendum=prompt_addendum,
             )
+            stage_audit = stage_result.stages
+            if stage_result.status != "success":
+                execution_status = stage_result.status
+                report_confidence = "partial" if execution_status == "partial" else "failed"
+                degradation_reason = "Two-stage review contains incomplete hotspots"
+            suggestions = stage_result.suggestions
             payload = ModelReviewPayload(
-                summary=summary,
-                risk_level=risk_level,
+                summary=stage_result.summary,
+                risk_level=stage_result.risk_level,
                 suggestions=suggestions,
             )
             total_from_model = len(suggestions)
         else:
             raw = provider.complete_json(
-                SYSTEM_PROMPT, build_user_prompt(ctx.text, max_suggestions, language)
+                SYSTEM_PROMPT + ("\n" + prompt_addendum if prompt_addendum else ""),
+                build_user_prompt(ctx.text, max_suggestions, language)
             )
             payload = parse_model_payload(raw)
             total_from_model = len(payload.suggestions)
@@ -410,14 +543,7 @@ def review_with_ai(
             payload.suggestions, files, max_suggestions, min_confidence,
             max_suggestions_per_file,
         )
-        suggestions, evidence_rejections = validate_ai_evidence(suggestions, files)
-        critic_candidates = select_critic_candidates(suggestions) if enable_critic else []
-        critic_batch = critique_batch(critic_provider or provider, critic_candidates, files)
-        if enable_critic:
-            suggestions, critic_decisions = apply_critic(suggestions, critic_candidates, critic_batch)
-        else:
-            critic_decisions = []
-        independent_suggestion_count = len(suggestions)
+        independent_suggestions = list(suggestions)
         verifiable_signals = select_verifiable_signals(findings) if verify_rule_signals else []
         verification = ProviderSignalVerifier(provider).verify_batch(
             build_signal_envelopes(verifiable_signals, files)
@@ -426,10 +552,50 @@ def review_with_ai(
         suggestions = filter_suggestions(
             merged.suggestions, files, max_suggestions, min_confidence, max_suggestions_per_file
         )
+        # Every origin passes the same output-integrity and Critic policy.
+        evidence_rejections = []
+        if enable_evidence_gate:
+            suggestions, evidence_rejections = validate_ai_evidence(suggestions, files)
+        pre_critic_suggestions = list(suggestions)
+        critic_candidates = select_critic_candidates(suggestions) if enable_critic else []
+        head_cache = {}
+        def read_frozen_head(path):
+            if path not in head_cache:
+                head_cache[path] = gh_client.get_file_contents(pr.repo, path, pr.head_sha)
+            return head_cache[path]
+        read_head_file = read_frozen_head if gh_client is not None and pr.head_sha else None
+        critic_batch = critique_batch(
+            critic_provider or provider, critic_candidates, files, read_head_file=read_head_file
+        )
+        if enable_critic:
+            suggestions, critic_decisions = apply_critic(suggestions, critic_candidates, critic_batch)
+        else:
+            critic_decisions = []
+        pending_indexes = {
+            item["suggestion_index"] for item in critic_decisions
+            if item["decision"] in {"uncertain", "unverified"}
+        }
+        pending_suggestions = [
+            suggestion.model_copy(update={"source": "ai_needs_context"})
+            for index, suggestion in enumerate(pre_critic_suggestions)
+            if index in pending_indexes
+        ]
+        # Provider outages and insufficient evidence remain visible for follow-up,
+        # but must not be counted or published as verified findings.
+        suggestions = [s for s in suggestions if s.source != "ai_critic_unverified"]
+        independent_suggestion_count = sum(
+            any((s.file_path, s.line, s.title) == (i.file_path, i.line, i.title)
+                for i in independent_suggestions) for s in suggestions
+        )
         # The visible risk level must describe the final, evidence-gated
         # suggestions rather than an unfiltered model draft.
         risk_level = _max_severity([suggestion.severity for suggestion in suggestions])
         warnings: list[str] = []
+        # Scans that could not finish must reach the reader, not just the log.
+        if analyzer_warnings:
+            warnings.extend(analyzer_warnings)
+        if stage_audit and any(s["status"] != "success" for s in stage_audit):
+            warnings.append("Two-stage failures recorded; inspect stage_results for coverage.")
         hidden = total_from_model - independent_suggestion_count
         if hidden > 0:
             warnings.append(
@@ -437,14 +603,25 @@ def review_with_ai(
                 f"unchanged line, or duplicate)"
             )
         if ctx.truncated:
+            if report_confidence in {"normal", "fallback"}:
+                report_confidence = "partial"
             warnings.append(
                 "Patch context was truncated to fit token budget; "
                 "some files were not analyzed by AI."
             )
+        partial_warning = partial_inclusion_warning(ctx)
+        if partial_warning:
+            warnings.append(partial_warning)
+        # One run-level view of every budget that shaped this prompt, with an
+        # optional cap. Measured always; enforced only when a cap is configured.
+        run_budget = run_budget_report((ctx.budgets,), cap=max_input_tokens)
+        warnings.extend(budget_warnings(run_budget))
         skipped_ctx = [
             SkippedContextFile(file_path=fpath, reason=reason)
             for fpath, reason in ctx.skipped_files
         ]
+        if pending_suggestions:
+            warnings.append(f"{len(pending_suggestions)} candidate(s) need additional context; not confirmed defects.")
         if skipped_ctx:
             skipped_names = ", ".join(s.file_path for s in skipped_ctx)
             warnings.append(
@@ -470,7 +647,7 @@ def review_with_ai(
         completeness = _build_completeness(
             pr=pr, files=files,
             skipped_ctx=skipped_ctx, ctx_truncated=ctx.truncated,
-            used_ai=True, ai_failed=False,
+            used_ai=True, ai_failed=(execution_status == "failed"),
             pr_syntax_ok=pr_syntax_ok,
         )
         report = ReviewReport(
@@ -501,6 +678,9 @@ def review_with_ai(
             unverified_signals=[item.model_dump(mode="json") for item in merged.unverified],
             evidence_rejections=evidence_rejections,
             critic_decisions=critic_decisions,
+            pending_suggestions=pending_suggestions,
+            stage_results=stage_audit,
+            budget_report=run_budget,
             metrics={
                 "raw_signal_count": len(findings),
                 "main_review_prompt_signal_count": 0,
@@ -544,7 +724,8 @@ def review_with_ai(
                                             report_confidence="partial",
                                             pr_syntax_ok=pr_syntax_ok,
                                             review_meta=review_meta,
-                                            gh_client=gh_client)
+                                            gh_client=gh_client,
+                                            analyzer_warnings=analyzer_warnings)
         except Exception as rule_exc:
             # Level 3: diagnostic report — rules also failed
             logger.warning("Rule-only fallback also failed: %s", rule_exc)
@@ -554,6 +735,7 @@ def review_with_ai(
                 reviewer_version=reviewer_version,
                 execution_status="failed",
                 language=language,
+                analyzer_warnings=analyzer_warnings,
             )
         report.ai_failure_reason = str(exc)
         # Re-build completeness to reflect AI-attempted-but-failed state
@@ -565,7 +747,8 @@ def review_with_ai(
             pr_syntax_ok=pr_syntax_ok,
         )
         report.analysis_warnings = [
-            f"AI review unavailable: {exc}. Showing rule-based analysis only."
+            f"AI review unavailable: {exc}. Showing rule-based analysis only.",
+            *(analyzer_warnings or []),
         ]
         return report
     except Exception as exc:
@@ -577,6 +760,7 @@ def review_with_ai(
             reviewer_version=reviewer_version,
             execution_status="failed",
             language=language,
+            analyzer_warnings=analyzer_warnings,
         )
 
 

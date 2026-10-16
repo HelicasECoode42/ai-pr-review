@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import logging
 import re
 import time
 from queue import Queue
@@ -16,11 +17,10 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from src.analyzer.risk_rules import collect_signals
+from src.analyzer.risk_rules import scan_signals
 from src.github.client import GitHubApiError, GitHubClient
 from src.output.markdown import render_markdown
-from src.reviewer.engine import build_rule_only_report, review_with_ai
-from src.reviewer.provider import OpenAICompatibleProvider
+from src.reviewer.engine import build_rule_only_report
 from src.utils.config import detect_output_language, get_settings
 
 app = FastAPI(title="AI PR Review Console")
@@ -224,10 +224,14 @@ def analyze(req: AnalyzeRequest) -> AnalyzeResponse | dict:
         req.language = detect_output_language(pr.title or "", pr.body or "")
 
     # 2. Rule scan
-    findings = collect_signals(files)
+    scan = scan_signals(files)
+    findings = list(scan.findings)
+    analyzer_warnings = list(scan.warnings)
 
     # 3. Build report
-    report = build_rule_only_report(pr, files, findings, language=req.language)
+    report = build_rule_only_report(
+        pr, files, findings, language=req.language, analyzer_warnings=analyzer_warnings
+    )
 
     # 4. AI review (if enabled)
     if req.use_ai:
@@ -237,30 +241,20 @@ def analyze(req: AnalyzeRequest) -> AnalyzeResponse | dict:
                 "OPENAI_API_KEY not set; falling back to rule-only."
             )
         else:
-            provider = OpenAICompatibleProvider(
-                api_key=api_key,
-                model=settings.review_model,
-                base_url=settings.openai_base_url,
-                timeout=settings.request_timeout_seconds,
-            )
+            from src.application.review import ReviewApplication
             try:
-                report = review_with_ai(
+                report = ReviewApplication(settings).review(
                     pr=pr,
                     files=files,
                     findings=findings,
-                    provider=provider,
-                    max_suggestions=settings.max_suggestions,
-                    min_confidence=settings.min_comment_confidence,
-                    max_suggestions_per_file=settings.max_suggestions_per_file,
                     language=req.language,
+                    analyzer_warnings=analyzer_warnings,
                 )
             except Exception as exc:
                 report.ai_failure_reason = str(exc)
                 report.analysis_warnings.append(
                     f"AI review failed: {exc}. Showing rule-based analysis only."
                 )
-            finally:
-                provider.close()
 
     # 5. Render output
     md = render_markdown(report, language=req.language)
@@ -340,7 +334,15 @@ def list_history() -> list[dict]:
                 "report_confidence": report.get("report_confidence", "unknown"),
                 "analyzed_at": payload.get("analyzed_at") or _history_timestamp(f.stem),
             })
-        except Exception:
+        except Exception as exc:
+            # A corrupt historical entry must not break the current listing, but
+            # it must not vanish without a trace either.
+            logging.getLogger(__name__).warning(
+                "Skipping unreadable history entry %s: %s: %s",
+                f.name,
+                type(exc).__name__,
+                exc,
+            )
             continue
     return entries
 
@@ -391,7 +393,7 @@ def repo_trend(req: TrendRequest) -> dict:
         try:
             with GitHubClient(settings.github_token, timeout=settings.request_timeout_seconds) as gh:
                 files = gh.get_changed_files(req.repo, pr.number)
-            findings = collect_signals(files)
+            findings = list(scan_signals(files).findings)
             additions = sum(f.additions for f in files)
             deletions = sum(f.deletions for f in files)
             risk = "low"

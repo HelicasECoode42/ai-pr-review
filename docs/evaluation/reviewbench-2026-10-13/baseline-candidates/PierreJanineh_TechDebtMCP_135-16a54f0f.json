@@ -1,0 +1,18 @@
+{
+  "pr": {
+    "repo": "https://github.com/PierreJanineh/TechDebtMCP",
+    "pr_number": 135,
+    "base": "ea0385c7349bbaee04456c57bf0ec3f217d63532",
+    "head": "16a54f0f85a9091f220418850eac6b4122782be5"
+  },
+  "agent": "ai-pr-review",
+  "findings": [
+    {
+      "file": "src/core/customRulesEngine.ts",
+      "start_line": 138,
+      "end_line": 138,
+      "message": "Length caps do not mitigate ReDoS (catastrophic backtracking): The PR's stated goal is to prevent ReDoS, but the added guard `if (pattern.pattern.length > MAX_PATTERN_LENGTH)` (and the companion `MAX_CODE_LENGTH` / `MAX_FILE_SIZE_BYTES` caps) only bound input/pattern *size*, not regex execution time. ReDoS is caused by exponential backtracking in short patterns, so the new limits leave the vulnerability exploitable. A pattern far under 1,000 characters still hangs the process.\nScenario: A client calls `add_custom_rule` with a 6-character pattern `(a+)+$` (passes `ALLOWED_FLAGS_RE`, well under 1,000 chars), then calls `execute_custom_rules` with `code` = 'a'.repeat(40) + '!' (under 500,000 chars). Both guards pass, the global regex undergoes catastrophic backtracking, and the server blocks until timeout/OOM instead of returning issues.\nComplement the size caps with an actual ReDoS mitigation: run regex matching in a worker/child process with a hard timeout, or use a linear-time engine such as `re2` (e.g. `new RE2(pattern.pattern, safeFlags)`), or statically reject nested quantifiers / back-references before compiling. Keep the length caps as secondary defenses but do not rely on them to close the ReDoS issue.",
+      "producer": "ai-pr-review"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "pr": {
+    "repo": "https://github.com/vanyastaff/nebula",
+    "pr_number": 224,
+    "base": "c4879eb1c460e45c11ce28e3e8a305194023b64e",
+    "head": "d5ba86dd1014b79e263d93a1e324eeec0d0b306c"
+  },
+  "agent": "ai-pr-review",
+  "findings": []
+}

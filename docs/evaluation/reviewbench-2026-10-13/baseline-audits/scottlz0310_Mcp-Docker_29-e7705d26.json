@@ -1,0 +1,248 @@
+{
+  "model": "deepseek-v4-flash",
+  "latency_seconds": 87.85189683399221,
+  "diff_sha256": "c29c5811be547deaaea3f04a24898f21f56acd18e94c03568356891a02ec2c46",
+  "strategy": {
+    "evidence": true,
+    "critic": false,
+    "context_pack": true,
+    "two_stage": false,
+    "verify_signals": false,
+    "min_confidence": 0.65,
+    "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "report": {
+    "pr": {
+      "repo": "scottlz0310/Mcp-Docker",
+      "number": 29,
+      "title": "Phase1: copilot-review-mcp OAuth Facade (ISSUE#28)",
+      "author": null,
+      "base_ref": "63baf3dbbc10d271710706f56150dd8425dd4b4a",
+      "head_ref": "e7705d269ea374d49e7999bdb8bc42e9480a6b37",
+      "head_sha": "e7705d269ea374d49e7999bdb8bc42e9480a6b37",
+      "html_url": null
+    },
+    "files": [
+      {
+        "filename": "docker-compose.yml",
+        "status": "modified",
+        "additions": 39,
+        "deletions": 0,
+        "changes": 39,
+        "previous_filename": null,
+        "patch_sha256": "8f8ef774795ad3e1d2047f1b996fc641cb4bad3f79e03f6f7cc08b65228b2f68"
+      },
+      {
+        "filename": "services/copilot-review-mcp/Dockerfile",
+        "status": "added",
+        "additions": 16,
+        "deletions": 0,
+        "changes": 16,
+        "previous_filename": null,
+        "patch_sha256": "ae8fc627734907b9d2336acd0e34690c25d9b6667de80e22b42d4327debae483"
+      },
+      {
+        "filename": "services/copilot-review-mcp/cmd/server/main.go",
+        "status": "added",
+        "additions": 133,
+        "deletions": 0,
+        "changes": 133,
+        "previous_filename": null,
+        "patch_sha256": "8404ad3be0812482c664264dc8cbeeab47712eaaa6e76d0211aaca61c15e5906"
+      },
+      {
+        "filename": "services/copilot-review-mcp/go.mod",
+        "status": "added",
+        "additions": 3,
+        "deletions": 0,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "286c07b23d7445ef4f2298adec9f9b94db21d921176c15dd7e9a6dfedd2436b2"
+      },
+      {
+        "filename": "services/copilot-review-mcp/go.sum",
+        "status": "added",
+        "additions": 0,
+        "deletions": 0,
+        "changes": 0,
+        "previous_filename": null,
+        "patch_sha256": "f7695bbc5c8d1b23794d00d491e6bafd5f91963ae099957d9f4e0aeb662322df"
+      },
+      {
+        "filename": "services/copilot-review-mcp/internal/auth/handler.go",
+        "status": "added",
+        "additions": 323,
+        "deletions": 0,
+        "changes": 323,
+        "previous_filename": null,
+        "patch_sha256": "4a08517d930585940b9d907840fd1af215c8417c1182732095ba95cd58b09925"
+      },
+      {
+        "filename": "services/copilot-review-mcp/internal/auth/session.go",
+        "status": "added",
+        "additions": 206,
+        "deletions": 0,
+        "changes": 206,
+        "previous_filename": null,
+        "patch_sha256": "e228c6ba69968291f6c9905eaf214b87712ff39f6f229cfd55cb618fe6d92551"
+      },
+      {
+        "filename": "services/copilot-review-mcp/internal/middleware/auth.go",
+        "status": "added",
+        "additions": 81,
+        "deletions": 0,
+        "changes": 81,
+        "previous_filename": null,
+        "patch_sha256": "5c5e0edc0a6e2cb40b9e95cfb68d2ae992a227bf4a214a27d7a2c9670c92cfe3"
+      }
+    ],
+    "summary": "Adds a new Go service (services/copilot-review-mcp) that acts as an OAuth 2.0 facade in front of GitHub: RFC 8414 discovery, /authorize redirect, /callback code exchange, /token with S256 PKCE, an in-memory session/code/token-cache store with a janitor goroutine, a bearer-token validation middleware, and docker-compose wiring. The core review surface is the security of the authorization-code flow and the lifecycle of the unbounded in-memory maps. Reviewers should focus on whether PKCE is really enforced, what error details are exposed to clients, and how the store behaves under unauthenticated load.",
+    "risk_level": "low",
+    "rule_findings": [],
+    "suggestions": [
+      {
+        "file_path": "services/copilot-review-mcp/internal/auth/handler.go",
+        "line": 196,
+        "severity": "low",
+        "confidence": 0.65,
+        "title": "Internal error text is returned to clients in the invalid_grant description",
+        "reason": "The Token handler passes the raw store error into the OAuth error description (`oauthError(w, \"invalid_grant\", err.Error(), http.StatusBadRequest)`). ExchangeCode in session.go produces distinct internal messages such as `fmt.Errorf(\"redirect_uri mismatch\")` and `fmt.Errorf(\"code not found or expired\")`, and verifyPKCE emits `fmt.Errorf(\"PKCE verification failed\")` / `fmt.Errorf(\"invalid_grant\")`. These are leaked verbatim to unauthenticated callers of POST /token.",
+        "recommendation": "Keep the detailed reason server-side and return a stable public description: `slog.Warn(\"token exchange rejected\", \"err\", err)` then `oauthError(w, \"invalid_grant\", \"invalid_grant\", http.StatusBadRequest)`. Alternatively define typed errors in session.go and map them to fixed, non-informative descriptions.",
+        "source": "ai",
+        "evidence": [
+          "oauthError(w, \"invalid_grant\", err.Error(), http.StatusBadRequest)"
+        ],
+        "failure_scenario": "An attacker probing POST /token with guessed codes and redirect_uri values can distinguish 'code not found or expired' from 'redirect_uri mismatch' from 'PKCE verification failed', which reveals whether a code exists, whether it is still live, and which validation step failed, aiding targeted guessing or reconnaissance."
+      }
+    ],
+    "used_ai": true,
+    "ai_failure_reason": null,
+    "analysis_warnings": [
+      "3 suggestion(s) filtered out (low confidence, unchanged line, or duplicate)",
+      "Patch context was truncated to fit token budget; some files were not analyzed by AI."
+    ],
+    "context_truncated": true,
+    "context_token_count": 6654,
+    "patch_token_budget": 6000,
+    "context_tokenizer": "cl100k_base",
+    "hidden_suggestions_count": 3,
+    "skipped_context_files": [],
+    "hidden_rule_findings_count": 0,
+    "reviewer_version": "pr-branch",
+    "execution_status": "success",
+    "degradation_reason": null,
+    "report_confidence": "normal",
+    "completeness": [
+      {
+        "item": "PR 元信息获取",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "变更文件获取",
+        "status": "success",
+        "detail": "8 个文件"
+      },
+      {
+        "item": "AI 上下文文件",
+        "status": "success",
+        "detail": "全部文件进入上下文"
+      },
+      {
+        "item": "AI 分析",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "规则扫描",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "Patch 上下文",
+        "status": "partial",
+        "detail": "裁剪 — 超出 token 预算"
+      },
+      {
+        "item": "PR head 语法诊断",
+        "status": "success",
+        "detail": "未检测到语法错误"
+      }
+    ],
+    "pr_syntax_check_ok": true,
+    "review_meta": {
+      "reviewed_commit": "e7705d269ea374d49e7999bdb8bc42e9480a6b37",
+      "trigger_event": null,
+      "workflow_run_url": null,
+      "updated_at": null,
+      "review_mode": "full_pr"
+    },
+    "fix_tracking": [],
+    "confirmed_signals": [],
+    "dismissed_signals": [],
+    "unresolved_signals": [],
+    "unverified_signals": [],
+    "evidence_rejections": [],
+    "critic_decisions": [],
+    "stage_results": [],
+    "metrics": {
+      "raw_signal_count": 0,
+      "main_review_prompt_signal_count": 0,
+      "independent_suggestion_count": 1,
+      "evidence_rejected_suggestion_count": 0,
+      "critic_request_count": 0,
+      "critic_confirmed_count": 0,
+      "critic_dismissed_count": 0,
+      "critic_uncertain_count": 0,
+      "critic_unverified_count": 0,
+      "context_token_count": 6654,
+      "signal_verification_request_count": 0,
+      "telemetry_only_signal_count": 0,
+      "confirmed_signal_count": 0,
+      "dismissed_signal_count": 0,
+      "unresolved_signal_count": 0,
+      "unverified_signal_count": 0
+    }
+  },
+  "input_coverage": {
+    "binary_files": [],
+    "metadata_only_files": [
+      "services/copilot-review-mcp/go.sum"
+    ],
+    "context_truncated": true,
+    "skipped_files": []
+  },
+  "request_count": 1,
+  "usage_records": [
+    {
+      "model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 7769,
+        "completion_tokens": 19062,
+        "total_tokens": 26831,
+        "prompt_tokens_details": {
+          "cached_tokens": 384
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 17261
+        },
+        "prompt_cache_hit_tokens": 384,
+        "prompt_cache_miss_tokens": 7385
+      },
+      "request_id": "de344310-cc52-4409-99ad-a4193f703c08"
+    }
+  ],
+  "token_usage": {
+    "prompt_tokens": 7769,
+    "completion_tokens": 19062,
+    "total_tokens": 26831
+  },
+  "cost_usd": null,
+  "reviewer_commit": "200ab1002c0362761cbcc1cac145bbd7d2ad47b8",
+  "working_tree_dirty": true,
+  "reviewer_source_sha256": "f06d31d67053fc56be31ee3149087d8573a8e08cb382d5a4297313be307c708c",
+  "transport": "streaming",
+  "timeout_seconds": 180,
+  "total_time_budget_seconds": 300,
+  "max_output_tokens": 32768
+}

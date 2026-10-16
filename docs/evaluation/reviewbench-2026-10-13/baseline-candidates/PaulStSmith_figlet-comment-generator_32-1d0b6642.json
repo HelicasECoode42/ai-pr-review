@@ -1,0 +1,10 @@
+{
+  "pr": {
+    "repo": "https://github.com/PaulStSmith/figlet-comment-generator",
+    "pr_number": 32,
+    "base": "3750acad624b6b38b768aa8b9aa3ba1573e2f63e",
+    "head": "1d0b6642fcf5ca31fc308c3d603b19ab02ea249e"
+  },
+  "agent": "ai-pr-review",
+  "findings": []
+}

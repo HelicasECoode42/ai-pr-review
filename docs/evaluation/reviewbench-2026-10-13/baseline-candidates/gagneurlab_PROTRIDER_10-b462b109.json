@@ -1,0 +1,25 @@
+{
+  "pr": {
+    "repo": "https://github.com/gagneurlab/PROTRIDER",
+    "pr_number": 10,
+    "base": "22740c695315543a1064915930f806abf5b058ce",
+    "head": "b462b109b630dd1e1a9a78088b18429d2baaae9b"
+  },
+  "agent": "ai-pr-review",
+  "findings": [
+    {
+      "file": "src/protrider/pipeline.py",
+      "start_line": 509,
+      "end_line": 509,
+      "message": "model_was_loaded is derived from file existence instead of actual load success, silently skipping training: The added line `model_was_loaded = (checkpoint_path and checkpoint_path.exists() and q is not None)` treats a checkpoint file as 'model loaded' purely from its existence plus a non-None q. But `load_model` returns `(None, None)` on any failure (e.g. `model.load_state_dict` raising on a shape mismatch, caught by the broad `except Exception`), and in that case the `if model is None:` branch runs `find_latent_dim`/`init_model`, which sets a non-None q. The file still exists, so model_was_loaded becomes True, `should_train = config.autoencoder_training and not model_was_loaded` is False, and the freshly initialized (untrained) model is used.\nScenario: Run once in `out_dir='out'` on dataset A (writes out/model.pt), then run again in the same out_dir with a different protein panel. `torch.load` succeeds but `model.load_state_dict` raises on the dimension mismatch, `load_model` returns (None, None), `find_latent_dim`+`init_model` produce a new random model, yet model_was_loaded is True, so training is skipped, `final_loss = init_loss`, and all downstream residuals/p-values/z-scores are computed from an untrained autoencoder with no error surfaced.\nTrack the actual load outcome instead of re-deriving it from the filesystem, e.g. `model, q = load_model(...)` and `model_was_loaded = model is not None`, or set a boolean `loaded_from_checkpoint = False` and flip it to True only inside the successful `load_model` path. Delete the state dict from the fresh model path accordingly.",
+      "producer": "ai-pr-review"
+    },
+    {
+      "file": "src/protrider/pipeline.py",
+      "start_line": 448,
+      "end_line": 448,
+      "message": "Checkpointing is silently re-enabled by defaulting to out_dir/model.pt, making results depend on out_dir reuse: The added `else: checkpoint_path = Path(config.out_dir) / 'model.pt'` means a checkpoint path always exists, so line 450's `if checkpoint_path and checkpoint_path.exists()` will find and load the model written by the previous run (line in the save block: `save_model(model, str(checkpoint_path), q)`). This contradicts the stated goal of the PR (checkpointing opt-in via a commented-out `checkpoint_path` in config.yaml) and makes the pipeline silently stateful across runs.\nScenario: A user runs PROTRIDER twice with identical config into the same out_dir (a common pattern when re-running after tweaking pval params). The second run finds out/model.pt, skips training entirely, and reports results produced by the first run's weights, so hyperparameters that affect training (n_epochs, lr, h_dim, or changed input data of the same width) are silently ignored.\nOnly load/save when the user explicitly opted in: keep `checkpoint_path = Path(config.checkpoint_path) if config.checkpoint_path else None` and guard both the load block and the save block with `if checkpoint_path:`, or use a distinct, explicitly user-chosen filename rather than reusing out_dir/model.pt implicitly.",
+      "producer": "ai-pr-review"
+    }
+  ]
+}

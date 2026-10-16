@@ -9,21 +9,21 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from src.application.protocol import AgentContext
 
 
 @dataclass
 class AgentTool:
     """A named tool that the Runner can invoke.
 
-    The execute callable receives a mutable ``ctx: dict[str, Any]`` and
+    The execute callable receives a validated ``AgentContext`` and
     reads/writes intermediate data (PullRequest, ChangedFile list, etc.)
     through it.  The Runner records AgentStep entries in ReviewAgentState
     separately — tools do not touch state directly.
     """
 
     name: str
-    execute: Callable[..., Any]
+    execute: Callable[[AgentContext], None]
     description: str = ""   # Human-readable, appears in trace and error messages
     risk: str = "read"      # "read" | "write" — whether the tool has side effects
 

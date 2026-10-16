@@ -19,6 +19,20 @@ class OutputLanguage(str, Enum):
     ZH = "zh"
 
 
+def _warn_step_summary_failure(report, exc: Exception) -> str:
+    """Surface a failed step-summary write instead of dropping it silently.
+
+    A missing step summary makes CI look as if the tool reported nothing while
+    the run believes it succeeded, so the reason goes to both the console and,
+    when a report exists, its audit trail.
+    """
+    message = f"Could not write the GitHub step summary: {type(exc).__name__}: {exc}"
+    console.print(f"[yellow]{message}[/yellow]")
+    if report is not None:
+        report.analysis_warnings = [*report.analysis_warnings, message]
+    return message
+
+
 def _write_failure_report(
     output: Path | None,
     *,
@@ -141,9 +155,12 @@ def analyze(
         help="Output language (auto-detected from PR if not set).",
     ),
     agent_mode: str = typer.Option(
-        "off",
+        "auto",
         "--agent-mode",
-        help="Agent mode: off (legacy, default), auto, rule_only, one_shot_ai, two_stage.",
+        help=(
+            "Orchestration: auto (default; picks rule_only/one_shot_ai/two_stage from the diff), "
+            "rule_only, one_shot_ai, two_stage, or off (legacy single-pass path)."
+        ),
     ),
 ) -> None:
     settings = get_settings()
@@ -271,9 +288,9 @@ def analyze(
                 f"**PR:** {repo}#{pr_number}\n"
             )
             write_step_summary(summary)
-        except Exception:
-            # Do not raise during reporting
-            pass
+        except Exception as exc:
+            # Do not raise during reporting, but do not hide it either.
+            _warn_step_summary_failure(None, exc)
         # Return success exit so CI can still archive artifact produced
         raise typer.Exit(code=0)
 
@@ -281,13 +298,12 @@ def analyze(
     # catch errors and emit a diagnostics report instead of crashing the workflow.
     try:
         # Local imports to avoid import-time failures when modules are broken
-        from src.analyzer.risk_rules import collect_signals
+        from src.analyzer.risk_rules import scan_signals
         from src.output.json_report import render_json
         from src.output.markdown import render_markdown
         from src.models import ReviewMeta
-        from src.reviewer.engine import build_rule_only_report, review_with_ai
+        from src.reviewer.engine import build_rule_only_report
         from datetime import datetime, timezone
-        from src.reviewer.provider import OpenAICompatibleProvider
     except Exception as exc:
         console.print(f"[red]Runtime import error in analyzer/reviewer modules: {exc}[/red]")
         detail = f"Runtime import error in analyzer/reviewer modules: {exc}"
@@ -306,8 +322,10 @@ def analyze(
             for f in files:
                 try:
                     parts.append(f"- {f.filename} +{f.additions}/-{f.deletions}")
-                except Exception:
-                    continue
+                except Exception as exc:
+                    # Keep one line per changed file so the failure report does
+                    # not quietly understate how much changed.
+                    parts.append(f"- <unreadable changed file: {type(exc).__name__}>")
         parts.append("")
         parts.append("Please check the repository changes that might have modified the review tool code.\n")
         content = "\n".join(parts)
@@ -327,13 +345,15 @@ def analyze(
                 f"**PR:** {repo}#{pr_number if pr is None else pr.number}\n"
             )
             write_step_summary(summary)
-        except Exception:
-            pass
+        except Exception as exc:
+            _warn_step_summary_failure(None, exc)
         raise typer.Exit(code=0)
 
     # Safe execution path
     try:
-        findings = collect_signals(files)
+        scan = scan_signals(files)
+        findings = list(scan.findings)
+        analyzer_warnings = list(scan.warnings)
         report = build_rule_only_report(
             pr,
             files,
@@ -352,6 +372,7 @@ def analyze(
                 review_mode=review_mode,
             ),
             gh_client=github,
+            analyzer_warnings=analyzer_warnings,
         )
 
         if use_ai:
@@ -362,42 +383,31 @@ def analyze(
                     write_step_summary(
                         "## AI Review - Skipped\n\n**Reason:** OPENAI_API_KEY not set; falling back to rule-only report.\n"
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    _warn_step_summary_failure(None, exc)
             else:
-                provider = OpenAICompatibleProvider(
-                    api_key=settings.openai_api_key,
-                    model=settings.review_model,
-                    base_url=settings.openai_base_url,
-                    timeout=settings.request_timeout_seconds,
+                from src.application.review import ReviewApplication
+                report = ReviewApplication(settings).review(
+                    pr=pr,
+                    files=files,
+                    findings=findings,
+                    language=language.value,
+                    reviewer_version=reviewer_version,
+                    execution_status=execution_status,
+                    degradation_reason=degradation_reason,
+                    report_confidence=report_confidence,
+                    pr_syntax_ok=pr_syntax_ok,
+                    review_meta=ReviewMeta(
+                        reviewed_commit=reviewed_commit,
+                        trigger_event=trigger_event,
+                        workflow_run_url=workflow_run_url,
+                        updated_at=datetime.now(timezone.utc).isoformat(),
+                        review_mode=review_mode,
+                    ),
+                    two_stage=two_stage,
+                    gh_client=github,
+                    analyzer_warnings=analyzer_warnings,
                 )
-                try:
-                    report = review_with_ai(
-                        pr=pr,
-                        files=files,
-                        findings=findings,
-                        provider=provider,
-                        max_suggestions=settings.max_suggestions,
-                        min_confidence=settings.min_comment_confidence,
-                        max_suggestions_per_file=settings.max_suggestions_per_file,
-                        language=language.value,
-                        reviewer_version=reviewer_version,
-                        execution_status=execution_status,
-                        degradation_reason=degradation_reason,
-                        report_confidence=report_confidence,
-                        pr_syntax_ok=pr_syntax_ok,
-                        review_meta=ReviewMeta(
-                            reviewed_commit=reviewed_commit,
-                            trigger_event=trigger_event,
-                            workflow_run_url=workflow_run_url,
-                            updated_at=datetime.now(timezone.utc).isoformat(),
-                            review_mode=review_mode,
-                        ),
-                        two_stage=two_stage,
-                        gh_client=github,
-                    )
-                finally:
-                    provider.close()
 
         # ── FixTracking: compare against previous review ─────────
         try:
@@ -447,8 +457,8 @@ def analyze(
             summary_lines.append('\n**AI used:** ' + ('yes' if getattr(report, 'used_ai', False) else 'no'))
             if summary_lines:
                 write_step_summary('\n'.join(summary_lines) + '\n')
-        except Exception:
-            pass
+        except Exception as exc:
+            _warn_step_summary_failure(report, exc)
 
         if report.ai_failure_reason:
             console.print(
@@ -498,8 +508,8 @@ def analyze(
                 f"**PR:** {repo}#{pr_number}\n"
             )
             write_step_summary(summary)
-        except Exception:
-            pass
+        except Exception as exc:
+            _warn_step_summary_failure(None, exc)
         # Do not fail CI.
         raise typer.Exit(code=0)
 

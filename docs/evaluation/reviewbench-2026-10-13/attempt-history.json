@@ -1,0 +1,601 @@
+[
+  {
+    "run": "reviewbench-baseline-v2",
+    "model": "deepseek-v4-flash",
+    "reviewer_commit": "acabdc0fafd67aa7946a451928f8c27e1a571202",
+    "source_sha256": "ad6bf74b1bac6495265b788ad064fc9b4367a85a0c45ddc4a2a67d5eafd8e757",
+    "records": [
+      {
+        "case_id": "PierreJanineh_TechDebtMCP_135-16a54f0f",
+        "status": "failed",
+        "error": "EvaluationFailure",
+        "failure": {
+          "stage": "provider",
+          "http_status": null,
+          "fatal": false
+        }
+      },
+      {
+        "case_id": "simnaut_emdash_2-41d75006",
+        "status": "success",
+        "request_count": 1
+      },
+      {
+        "case_id": "konturio_disaster-ninja-fe_1230-d169e9da",
+        "status": "failed",
+        "error": "EvaluationFailure",
+        "failure": {
+          "stage": "provider",
+          "http_status": null,
+          "fatal": false
+        }
+      },
+      {
+        "case_id": "cmik_apilix_12-0c34439a",
+        "status": "success",
+        "request_count": 1
+      },
+      {
+        "case_id": "AA-Factory_aafactory-prototype_17-a1978cb7",
+        "status": "failed",
+        "error": "EvaluationFailure",
+        "failure": {
+          "stage": "provider",
+          "http_status": null,
+          "fatal": false
+        }
+      },
+      {
+        "case_id": "DisciplinedSoftware_Codebase-Conversion_1-4b46d68c",
+        "status": "failed",
+        "error": "EvaluationFailure",
+        "failure": {
+          "stage": "provider",
+          "http_status": null,
+          "fatal": false
+        }
+      },
+      {
+        "case_id": "brianc_node-postgres_3650-b922f0dd",
+        "status": "failed",
+        "error": "EvaluationFailure",
+        "failure": {
+          "stage": "provider",
+          "http_status": null,
+          "fatal": false
+        }
+      },
+      {
+        "case_id": "PaulStSmith_figlet-comment-generator_32-1d0b6642",
+        "status": "failed",
+        "error": "EvaluationFailure",
+        "failure": {
+          "stage": "provider",
+          "http_status": null,
+          "fatal": false
+        }
+      },
+      {
+        "case_id": "brexhq_CrabTrap_15-5ef0884c",
+        "status": "failed",
+        "error": "EvaluationFailure",
+        "failure": {
+          "stage": "provider",
+          "http_status": null,
+          "fatal": false
+        }
+      },
+      {
+        "case_id": "k1LoW_gh-copilot-review_9-f9828193",
+        "status": "success",
+        "request_count": 1
+      },
+      {
+        "case_id": "scotthamilton77_agents-config_1-1fc78970",
+        "status": "failed",
+        "error": "EvaluationFailure",
+        "failure": {
+          "stage": "provider",
+          "http_status": null,
+          "fatal": false
+        }
+      },
+      {
+        "case_id": "ardevd_jadx-collaboration_3-853179dc",
+        "status": "failed",
+        "error": "EvaluationFailure",
+        "failure": {
+          "stage": "provider",
+          "http_status": null,
+          "fatal": false
+        }
+      },
+      {
+        "case_id": "AY2526S2-CS2103T-W14-3_tp_152-e0a9ce03",
+        "status": "failed",
+        "error": "EvaluationFailure",
+        "failure": {
+          "stage": "provider",
+          "http_status": null,
+          "fatal": false
+        }
+      },
+      {
+        "case_id": "vanyastaff_nebula_224-d5ba86dd",
+        "status": "failed",
+        "error": "EvaluationFailure",
+        "failure": {
+          "stage": "provider",
+          "http_status": null,
+          "fatal": false
+        }
+      },
+      {
+        "case_id": "NCATSTranslator_translator-ingests_336-efb31e9c",
+        "status": "failed",
+        "error": "EvaluationFailure",
+        "failure": {
+          "stage": "provider",
+          "http_status": null,
+          "fatal": false
+        }
+      }
+    ],
+    "interrupted": true
+  },
+  {
+    "run": "reviewbench-baseline-v2-retry",
+    "model": "deepseek-v4-flash",
+    "reviewer_commit": "acabdc0fafd67aa7946a451928f8c27e1a571202",
+    "source_sha256": "7f6d305b70ad9e6e095c5e1cc335b5c8339caf9bcabd3285851e2eaf34401280",
+    "records": [
+      {
+        "case_id": "PierreJanineh_TechDebtMCP_135-16a54f0f",
+        "status": "success",
+        "request_count": 1
+      },
+      {
+        "case_id": "simnaut_emdash_2-41d75006",
+        "status": "success",
+        "request_count": 0,
+        "reused_from": "reviewbench-baseline-v2"
+      },
+      {
+        "case_id": "konturio_disaster-ninja-fe_1230-d169e9da",
+        "status": "success",
+        "request_count": 1
+      },
+      {
+        "case_id": "cmik_apilix_12-0c34439a",
+        "status": "success",
+        "request_count": 0,
+        "reused_from": "reviewbench-baseline-v2"
+      },
+      {
+        "case_id": "AA-Factory_aafactory-prototype_17-a1978cb7",
+        "status": "failed",
+        "error": "EvaluationFailure",
+        "failure": {
+          "stage": "review_failed_or_degraded",
+          "http_status": null,
+          "fatal": false
+        }
+      },
+      {
+        "case_id": "DisciplinedSoftware_Codebase-Conversion_1-4b46d68c",
+        "status": "success",
+        "request_count": 1
+      },
+      {
+        "case_id": "brianc_node-postgres_3650-b922f0dd",
+        "status": "success",
+        "request_count": 1
+      }
+    ],
+    "interrupted": true
+  },
+  {
+    "run": "reviewbench-baseline-v2-bounded",
+    "model": "deepseek-v4-flash",
+    "reviewer_commit": "acabdc0fafd67aa7946a451928f8c27e1a571202",
+    "source_sha256": "60cb296a54c9e453c85c74e32f03dc75024c44138263e2e885d21c1b315a658a",
+    "records": [
+      {
+        "case_id": "PierreJanineh_TechDebtMCP_135-16a54f0f",
+        "status": "success",
+        "request_count": 0,
+        "reused_from": "reviewbench-baseline-v2-retry"
+      },
+      {
+        "case_id": "simnaut_emdash_2-41d75006",
+        "status": "success",
+        "request_count": 0,
+        "reused_from": "reviewbench-baseline-v2-retry"
+      },
+      {
+        "case_id": "konturio_disaster-ninja-fe_1230-d169e9da",
+        "status": "success",
+        "request_count": 0,
+        "reused_from": "reviewbench-baseline-v2-retry"
+      },
+      {
+        "case_id": "cmik_apilix_12-0c34439a",
+        "status": "success",
+        "request_count": 0,
+        "reused_from": "reviewbench-baseline-v2-retry"
+      },
+      {
+        "case_id": "AA-Factory_aafactory-prototype_17-a1978cb7",
+        "status": "success",
+        "request_count": 1
+      },
+      {
+        "case_id": "DisciplinedSoftware_Codebase-Conversion_1-4b46d68c",
+        "status": "success",
+        "request_count": 0,
+        "reused_from": "reviewbench-baseline-v2-retry"
+      },
+      {
+        "case_id": "brianc_node-postgres_3650-b922f0dd",
+        "status": "success",
+        "request_count": 0,
+        "reused_from": "reviewbench-baseline-v2-retry"
+      },
+      {
+        "case_id": "PaulStSmith_figlet-comment-generator_32-1d0b6642",
+        "status": "success",
+        "request_count": 1
+      },
+      {
+        "case_id": "brexhq_CrabTrap_15-5ef0884c",
+        "status": "success",
+        "request_count": 1
+      },
+      {
+        "case_id": "k1LoW_gh-copilot-review_9-f9828193",
+        "status": "success",
+        "request_count": 1
+      },
+      {
+        "case_id": "scotthamilton77_agents-config_1-1fc78970",
+        "status": "success",
+        "request_count": 1
+      },
+      {
+        "case_id": "ardevd_jadx-collaboration_3-853179dc",
+        "status": "success",
+        "request_count": 1
+      },
+      {
+        "case_id": "AY2526S2-CS2103T-W14-3_tp_152-e0a9ce03",
+        "status": "success",
+        "request_count": 1
+      },
+      {
+        "case_id": "vanyastaff_nebula_224-d5ba86dd",
+        "status": "success",
+        "request_count": 1
+      }
+    ],
+    "interrupted": true
+  },
+  {
+    "run": "reviewbench-baseline-v2-final",
+    "model": "deepseek-v4-flash",
+    "reviewer_commit": "200ab1002c0362761cbcc1cac145bbd7d2ad47b8",
+    "source_sha256": "f06d31d67053fc56be31ee3149087d8573a8e08cb382d5a4297313be307c708c",
+    "records": [
+      {
+        "case_id": "PierreJanineh_TechDebtMCP_135-16a54f0f",
+        "status": "success",
+        "request_count": 0,
+        "reused_from": "reviewbench-baseline-v2-bounded"
+      },
+      {
+        "case_id": "simnaut_emdash_2-41d75006",
+        "status": "success",
+        "request_count": 0,
+        "reused_from": "reviewbench-baseline-v2-bounded"
+      },
+      {
+        "case_id": "konturio_disaster-ninja-fe_1230-d169e9da",
+        "status": "success",
+        "request_count": 0,
+        "reused_from": "reviewbench-baseline-v2-bounded"
+      },
+      {
+        "case_id": "cmik_apilix_12-0c34439a",
+        "status": "success",
+        "request_count": 0,
+        "reused_from": "reviewbench-baseline-v2-bounded"
+      },
+      {
+        "case_id": "AA-Factory_aafactory-prototype_17-a1978cb7",
+        "status": "success",
+        "request_count": 1,
+        "reused_from": "reviewbench-baseline-v2-bounded"
+      },
+      {
+        "case_id": "DisciplinedSoftware_Codebase-Conversion_1-4b46d68c",
+        "status": "success",
+        "request_count": 0,
+        "reused_from": "reviewbench-baseline-v2-bounded"
+      },
+      {
+        "case_id": "brianc_node-postgres_3650-b922f0dd",
+        "status": "success",
+        "request_count": 0,
+        "reused_from": "reviewbench-baseline-v2-bounded"
+      },
+      {
+        "case_id": "PaulStSmith_figlet-comment-generator_32-1d0b6642",
+        "status": "success",
+        "request_count": 1,
+        "reused_from": "reviewbench-baseline-v2-bounded"
+      },
+      {
+        "case_id": "brexhq_CrabTrap_15-5ef0884c",
+        "status": "success",
+        "request_count": 1,
+        "reused_from": "reviewbench-baseline-v2-bounded"
+      },
+      {
+        "case_id": "k1LoW_gh-copilot-review_9-f9828193",
+        "status": "success",
+        "request_count": 1,
+        "reused_from": "reviewbench-baseline-v2-bounded"
+      },
+      {
+        "case_id": "scotthamilton77_agents-config_1-1fc78970",
+        "status": "success",
+        "request_count": 1,
+        "reused_from": "reviewbench-baseline-v2-bounded"
+      },
+      {
+        "case_id": "ardevd_jadx-collaboration_3-853179dc",
+        "status": "success",
+        "request_count": 1,
+        "reused_from": "reviewbench-baseline-v2-bounded"
+      },
+      {
+        "case_id": "AY2526S2-CS2103T-W14-3_tp_152-e0a9ce03",
+        "status": "success",
+        "request_count": 1,
+        "reused_from": "reviewbench-baseline-v2-bounded"
+      },
+      {
+        "case_id": "vanyastaff_nebula_224-d5ba86dd",
+        "status": "success",
+        "request_count": 1,
+        "reused_from": "reviewbench-baseline-v2-bounded"
+      },
+      {
+        "case_id": "NCATSTranslator_translator-ingests_336-efb31e9c",
+        "status": "success",
+        "request_count": 1
+      },
+      {
+        "case_id": "mheuss_chronicle_14-04ac4c02",
+        "status": "success",
+        "request_count": 1
+      },
+      {
+        "case_id": "superhighfives_pika_200-b227aff0",
+        "status": "success",
+        "request_count": 1
+      },
+      {
+        "case_id": "gagneurlab_PROTRIDER_10-b462b109",
+        "status": "success",
+        "request_count": 1
+      },
+      {
+        "case_id": "allan-mobley-jr_gimmes_468-e1477f8b",
+        "status": "success",
+        "request_count": 1
+      },
+      {
+        "case_id": "superyyrrzz_ForgeMap_106-2f3977ed",
+        "status": "success",
+        "request_count": 1
+      },
+      {
+        "case_id": "renedierking_LANdalf_88-bc1698f4",
+        "status": "success",
+        "request_count": 1
+      },
+      {
+        "case_id": "scottlz0310_Mcp-Docker_29-e7705d26",
+        "status": "success",
+        "request_count": 1
+      },
+      {
+        "case_id": "wirechat_wirechat_183-6e3156e7",
+        "status": "failed",
+        "error": "EvaluationFailure",
+        "failure": {
+          "stage": "provider",
+          "http_status": null,
+          "fatal": false,
+          "error_kind": "incomplete_response",
+          "model_outputs": []
+        }
+      },
+      {
+        "case_id": "sdsykes_fastimage_165-8fc7cd32",
+        "status": "failed",
+        "error": "EvaluationFailure",
+        "failure": {
+          "stage": "provider",
+          "http_status": null,
+          "fatal": false,
+          "error_kind": "incomplete_response",
+          "model_outputs": []
+        }
+      },
+      {
+        "case_id": "Marvell-Consulting_statswales-frontend_626-30ba27a5",
+        "status": "success",
+        "request_count": 1
+      }
+    ],
+    "interrupted": false
+  },
+  {
+    "run": "reviewbench-baseline-v2-complete",
+    "model": "deepseek-v4-flash",
+    "reviewer_commit": "200ab1002c0362761cbcc1cac145bbd7d2ad47b8",
+    "source_sha256": "d22560c2d9a3cd28eb8957bde561acf758276bd32ede42392f9b6648b54a5561",
+    "records": [
+      {
+        "case_id": "PierreJanineh_TechDebtMCP_135-16a54f0f",
+        "status": "success",
+        "request_count": 0,
+        "reused_from": "reviewbench-baseline-v2-final"
+      },
+      {
+        "case_id": "simnaut_emdash_2-41d75006",
+        "status": "success",
+        "request_count": 0,
+        "reused_from": "reviewbench-baseline-v2-final"
+      },
+      {
+        "case_id": "konturio_disaster-ninja-fe_1230-d169e9da",
+        "status": "success",
+        "request_count": 0,
+        "reused_from": "reviewbench-baseline-v2-final"
+      },
+      {
+        "case_id": "cmik_apilix_12-0c34439a",
+        "status": "success",
+        "request_count": 0,
+        "reused_from": "reviewbench-baseline-v2-final"
+      },
+      {
+        "case_id": "AA-Factory_aafactory-prototype_17-a1978cb7",
+        "status": "success",
+        "request_count": 1,
+        "reused_from": "reviewbench-baseline-v2-final"
+      },
+      {
+        "case_id": "DisciplinedSoftware_Codebase-Conversion_1-4b46d68c",
+        "status": "success",
+        "request_count": 0,
+        "reused_from": "reviewbench-baseline-v2-final"
+      },
+      {
+        "case_id": "brianc_node-postgres_3650-b922f0dd",
+        "status": "success",
+        "request_count": 0,
+        "reused_from": "reviewbench-baseline-v2-final"
+      },
+      {
+        "case_id": "PaulStSmith_figlet-comment-generator_32-1d0b6642",
+        "status": "success",
+        "request_count": 1,
+        "reused_from": "reviewbench-baseline-v2-final"
+      },
+      {
+        "case_id": "brexhq_CrabTrap_15-5ef0884c",
+        "status": "success",
+        "request_count": 1,
+        "reused_from": "reviewbench-baseline-v2-final"
+      },
+      {
+        "case_id": "k1LoW_gh-copilot-review_9-f9828193",
+        "status": "success",
+        "request_count": 1,
+        "reused_from": "reviewbench-baseline-v2-final"
+      },
+      {
+        "case_id": "scotthamilton77_agents-config_1-1fc78970",
+        "status": "success",
+        "request_count": 1,
+        "reused_from": "reviewbench-baseline-v2-final"
+      },
+      {
+        "case_id": "ardevd_jadx-collaboration_3-853179dc",
+        "status": "success",
+        "request_count": 1,
+        "reused_from": "reviewbench-baseline-v2-final"
+      },
+      {
+        "case_id": "AY2526S2-CS2103T-W14-3_tp_152-e0a9ce03",
+        "status": "success",
+        "request_count": 1,
+        "reused_from": "reviewbench-baseline-v2-final"
+      },
+      {
+        "case_id": "vanyastaff_nebula_224-d5ba86dd",
+        "status": "success",
+        "request_count": 1,
+        "reused_from": "reviewbench-baseline-v2-final"
+      },
+      {
+        "case_id": "NCATSTranslator_translator-ingests_336-efb31e9c",
+        "status": "success",
+        "request_count": 1,
+        "reused_from": "reviewbench-baseline-v2-final"
+      },
+      {
+        "case_id": "mheuss_chronicle_14-04ac4c02",
+        "status": "success",
+        "request_count": 1,
+        "reused_from": "reviewbench-baseline-v2-final"
+      },
+      {
+        "case_id": "superhighfives_pika_200-b227aff0",
+        "status": "success",
+        "request_count": 1,
+        "reused_from": "reviewbench-baseline-v2-final"
+      },
+      {
+        "case_id": "gagneurlab_PROTRIDER_10-b462b109",
+        "status": "success",
+        "request_count": 1,
+        "reused_from": "reviewbench-baseline-v2-final"
+      },
+      {
+        "case_id": "allan-mobley-jr_gimmes_468-e1477f8b",
+        "status": "success",
+        "request_count": 1,
+        "reused_from": "reviewbench-baseline-v2-final"
+      },
+      {
+        "case_id": "superyyrrzz_ForgeMap_106-2f3977ed",
+        "status": "success",
+        "request_count": 1,
+        "reused_from": "reviewbench-baseline-v2-final"
+      },
+      {
+        "case_id": "renedierking_LANdalf_88-bc1698f4",
+        "status": "success",
+        "request_count": 1,
+        "reused_from": "reviewbench-baseline-v2-final"
+      },
+      {
+        "case_id": "scottlz0310_Mcp-Docker_29-e7705d26",
+        "status": "success",
+        "request_count": 1,
+        "reused_from": "reviewbench-baseline-v2-final"
+      },
+      {
+        "case_id": "wirechat_wirechat_183-6e3156e7",
+        "status": "success",
+        "request_count": 1
+      },
+      {
+        "case_id": "sdsykes_fastimage_165-8fc7cd32",
+        "status": "success",
+        "request_count": 1
+      },
+      {
+        "case_id": "Marvell-Consulting_statswales-frontend_626-30ba27a5",
+        "status": "success",
+        "request_count": 1,
+        "reused_from": "reviewbench-baseline-v2-final"
+      }
+    ],
+    "interrupted": false
+  }
+]

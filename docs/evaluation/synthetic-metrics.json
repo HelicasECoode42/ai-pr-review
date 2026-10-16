@@ -1,0 +1,45 @@
+{
+  "scoring_protocol": "strict_internal_adjudication_not_official_reviewbench",
+  "variants": {
+    "baseline": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "failed_cases": 4,
+      "unadjudicated_cases": 0,
+      "precision": null,
+      "recall": null,
+      "f1": null
+    },
+    "no_evidence": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "failed_cases": 4,
+      "unadjudicated_cases": 0,
+      "precision": null,
+      "recall": null,
+      "f1": null
+    },
+    "with_critic": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "failed_cases": 4,
+      "unadjudicated_cases": 0,
+      "precision": null,
+      "recall": null,
+      "f1": null
+    },
+    "no_context": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "failed_cases": 4,
+      "unadjudicated_cases": 0,
+      "precision": null,
+      "recall": null,
+      "f1": null
+    }
+  }
+}

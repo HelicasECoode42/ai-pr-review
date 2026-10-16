@@ -15,6 +15,38 @@ class GitHubApiError(Exception):
     pass
 
 
+def _as_int(value: object) -> int:
+    """GitHub counts are integers; a wrong type becomes 0 instead of a crash."""
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _as_text(value: object) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _changed_file(item: dict) -> ChangedFile:
+    """Build one ChangedFile from an API entry by sanitizing its fields.
+
+    A surprising field type must not remove a changed file from the review input:
+    coverage accounting only sees the files it is handed, so a file dropped here
+    would never show up as an omission anywhere downstream.
+    """
+    status_str = item.get("status")
+    return ChangedFile(
+        filename=item["filename"],
+        status=(
+            FileStatus(status_str)
+            if isinstance(status_str, str) and status_str in FileStatus._value2member_map_
+            else FileStatus.UNKNOWN
+        ),
+        additions=_as_int(item.get("additions")),
+        deletions=_as_int(item.get("deletions")),
+        changes=_as_int(item.get("changes")),
+        patch=_as_text(item.get("patch")),
+        previous_filename=_as_text(item.get("previous_filename")),
+    )
+
+
 class GitHubClient:
     def __init__(self, token: str | None, timeout: float = 45.0) -> None:
         self.token = token
@@ -68,6 +100,7 @@ class GitHubClient:
             body=data.get("body"),
             author=(data.get("user") or {}).get("login"),
             base_ref=(data.get("base") or {}).get("ref"),
+            base_sha=(data.get("base") or {}).get("sha"),
             head_ref=head_info.get("ref"),
             head_sha=head_info.get("sha"),
             html_url=data.get("html_url"),
@@ -83,22 +116,24 @@ class GitHubClient:
         if not isinstance(data, list):
             return []
         results: list[PullRequest] = []
-        for item in data[:count]:
-            try:
-                head_info = item.get("head") or {}
-                results.append(PullRequest(
-                    repo=repo,
-                    number=item.get("number", 0),
-                    title=item.get("title", ""),
-                    body=item.get("body"),
-                    author=(item.get("user") or {}).get("login"),
-                    base_ref=(item.get("base") or {}).get("ref"),
-                    head_ref=head_info.get("ref"),
-                    head_sha=head_info.get("sha"),
-                    html_url=item.get("html_url"),
-                ))
-            except Exception:
+        for index, item in enumerate(data[:count]):
+            if not isinstance(item, dict):
+                # This list is a convenience index, not review input, so a bad
+                # entry is skipped — but never silently.
+                logger.warning("Skipping malformed PR entry #%d from %s", index, repo)
                 continue
+            head_info = item.get("head") or {}
+            results.append(PullRequest(
+                repo=repo,
+                number=_as_int(item.get("number")),
+                title=_as_text(item.get("title")) or "",
+                body=_as_text(item.get("body")),
+                author=_as_text((item.get("user") or {}).get("login")),
+                base_ref=_as_text((item.get("base") or {}).get("ref")),
+                head_ref=_as_text(head_info.get("ref")),
+                head_sha=_as_text(head_info.get("sha")),
+                html_url=_as_text(item.get("html_url")),
+            ))
         return results
 
     def get_compare(self, repo: str, base: str, head: str) -> list[ChangedFile]:
@@ -115,27 +150,13 @@ class GitHubClient:
         data = response.json()
         raw_files = data.get("files") or []
         result: list[ChangedFile] = []
-        for item in raw_files:
-            try:
-                status_str = item.get("status", "unknown")
-                status = (
-                    FileStatus(status_str)
-                    if status_str in FileStatus._value2member_map_
-                    else FileStatus.UNKNOWN
+        for index, item in enumerate(raw_files):
+            if not isinstance(item, dict) or not _as_text(item.get("filename")):
+                # Loud, because skipping would silently shrink the reviewed change set.
+                raise GitHubApiError(
+                    f"Malformed file entry #{index} in compare {base}...{head}: missing filename"
                 )
-                result.append(
-                    ChangedFile(
-                        filename=item.get("filename", ""),
-                        status=status,
-                        additions=item.get("additions", 0),
-                        deletions=item.get("deletions", 0),
-                        changes=item.get("changes", 0),
-                        patch=item.get("patch"),
-                        previous_filename=item.get("previous_filename"),
-                    )
-                )
-            except Exception:
-                continue
+            result.append(_changed_file(item))
         return result
 
     def get_changed_files(self, repo: str, number: int) -> list[ChangedFile]:
@@ -149,23 +170,15 @@ class GitHubClient:
             batch = response.json()
             if not batch:
                 break
-            for item in batch:
-                try:
-                    status_str = item.get("status", "unknown")
-                    status = FileStatus(status_str) if status_str in FileStatus._value2member_map_ else FileStatus.UNKNOWN
-                    files.append(
-                        ChangedFile(
-                            filename=item.get("filename", ""),
-                            status=status,
-                            additions=item.get("additions", 0),
-                            deletions=item.get("deletions", 0),
-                            changes=item.get("changes", 0),
-                            patch=item.get("patch"),
-                            previous_filename=item.get("previous_filename"),
-                        )
+            for index, item in enumerate(batch):
+                if not isinstance(item, dict) or not _as_text(item.get("filename")):
+                    # Loud, because skipping would silently shrink the reviewed change set
+                    # before any coverage accounting can record the omission.
+                    raise GitHubApiError(
+                        f"Malformed file entry #{index} on page {page} of {repo}#{number}:"
+                        " missing filename"
                     )
-                except Exception as e:
-                    logger.warning(f"Failed to parse file entry: {e}, skipping")
+                files.append(_changed_file(item))
             page += 1
         return files
 

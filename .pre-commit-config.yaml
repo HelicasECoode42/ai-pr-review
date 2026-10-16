@@ -1,0 +1,30 @@
+# Gates that must pass before a commit exists. They were all in CI already, and a
+# commit still went in three times with a failing test, because CI runs after the
+# push. These run in seconds and are offline: no model, no network.
+repos:
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest (full suite)
+        entry: .venv/bin/python -m pytest -q
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: criteria-gate
+        name: criteria gate (offline)
+        entry: .venv/bin/python scripts/criteria_gate.py
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: interface-audit
+        name: interface audit (seams)
+        entry: .venv/bin/python scripts/interface_audit.py
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: holdout
+        name: criteria holdout
+        entry: .venv/bin/python scripts/holdout_eval.py
+        language: system
+        pass_filenames: false
+        always_run: true

@@ -1,426 +1,198 @@
-# AI PR Review Assistant
+# AI PR Review
 
+把 PR diff 变成**可追溯**的审查结论：发现候选 → 取证 → **机械核验** → 判定 → 发布。
+本地优先，CI 用影子模式。**AI 辅助人工 Review，不替代人。**
+
+- **规范**（唯一的）：[docs/HARNESS.md](docs/HARNESS.md)
+- **我们强在哪、为什么**：[docs/ADVANTAGES.md](docs/ADVANTAGES.md)
+- **开发过程记录**：[HANDOFF.md](HANDOFF.md)（非规范）
+
+---
+
+## 它怎么工作
+
+```mermaid
+flowchart TD
+    A[GitHub PR / 本地 range] --> B[冻结输入<br/>base SHA + head SHA + diff + inventory]
+    B --> C{预算能否装下 diff?}
+    C -- 能 --> D[一次审查<br/>patch 上下文 + 证据包]
+    C -- 不能 --> E[按语义单元分片<br/>ReviewUnit 至上限<br/>受限并发 · 顺序确定]
+    D --> F[发现 discovery<br/>候选 + 触发/预期/实际]
+    E --> F
+    F --> G[取证 retrieval<br/>定义 · 调用方 · 契约]
+    G --> H[核验过滤器链]
+    H --> I[判定与路由]
+    I --> J[发布<br/>summary + 可选行内评论]
+    H -.-> K[(判定记录<br/>filter_verdicts + criteria_version)]
 ```
-https://www.bilibili.com/video/BV1YKVQ6TE6M/?vd_source=2d2e5574c167e4ae93d225908e32da1b
+
+### 核验过滤器链 —— 与"会读 diff 的模型"的根本差别
+
+```mermaid
+flowchart LR
+    A[候选 confirmed] --> B{chain_completeness<br/>行为链字段齐全?}
+    B -- 否 --> X[needs_context]
+    B -- 是 --> C{source_provenance<br/>引文来自已发送文本<br/>且与快照逐字一致?}
+    C -- 否 --> X
+    C -- 是 --> D{witness_eval<br/>求值 base vs head}
+    D -- 找到见证 --> E{契约域检查<br/>见证输入合法?}
+    D -- 域内无差异 --> X
+    E -- 越界 --> X
+    E -- 合法 --> F[发布<br/>带见证]
 ```
 
-==视频时长约五分钟==
+- `witness_eval` **实际求值**（AST 白名单、无 exec、域与步数预算）：**能证伪才发布**。
+- 等价改写（`0<=i<n` ↔ `i<0 or i>=n`）在 32 个赋值上找不到见证 → **机械上无法 confirmed**。
+- 见证若越出声明的契约域（如 `count:int` 却用 `None`）→ **不算见证**。
+- 每条候选留下 `filter_verdicts`（过滤器名 + 通过与否 + 理由），报告带 `criteria_version`。
 
-> AI PR Review Assistant 将 PR diff 自动转化为可读、可信、可追溯的审查结果，并通过 GitHub、Web Console 和 VS Code 插件把问题带回开发者的代码上下文。AI 辅助人工 Review，而非替代。
+### 大 diff 怎么处理
 
-AI PR Review Assistant 是一个面向 GitHub Pull Request 的 AI 代码审查工具。它围绕真实 Review 流程设计：自动获取 PR 变更，结合本地规则扫描和大模型分析生成结构化报告，再把结果发布到 GitHub、Web Console 和 VS Code IDE 中，帮助开发者更快理解变更、定位风险并回到代码现场处理问题。
-
-项目目标不是用 AI 替代人工 Review，而是把重复性的上下文整理、风险预筛、报告生成和代码定位交给系统，让审查者把注意力放在真正需要判断的设计、业务和安全风险上。
-
-## 产品闭环
-
-```text
-GitHub PR
-  -> GitHub API 获取元信息、文件变更和 patch
-  -> Risk Rules 扫描高风险路径和代码模式
-  -> Cross-File Analyzer 检测跨文件调用链
-  -> Agent Runner 选择策略（rule_only / one_shot / two_stage）
-  -> LLM Reviewer 生成结构化建议 + 验证规则信号
-  -> 本地过滤置信度、重复项和非变更行噪音
-  -> Markdown / JSON ReviewReport + Agent Trace Sidecar
-  -> GitHub Comment / Web Console / VS Code Problems & Panel
+```mermaid
+flowchart LR
+    A[13 万 tokens 窗口] --> B[原始 diff 可能 59 万 tokens]
+    B --> C[默认: 按 hunk 记账<br/>complete/partial/omitted]
+    B --> D[超大: ReviewUnit 分片<br/>每单元独立预算]
+    C --> E[报告: 这次到底看了多少]
+    D --> E
 ```
 
-当前项目提供三个使用入口：
+---
 
-| 入口 | 目标用户 | 作用 |
-|---|---|---|
-| GitHub Actions | 团队协作中的 PR 审查者 | PR 创建或更新后自动审查，发布 summary comment 和高置信 inline comments |
-| Web Console | 评委、队友、非 IDE 用户 | 粘贴 GitHub PR URL 后直接分析任意 PR，可视化查看建议和完整报告 |
-| VS Code 插件 | 正在本地修代码的开发者 | 自动识别当前分支 PR，把 Review 结果同步到 Problems、Review Panel 和 CodeLens |
-
-底层 CLI 和 Review Engine 被多个入口复用，保证同一套分析逻辑可以运行在本地、CI、Web 服务和 IDE 插件中。
-
-## 快速演示
-
-观看 AI PR Review 的完整使用流程：
-
-- **Web Console**：粘贴 PR URL → 一键分析 → 可视化建议与报告
-- **GitHub Actions**：PR 创建/更新后自动审查，发布 summary comment 和 inline review
-- **VS Code 插件**：Problems 面板跳转本地代码，Review Panel 展示完整报告
-
-> Demo 视频：见上方百度网盘 / B 站链接（约五分钟）。如外链不便访问，推荐使用下方 Web Console 的 ✨ Try Demo 功能 — 加载预生成离线报告，无需 GitHub Token、模型 Key 和网络。
-
-最短体验路径（零配置、不需要 GitHub Token、不需要模型 Key）：
+## 快速开始（本地）
 
 ```bash
-git clone https://github.com/HelicasECoode42/ai-pr-review.git
-cd ai-pr-review
+git clone https://github.com/HelicasECoode42/ai-pr-review.git && cd ai-pr-review
 uv sync --extra dev
-uv run uvicorn src.service.app:app --reload
-# 打开 http://127.0.0.1:8000，点击 ✨ Try Demo
-```
 
-## 解决的问题
-
-- 大 PR 文件多、diff 长，人工快速建立全局理解成本高。
-- 鉴权、异常处理、SQL 注入、命令执行、敏感日志、测试绕过等风险点容易漏看。
-- Lint/test 能发现确定性错误，但发现不了很多意图偏差和设计风险。
-- 直接让 AI 评论容易噪声太大，需要结构化输出、证据链、本地过滤和置信度控制。
-- PR 代码本身可能已经坏掉，审查工具不能因此完全跑不出报告。
-- 传统报告和本地代码上下文割裂，开发者需要在 GitHub、报告和 IDE 之间反复切换。
-
-## 当前能力
-
-### 核心分析引擎
-
-- 通过 GitHub REST API 获取 PR 元数据、变更文件和 patch。
-- 解析 diff，提取 changed lines 和 patch hunk 上下文。
-- 本地规则扫描高风险路径和高风险代码模式。
-- **跨文件分析**：AST 级检测 PR 内的函数签名变更和跨文件调用关系。
-- **Agent 编排**：自研 Runner 执行 rule-only、one-shot 或 two-stage 审查，并记录完整 trace（工具步骤、耗时、策略原因、降级路径）。
-- **Token 预算**：使用 cl100k_base 控制 Context Pack 与 patch 上下文；tokenizer 不可用时采用保守 UTF-8 byte 上界，避免离线运行失效。
-- **规则信号验证**：AI 对每条规则命中做确认/驳回/调整严重度，降低误报。
-- 注入轻量 Context Pack，包括项目 Review Guide、函数索引、README 和架构说明。
-- 使用 OpenAI-compatible provider 调用模型，支持 OpenAI、DeepSeek、Azure OpenAI 等兼容服务。
-- 使用 Pydantic schema + **4 层 JSON fallback**（含截断修复）约束模型输出。
-- 通过 changed-line、confidence、重复项和每文件数量限制控制噪音。
-- AI 失败时自动降级为 rule-only 报告，显式降级链可追踪。
-
-### GitHub Actions 自动审查
-
-- PR `opened`、`synchronize`、`reopened` 时自动运行。
-- 上传 `pr-review.md` 和 `pr-review.json` artifact。
-- 发布可更新的 PR summary comment，避免每次运行刷屏。
-- 只把高置信、带行号的建议发布为 GitHub inline review comments。
-- 记录 ReviewMeta：审查 commit、触发事件、workflow run URL、更新时间和 review mode。
-- 使用 base 分支稳定 reviewer 分析 PR diff，避免 PR 把审查器自身改坏后完全无报告。
-- 对 PR head 额外执行 Python 语法诊断；坏 PR 仍生成报告，但 workflow 最终失败，避免误合并。
-
-### Web Console
-
-- 提供 FastAPI 后端和静态前端页面。
-- **Demo-first**：点击 ✨ Try Demo 直接加载离线报告，不需要 GitHub Token、不需要模型 Key、不访问网络。
-- 支持粘贴 GitHub PR URL，自动解析 repo 和 PR number。
-- 支持中文/英文、Rule-only / AI Review、Legacy / Agent 引擎切换。
-- 展示整体风险、文件数、增删行、AI 使用状态、报告可信度和耗时。
-- 提供 Suggestions、Completeness、Report、History 四个视图。
-- 支持按严重程度过滤建议、复制评论、下载 JSON、打开 GitHub PR。
-- `/api/config` 返回环境状态（token 是否配置、demo 是否可用），不泄露密钥。
-
-启动方式：
-
-```bash
-uv run uvicorn src.service.app:app --reload
-```
-
-打开：
-
-```text
-http://127.0.0.1:8000
-```
-
-### VS Code 插件
-
-插件目录：
-
-```text
-vscode-extension/
-```
-
-已提供 VSIX 安装包：
-
-```text
-vscode-extension/ai-pr-review-0.2.0.vsix
-```
-
-安装：
-
-方法1：
-
-```bash
-code --install-extension vscode-extension/ai-pr-review-0.2.0.vsix --force
-```
-
-方法2：
-  1. 打开 VS Code
-  2. 按 Ctrl+Shift+X 打开扩展面板（或左侧边栏点那个四个方块图标）
-  3. 右上角点 ...（三个点，Views and More Actions）
-  4. 选 "Install from VSIX..."（从 VSIX 安装）
-  5. 在弹出的文件选择窗口里，找到你项目里的 vscode-extension\ai-pr-review-0.2.0.vsix，选中，确认
-
-安装后在 VS Code 中可使用：
-
-- `AI PR Review: Refresh`：从 GitHub 拉取当前分支对应 PR 的 Review 结果。
-- `AI PR Review: Open Review Panel`：打开 IDE 内 Review 面板。
-- `AI PR Review: Load Report File`：手动加载本地 `pr-review.json`。
-- `AI PR Review: Clear Diagnostics`：清除 Problems 诊断。
-
-IDE 体验：
-
-- 状态栏显示 `AI Review: loading / clean / N issues / no PR`。
-- Problems 面板显示 AI Review diagnostics，点击跳转本地文件行。
-- Review Panel 左侧展示 inline suggestions，右侧渲染完整 Markdown summary report。
-- `Open Code` 和文件路径都可以跳转到本地代码。
-- CodeLens 在有建议的代码行上方显示 `AI Review: HIGH 92% - ...`，点击打开 Review Panel。
-
-## 安装与配置
-
-推荐使用 `uv`：
-
-```bash
-git clone https://github.com/HelicasECoode42/ai-pr-review.git
-cd ai-pr-review
-uv sync --extra dev
-```
-
-也可以使用 venv + pip：
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-```
-
-创建 `.env` 文件，注意不要提交：
-
-```ini
-GITHUB_TOKEN=ghp_xxx
-
-OPENAI_API_KEY=sk-xxx
-OPENAI_BASE_URL=https://api.openai.com/v1
-REVIEW_MODEL=gpt-4.1-mini
-
-# 默认 false：规则只记录为 telemetry，不影响 AI 审查，也不产生额外模型请求
-VERIFY_RULE_SIGNALS=false
-
-# 默认 false：仅对通过 Evidence Gate 的中高风险建议执行一次批量反驳审查
-ENABLE_CRITIC=false
-# 留空则复用 REVIEW_MODEL；可设为 deepseek-v4-pro
-CRITIC_MODEL=
-```
-
-公开仓库可以不配置 `GITHUB_TOKEN`，但匿名请求容易触发 GitHub API rate limit。建议配置 fine-grained token，至少需要：
-
-- Metadata: Read
-- Pull requests: Read
-- Contents: Read
-
-DeepSeek 示例：
-
-```ini
-OPENAI_API_KEY=你的 DeepSeek API Key
+cat > .env <<'ENV'
+OPENAI_API_KEY=sk-...
 OPENAI_BASE_URL=https://api.deepseek.com/v1
 REVIEW_MODEL=deepseek-v4-flash
+GITHUB_TOKEN=ghp_...
+ENV
+
+uv run python -m src.cli.main OWNER/REPO 123 --output reports/pr-review.md
+uv run python -m src.cli.main OWNER/REPO 123 --no-ai      # 只跑规则，不调模型
 ```
 
-### 模型选择依据
+没有 API key 时**自动降级为规则模式**并在报告里说明，不会静默失败。
 
-项目默认推荐两种模型，兼顾成本、速度和代码理解能力：
+## 放进别人的 CI（reusable workflow）
 
-| 模型 | 推荐场景 | 优势 |
-|------|----------|------|
-| `gpt-4.1-mini` | 默认推荐，英文/通用项目 | mini 级模型，代码理解和结构化输出表现稳定；速度快；原生支持 `response_format: json_object`，便于约束输出 schema；成本低，适合高频自动审查 |
-| `deepseek-v4-flash` | 中文项目、成本敏感场景 | DeepSeek 当前网关支持的快速模型；OpenAI-compatible API 可直接接入 |
-
-两种模型通过相同的 OpenAI-compatible 接口调用。你可以通过修改 `OPENAI_BASE_URL` 接入任何兼容服务（Azure OpenAI、Ollama 本地模型、其他第三方代理）。
-
-`VERIFY_RULE_SIGNALS` 默认为 `false`。开启后，只有密钥日志、shell 执行、动态执行和 SQL 字符串拼接等高精度机械 signal 才会进入一次批量 AI 验证；路径和跨文件规则始终只保留为 telemetry。
-## CLI 用法
-
-AI + 规则分析（Agent 模式）：
-
-```bash
-uv run python -m src.cli.main owner/repo 123 \
-  --language zh \
-  --agent-mode one_shot_ai \
-  --output reports/pr-123.md
+```yaml
+# .github/workflows/ai-review.yml —— 放在你的仓库
+name: AI PR Review
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+jobs:
+  review:
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: HelicasECoode42/ai-pr-review/.github/workflows/ai-pr-review-reusable.yml@main
+    with:
+      reviewer_ref: "<tag 或 40 位 SHA>"   # 建议固定版本
+      language: auto
+      post_inline: false                    # 默认只发一条可更新的 summary
+      max_input_tokens: 6000
+    secrets:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}   # 用你自己的 key
 ```
 
-仅规则扫描，无需模型 API Key：
-
-```bash
-uv run python -m src.cli.main owner/repo 123 \
-  --no-ai \
-  --language zh \
-  --output reports/pr-123.md
+```mermaid
+sequenceDiagram
+    participant PR as Pull Request
+    participant CI as Caller CI（你的仓库）
+    participant RW as ai-pr-review@ref
+    participant LLM as OpenAI 兼容 API
+    PR->>CI: PR 事件 + 你自己的 secrets
+    CI->>RW: 安装并运行（不跑你的源码）
+    RW->>PR: 读取 diff（你的 GITHUB_TOKEN）
+    RW->>LLM: 发现 → 取证 → 核验
+    RW-->>CI: pr-review.json（usage/cache/预算/判据版本）
+    RW->>PR: 一条可更新的 summary（可选行内评论）
 ```
 
-JSON 输出：
+---
 
-```bash
-uv run python -m src.cli.main owner/repo 123 \
-  --format json \
-  --output reports/pr-123.json
-```
+## 输出
 
-常用参数：
-
-| 参数 | 说明 |
+| 字段 | 含义 |
 |---|---|
-| `--output` / `-o` | 报告输出路径 |
-| `--format` | `markdown`，默认，或 `json` |
-| `--ai` / `--no-ai` | 是否调用 AI 模型 |
-| `--agent-mode` | 审查引擎：`off`（默认，旧路径）、`auto`、`rule_only`、`one_shot_ai`、`two_stage` |
-| `--language` | `en`，默认，或 `zh` |
-| `--reviewer-version` | 报告中的 reviewer 来源标记，例如 `pr-branch` / `main-fallback` |
-| `--execution-status` | 报告中的执行状态标记，例如 `success` / `degraded` |
-| `--degradation-reason` | 降级原因说明 |
-| `--report-confidence` | 报告可信度标记，例如 `normal` / `fallback` / `partial` |
-| `--reviewed-commit` | 本次审查目标 commit SHA，主要由 CI 传入 |
-| `--trigger-event` | 触发事件，例如 `pull_request` / `workflow_dispatch` |
-| `--workflow-run-url` | 本次 GitHub Actions run URL |
+| `symbol` / `symbol_status` / `symbol_reason` | 属于哪个函数/类；取不到时**给理由**（`documentation`、`hunk_header_has_no_context`…） |
+| `confidence` / `source` | 自报置信度与来源（`ai_behavior_verified` = 通过核验） |
+| `evidence` | 原文引用（必须来自已发送文本） |
+| `pending_suggestions` | 证据不足的候选（**保留可见，不静默丢弃**） |
+| `metrics` | `usage_*`、`cache_hit_rate`、`witness_blocked_count`、`units_*`、`criteria_version`、`experience_ids` |
+| `budget_report` / `omissions` | 每个切片的下场与原因 |
 
-## GitHub Actions 运行语义
+## 配置（常用）
 
-仓库内置 `.github/workflows/ai-pr-review.yml`。这个 workflow 故意区分两件事：
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `REVIEW_MODEL` / `CRITIC_MODEL` | — | 主审 / 对抗模型 |
+| `ENABLE_CRITIC` | `true` | 对抗复核（第二个模型再跑一遍） |
+| `PUBLISH_MIN_CONFIDENCE` | `0.80` | 行内评论阈值（盖章进报告，workflow 读取） |
+| `REPOSITORY_EVIDENCE_TOKENS` | `6000` | 证据包预算 |
+| `MAX_REVIEW_INPUT_TOKENS` | 空 | 整次运行输入上限（控成本） |
+| `UNIT_REVIEW_MAX_UNITS` | `12` | 大 PR 分片上限（0 = 关闭） |
+| `UNIT_REVIEW_WORKERS` | `4` | 单元并发（硬上限 8） |
+| `PLAYBOOK_PATH` | `knowledge/playbook.md` | 知识层 |
+| `PLAYBOOK_RECALL_K` | `5` | 每次召回条目数 |
 
-```text
-报告能否生成 != PR 是否可以合并
-```
+---
 
-流程：
+## 部署方式
 
-1. Checkout PR 的 base 分支，使用稳定 reviewer 运行审查工具。
-2. 安装依赖并检查 base 分支 reviewer 自身语法。
-3. 额外 checkout PR head 到 `_pr_head/`。
-4. 对 `_pr_head/src` 和 `_pr_head/tests` 执行 Python 语法诊断。
-5. 即使 PR head 语法失败，也继续运行 AI PR Review 并生成报告。
-6. 将语法诊断追加到 `reports/pr-review.md`，并上传 artifact。
-7. 发布 summary comment 和高置信 inline comment。
-8. 如果 PR head 语法失败，最后一步显式 `exit 1`，让 workflow 标红，阻止合并。
+| 方式 | 命令 | 定位 |
+|---|---|---|
+| **本地 CLI**（主推） | `uv run python -m src.cli.main OWNER/REPO PR` | push 前自检；成本可控 |
+| **CI 影子**（次推） | 上面的 reusable workflow，`post_inline: false` | 团队：一条 summary，不刷屏、不阻塞合并 |
+| **一次性试用** | `uvx --from git+https://github.com/HelicasECoode42/ai-pr-review ai-pr-review OWNER/REPO PR` | 不安装 |
+| **Web Console**（演示） | `uv run uvicorn src.service.app:app --port 8000` | 离线 Demo，**非对外承诺** |
+| **容器** | `docker build -t ai-pr-review . && docker run --env-file .env ai-pr-review OWNER/REPO PR` | 隔离环境（Dockerfile 待补） |
+| **VS Code 插件** | **已冻结，非受支持入口** | 源码与扩展安全审计保留；不列入当前交付 |
 
-也就是说，坏 PR 的预期结果是：
+**安全**：`reviewer_ref` 决定在**你的 CI 里、用你的 secrets** 执行哪个远端版本 → **固定 tag 或 SHA**。diff 与证据摘录会发往 `OPENAI_BASE_URL`；用 `MAX_REVIEW_INPUT_TOKENS` 设上限。被审仓库内容一律视为**不可信数据**。
 
-```text
-review 报告生成：是
-workflow 最终成功：否
-PR 可合并：否
-```
-
-这能避免“代码坏了导致完全没有报告”，也能避免“有报告所以误以为可以合并”。
-
-## 报告内容
-
-Markdown 报告包含：
-
-- 审查元信息：commit、触发事件、workflow run、更新时间、审查模式。
-- 修复追踪：为后续判断旧建议是否已修复预留结构。
-- 运行状态：reviewer 来源、执行状态、降级原因、报告可信度。
-- 分析完整性：PR 元数据、变更文件、AI 上下文、AI 分析、规则扫描、patch 上下文是否完整。
-- PR 概览：仓库、PR、作者、base/head、变更统计、整体风险。
-- 变更总结：AI 或规则生成的摘要。
-- 文件变更：文件列表和增删行统计。
-- Review 建议：位置、严重程度、置信度、原因和修复建议。
-- 规则扫描结果：本地规则命中的风险证据。
-- 分析备注：AI 失败、上下文截断、过滤项等说明。
-- PR head 语法诊断：如果 PR 提交的 Python 代码无法编译，会追加错误摘要。
-
-JSON 报告用于自动评论、Web Console、VS Code 插件和未来服务化集成。
-
-## 架构
-
-```text
-src/
-  agent/          Agent 编排层（state, trace, policy, registry, runner）
-  cli/            Typer CLI 入口
-  github/         GitHub REST API 客户端
-  analyzer/       diff 解析、上下文构建、风险规则扫描、跨文件分析
-  reviewer/       LLM provider、prompt、结构化 Review 引擎、payload 解析、filter
-  output/         Markdown / JSON 渲染
-  service/        FastAPI Web Console（含 demo 数据 + 静态前端）
-  utils/          配置管理和 GitHub Actions 辅助工具
-tests/            自动化测试（90 tests，含离线 Agent AI 全链路）
-docs/             架构、Agent 改造方案、Demo-first 方案、质量控制、路线图
-vscode-extension/ VS Code 插件源码、编译产物和 VSIX
-```
+---
 
 ## 质量保障
 
-- 核心模型使用 Pydantic schema，搭配 4 层 JSON fallback（含截断修复）避免模型输出不可解析。
-- 规则扫描输出作为信号，AI 对每条信号做验证（确认/驳回/调整严重度），降低误报。
-- 跨文件分析（AST 级）检测 PR 内的函数签名变更和调用链影响。
-- Agent Runner 记录每一步 trace（工具、耗时、输入输出摘要、策略原因、降级路径），审查过程可追溯。
-- 建议经过 changed-line、confidence、去重、每文件数量限制过滤，减少刷屏。
-- 大 diff 会触发上下文截断并在报告中明确标注。
-- CI 使用 base branch reviewer fallback，避免 PR 修改审查工具后完全无报告。
-- Workflow 会单独检查 PR head 语法，报告生成和合并门禁解耦。
-- 独立 CI 对 PR head 执行 Python 测试、关键 Ruff 错误检查、VS Code 扩展编译与 npm 高危依赖审计。
-
-测试：
-
-```bash
-uv run pytest
+```mermaid
+flowchart LR
+    A[单测] --> B[criteria_gate.py<br/>离线·无模型·无网络]
+    B --> C{等价被拒?<br/>真缺陷出见证?<br/>契约外见证被阻断?}
+    C -- 否 --> D[CI 变红]
+    C -- 是 --> E[CI 通过]
 ```
 
-语法检查：
+- `pytest` — 317 个测试（判据链、证据来源、单元并发、playbook）
+- `scripts/criteria_gate.py` — **判据回归门禁**，已进 CI，零成本
+- `ruff --select E9,F63,F7,F82` — CI 门禁
+- 真实评测：`scripts/gold_identification.py`、`scripts/agent_flow_identification.py`
 
-```bash
-python -m compileall src tests
-```
+## 已知边界（不藏）
 
-当前自动化测试覆盖（90 tests）：
+- 没有 `run_tests` 沙箱（`witness_eval` 只覆盖纯表达式）
+- 没有行内去重与驳回记忆（可能重复提出已驳回的问题）
+- 没有采纳回路（不知道评论是否被处理）
+- 真实评测集缺失（gold 集 4 例；历史 25 个 PR 已被接触过，不能当"未见测试"）
+- RSI 循环未实现（机械门禁已就绪）
+- legacy 一次性路径**保留为成对评测的对照组**，不作为用户可见模式
 
-- agent policy / trace / runner（rule-only 与离线 one-shot AI 全链路）
-- context builder / diff parser
-- reviewer engine / suggestion filter
-- risk rules / report reliability
+## 文档
 
-当前验证边界：离线全链路使用确定性 GitHub/模型替身；真实 GitHub PR + 真实模型 + GitHub Actions 的外部端到端运行仍需单独完成，不能由 90 项测试替代。
-
-当前规则告警会与 diff 一起进入模型上下文，因此规则可能对模型判断产生注意力锚定；后续需要通过独立 LLM 审查、规则并行扫描与后置融合的消融实验验证并降低该偏置。
-
-## 安全性
-
-### Token 管理
-
-- GitHub Token 和 API Key 通过 `.env` 文件配置（已加入 `.gitignore`，不会提交到仓库）。
-- CI 环境中使用 GitHub Actions Secrets（`GITHUB_TOKEN`、`OPENAI_API_KEY`），运行时注入，不落盘。
-- 支持 GitHub fine-grained token，最小权限原则：仅需 Metadata Read、Pull Requests Read、Contents Read。
-
-### 数据隐私
-
-- **上下文最小化**：传给 AI 模型的 context 仅包含 PR diff（patch hunk + 上下文行），不传全量源码。模型看到的只是变更片段和周围几行代码，不是整个仓库。
-- **不外传敏感内容**：lockfile、生成报告、demo artifact 等低价值文件只展示变更统计，不消耗 AI token，也不会被发送到外部 API。
-- **不落盘**：除 GitHub Actions artifact（`pr-review.md`、`pr-review.json`）外，系统不将 PR 内容持久化到数据库或日志文件。artifact 受 GitHub 访问权限保护。
-- **全链路 HTTPS**：所有与 GitHub API 和 AI provider 的通信均通过 HTTPS 加密传输。
-
-### Provider 隔离
-
-OpenAI-compatible 接口允许用户指向自托管模型（如通过 Ollama 或 vLLM 部署的本地模型）。设置 `OPENAI_BASE_URL=http://localhost:11434/v1` 即可确保代码数据不出企业网络。
-
-## 开发迭代
-
-项目按 PR 逐步演进：
-
-```text
-阶段 1：CLI MVP 与 GitHub PR 数据获取
-阶段 2：GitHub Actions 自动审查与报告发布
-阶段 3：报告可信度、运行完整性和降级策略
-阶段 4：规则扫描增强、误报控制和 Context Pack
-阶段 5：Web Console 可视化审查入口 + Demo-first
-阶段 6：ReviewMeta / FixTracking 生命周期管理
-阶段 7：VS Code 插件、Review Panel、Problems、CodeLens 和 VSIX
-阶段 8：Agent 编排层（state/trace/policy/registry/runner）
-阶段 9：规则信号验证 + 跨文件分析 + Two-Stage 正式化
-```
-
-## 未来方向
-
-短期：
-
-- Local Review Mode：审查本地未提交 diff，在 push 或开 PR 前发现问题。
-- Fix Tracking：对比上次 Review 建议和最新 commit，追踪问题是否已修复。
-- 规则库配置化：让团队按语言、框架和风险偏好配置规则。
-- Web Console 增加鉴权、repo 白名单和更稳定的服务端运行模式。
-
-中长期：
-
-- GitHub App / 独立服务化，集中管理 webhook、模型配置、日志和权限。
-- 多仓库 Dashboard，展示 Review 历史、风险趋势和修复状态。
-- 更细粒度的项目上下文索引和 RAG。
-- IDE 内交互式修复建议、重新审查和本地 diff review。
-
-## 文档导航
-
-- [架构设计](docs/architecture.md)：核心流程、模块边界、CI 运行模型和降级策略。
-- [Agent 改造计划](docs/agent-refactor-execution-plan.md)：Agent 编排层设计、Stage 划分、验收标准。
-- [Rules & Agent 协同方案](docs/rules-agent-synergy-plan.md)：规则降级为信号层、AI 验证的改进方案。
-- [Web Console Demo-First 方案](docs/web-console-demo-first-plan.md)：离线演示、零配置开箱体验。
-- [未来扩展](docs/future-extensions.md)：VS Code 扩展、服务化、Context Pack、Web UI 等路线图。
-- [协作与提交规范](docs/contribution-guide.md)：分支、commit、PR 和合并前检查规范。
+| 文档 | 作用 |
+|---|---|
+| [docs/HARNESS.md](docs/HARNESS.md) | 审查规则与安全边界（规范；不作为项目排期） |
+| [docs/PRD-review-capability-v2.md](docs/PRD-review-capability-v2.md) | V2 能力目标与非目标 |
+| [docs/review-v2-development.md](docs/review-v2-development.md) | 唯一执行计划：三阶段任务、Done 条件与实验协议 |
+| [docs/ADVANTAGES.md](docs/ADVANTAGES.md) | 我们强在哪、为什么 |
+| [docs/evaluation/identification-baseline.md](docs/evaluation/identification-baseline.md) | 错误识别基线：0.50 → 1.00 |
+| [docs/graph-planning-dataflow.md](docs/graph-planning-dataflow.md) | 预算/覆盖/缓存实测 |
+| [docs/error-handling-policy.md](docs/error-handling-policy.md) | 降级政策 |
+| [docs/review-guide.md](docs/review-guide.md) | 使用与判据 |
+| [docs/archive/](docs/archive/) | 历史文档（不维护） |

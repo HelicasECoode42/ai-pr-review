@@ -1,0 +1,18 @@
+{
+  "pr": {
+    "repo": "https://github.com/ardevd/jadx-collaboration",
+    "pr_number": 3,
+    "base": "a9627c7cd6695e2389a68033c3985a0809f2978e",
+    "head": "853179dcb73aed6afab52d11324ea3ff3eac8b8a"
+  },
+  "agent": "ai-pr-review",
+  "findings": [
+    {
+      "file": "src/main/kotlin/uk/oshawk/jadx/collaboration/Plugin.kt",
+      "start_line": 44,
+      "end_line": 44,
+      "message": "Menu/key actions spawn a new thread per click instead of submitting to a serializing executor: The diff replaces `uiRun(this::pull)` with `this.context?.guiContext?.addMenuAction(\"Pull\") { kotlin.concurrent.thread { this.pull() } }` (and the same pattern at lines 45, 50 and 54 for Push and both key bindings). This contradicts the stated design of a shared single-thread `backgroundExecutor`: every menu click or key press creates a brand-new thread, so rapid activations still run `pull()`/`push()` concurrently and can interleave repository reads/writes and project mutations \u2014 exactly the corruption case this PR claims to fix. Additionally `kotlin.concurrent.thread` defaults to `isDaemon = false`, so the hung/blocked worker also prevents JVM shutdown, contrary to the description's daemon-thread rationale.\nScenario: A user double-clicks the Pull menu item (or presses ctrl+BACK_SLASH twice quickly). Two independent threads enter pull(), both call readLocalRepository()/projectToLocalRepository()/writeLocalRepository() on the same on-disk repository, and interleaved writes leave the local repository in a partially updated or inconsistent state.\nCreate one shared executor and submit all four entry points to it, e.g.:\n\nprivate val backgroundExecutor: ExecutorService = Executors.newSingleThreadExecutor { r ->\n    Thread(r, \"$ID-background\").apply { isDaemon = true }\n}\n\nthis.context?.guiContext?.addMenuAction(\"Pull\") { backgroundExecutor.submit(this::pull) }\nthis.context?.guiContext?.addMenuAction(\"Push\") { backgroundExecutor.submit(this::push) }\n\nand use the same submission for the two registerGlobalKeyBinding callbacks.",
+      "producer": "ai-pr-review"
+    }
+  ]
+}

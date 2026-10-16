@@ -1,0 +1,167 @@
+{
+  "model": "deepseek-v4-flash",
+  "latency_seconds": 14.734318374990835,
+  "diff_sha256": "536044f32a3720b70e20720ca88ff0b6320e04baf3dd1f0d6f16420c0a3c50ab",
+  "strategy": {
+    "evidence": true,
+    "critic": false,
+    "context_pack": true,
+    "two_stage": false,
+    "verify_signals": false,
+    "min_confidence": 0.65,
+    "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "report": {
+    "pr": {
+      "repo": "AA-Factory/aafactory-prototype",
+      "number": 17,
+      "title": "Mock test single avatar interaction with elevenlabs and zonos",
+      "author": null,
+      "base_ref": "e7f558c7360abac335af2df22f4ed376992b30ab",
+      "head_ref": "a1978cb75950a879df8805e4a5f373eb6678f6f9",
+      "head_sha": "a1978cb75950a879df8805e4a5f373eb6678f6f9",
+      "html_url": null
+    },
+    "files": [
+      {
+        "filename": "aafactory/src/tests/test_chat/test_mock_chat.py",
+        "status": "added",
+        "additions": 45,
+        "deletions": 0,
+        "changes": 45,
+        "previous_filename": null,
+        "patch_sha256": "536044f32a3720b70e20720ca88ff0b6320e04baf3dd1f0d6f16420c0a3c50ab"
+      }
+    ],
+    "summary": "This PR adds a single new pytest file (aafactory/src/tests/test_chat/test_mock_chat.py) that mocks the chat interface helpers (send_request_to_open_ai, send_request_to_generate_video, _load_avatar_infos_for_chat) and asserts on the returned tuple and the global CHAT_HISTORY list. Only test code was added; no production modules changed. Reviewers should focus on whether the test actually exercises the real chat-history logic it claims to verify, since the function under test is itself mocked.",
+    "risk_level": "low",
+    "rule_findings": [],
+    "suggestions": [],
+    "used_ai": true,
+    "ai_failure_reason": null,
+    "analysis_warnings": [
+      "2 suggestion(s) filtered out (low confidence, unchanged line, or duplicate)"
+    ],
+    "context_truncated": false,
+    "context_token_count": 801,
+    "patch_token_budget": 6000,
+    "context_tokenizer": "cl100k_base",
+    "hidden_suggestions_count": 2,
+    "skipped_context_files": [],
+    "hidden_rule_findings_count": 0,
+    "reviewer_version": "pr-branch",
+    "execution_status": "success",
+    "degradation_reason": null,
+    "report_confidence": "normal",
+    "completeness": [
+      {
+        "item": "PR 元信息获取",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "变更文件获取",
+        "status": "success",
+        "detail": "1 个文件"
+      },
+      {
+        "item": "AI 上下文文件",
+        "status": "success",
+        "detail": "全部文件进入上下文"
+      },
+      {
+        "item": "AI 分析",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "规则扫描",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "Patch 上下文",
+        "status": "success",
+        "detail": "完整"
+      },
+      {
+        "item": "PR head 语法诊断",
+        "status": "success",
+        "detail": "未检测到语法错误"
+      }
+    ],
+    "pr_syntax_check_ok": true,
+    "review_meta": {
+      "reviewed_commit": "a1978cb75950a879df8805e4a5f373eb6678f6f9",
+      "trigger_event": null,
+      "workflow_run_url": null,
+      "updated_at": null,
+      "review_mode": "full_pr"
+    },
+    "fix_tracking": [],
+    "confirmed_signals": [],
+    "dismissed_signals": [],
+    "unresolved_signals": [],
+    "unverified_signals": [],
+    "evidence_rejections": [],
+    "critic_decisions": [],
+    "stage_results": [],
+    "metrics": {
+      "raw_signal_count": 0,
+      "main_review_prompt_signal_count": 0,
+      "independent_suggestion_count": 0,
+      "evidence_rejected_suggestion_count": 0,
+      "critic_request_count": 0,
+      "critic_confirmed_count": 0,
+      "critic_dismissed_count": 0,
+      "critic_uncertain_count": 0,
+      "critic_unverified_count": 0,
+      "context_token_count": 801,
+      "signal_verification_request_count": 0,
+      "telemetry_only_signal_count": 0,
+      "confirmed_signal_count": 0,
+      "dismissed_signal_count": 0,
+      "unresolved_signal_count": 0,
+      "unverified_signal_count": 0
+    }
+  },
+  "input_coverage": {
+    "binary_files": [],
+    "metadata_only_files": [],
+    "context_truncated": false,
+    "skipped_files": []
+  },
+  "request_count": 1,
+  "usage_records": [
+    {
+      "model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 1479,
+        "completion_tokens": 3091,
+        "total_tokens": 4570,
+        "prompt_tokens_details": {
+          "cached_tokens": 1280
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 2166
+        },
+        "prompt_cache_hit_tokens": 1280,
+        "prompt_cache_miss_tokens": 199
+      },
+      "request_id": "420757b2-a4b4-4352-aa6e-95c7cd8f8533"
+    }
+  ],
+  "token_usage": {
+    "prompt_tokens": 1479,
+    "completion_tokens": 3091,
+    "total_tokens": 4570
+  },
+  "cost_usd": null,
+  "reviewer_commit": "acabdc0fafd67aa7946a451928f8c27e1a571202",
+  "working_tree_dirty": true,
+  "reviewer_source_sha256": "60cb296a54c9e453c85c74e32f03dc75024c44138263e2e885d21c1b315a658a",
+  "retry_transport": "streaming",
+  "timeout_seconds": 180,
+  "total_time_budget_seconds": 300,
+  "max_output_tokens": 32768
+}

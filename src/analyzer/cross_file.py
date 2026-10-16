@@ -21,8 +21,14 @@ from dataclasses import dataclass, field
 
 from src.analyzer.diff_parser import parse_file_hunks
 from src.models import ChangedFile, RiskFinding, Severity
+from src.utils.degradation import record_degradation
 
 logger = logging.getLogger(__name__)
+
+
+def _warn(warnings: list[str] | None, message: str) -> None:
+    """Record one degradation in both the log and the caller-visible list."""
+    record_degradation(warnings, message, logger=logger)
 
 # ── Data structures ───────────────────────────────────────
 
@@ -99,6 +105,7 @@ def _resolve_call_name(node: ast.expr) -> str | None:
 
 def _detect_changed_signatures(
     files: list[ChangedFile],
+    warnings: list[str] | None = None,
 ) -> dict[str, list[FunctionInfo]]:
     """Find function definitions that were added or modified in this PR.
 
@@ -113,8 +120,14 @@ def _detect_changed_signatures(
             continue
 
         try:
-            hunks = parse_file_hunks(f)
-        except Exception:
+            hunks = parse_file_hunks(f, warnings)
+        except Exception as exc:
+            # A file that cannot be parsed is a coverage gap, not an empty file.
+            _warn(
+                warnings,
+                f"Cross-file analysis skipped {f.filename} (hunk parse failed):"
+                f" {type(exc).__name__}: {exc}",
+            )
             continue
 
         for hunk in hunks:
@@ -129,7 +142,12 @@ def _detect_changed_signatures(
             collector = _FuncCollector()
             try:
                 collector.visit(tree)
-            except Exception:
+            except Exception as exc:
+                _warn(
+                    warnings,
+                    f"Cross-file analysis skipped a hunk of {f.filename}:"
+                    f" {type(exc).__name__}: {exc}",
+                )
                 continue
 
             for func in collector.definitions:
@@ -152,6 +170,7 @@ def _detect_changed_signatures(
 
 def _detect_new_calls(
     files: list[ChangedFile],
+    warnings: list[str] | None = None,
 ) -> list[CallSite]:
     """Find new call sites introduced in this PR."""
     from src.analyzer.ast_rules import _reconstruct_source_with_map, _try_parse
@@ -163,8 +182,14 @@ def _detect_new_calls(
             continue
 
         try:
-            hunks = parse_file_hunks(f)
-        except Exception:
+            hunks = parse_file_hunks(f, warnings)
+        except Exception as exc:
+            # A file that cannot be parsed is a coverage gap, not an empty file.
+            _warn(
+                warnings,
+                f"Cross-file analysis skipped {f.filename} (hunk parse failed):"
+                f" {type(exc).__name__}: {exc}",
+            )
             continue
 
         for hunk in hunks:
@@ -179,7 +204,12 @@ def _detect_new_calls(
             collector = _FuncCollector()
             try:
                 collector.visit(tree)
-            except Exception:
+            except Exception as exc:
+                _warn(
+                    warnings,
+                    f"Cross-file analysis skipped a hunk of {f.filename}:"
+                    f" {type(exc).__name__}: {exc}",
+                )
                 continue
 
             for call in collector.calls:
@@ -194,8 +224,12 @@ def _detect_new_calls(
 
 def analyze_cross_file_impact(
     files: list[ChangedFile],
+    warnings: list[str] | None = None,
 ) -> list[RiskFinding]:
     """Analyze cross-file impact of changes.
+
+    Files or hunks that cannot be parsed are recorded in `warnings` when the
+    caller passes a list, instead of only reaching the log.
 
     Currently detects:
     1. Functions whose signatures changed (params added/removed)
@@ -207,10 +241,10 @@ def analyze_cross_file_impact(
     findings: list[RiskFinding] = []
 
     # 1. Detect changed function signatures
-    changed_funcs = _detect_changed_signatures(files)
+    changed_funcs = _detect_changed_signatures(files, warnings)
 
     # 2. Detect new call sites
-    new_calls = _detect_new_calls(files)
+    new_calls = _detect_new_calls(files, warnings)
 
     # 3. Flag functions with many parameters changed (high risk)
     # Also flag file-level changes that affect core infrastructure

@@ -254,15 +254,15 @@ def _render_run_status(report: ReviewReport, T: _Translator, zh: bool) -> list[s
 
     # Confidence hint — driven by report_confidence field
     confidence_map_zh = {
-        "normal": "正常评审，报告完整可信",
-        "fallback": "使用 main 分支稳定版 reviewer，结果可信但不含 PR 分支的新增能力",
-        "partial": "规则扫描结果可信，但 AI 分析未完成，建议人工复核",
+        "normal": "评审执行完成；建议仍需按代码证据复核",
+        "fallback": "使用基准分支 reviewer；未验证 PR 分支新增审查能力",
+        "partial": "审查覆盖不完整；未发现问题不代表代码无缺陷，建议人工复核",
         "failed": "评审过程存在异常，报告可能不完整，请查看降级原因",
     }
     confidence_map_en = {
-        "normal": "Normal review; report is complete and trustworthy",
-        "fallback": "Using main-branch stable reviewer; trustworthy but lacks PR-branch capabilities",
-        "partial": "Rule scan results are trustworthy, but AI analysis did not complete; manual review recommended",
+        "normal": "Review completed; findings still require code evidence",
+        "fallback": "Using base-branch reviewer; new PR reviewer capabilities were not executed",
+        "partial": "Review coverage is incomplete; absence of findings does not establish correctness",
         "failed": "Review encountered errors; report may be incomplete — see degradation reason",
     }
     confidence = confidence_map_zh.get(report.report_confidence, "") if zh else confidence_map_en.get(report.report_confidence, "")
@@ -406,6 +406,12 @@ def render_markdown(report: ReviewReport, language: str = "en") -> str:
                 f"{T.t('跳过 patch')} | {reason_display} |"
             )
 
+    if report.pending_suggestions:
+        lines.extend(["", "## 待补上下文的候选（未确认）" if zh else "## Candidates needing context (unconfirmed)", ""])
+        lines.append("以下候选没有被判定为误报，但当前证据不足，不自动发布行内评论。" if zh else "These candidates are not disproven, but evidence is insufficient; they are not posted inline.")
+        for candidate in report.pending_suggestions:
+            lines.append(f"- `{candidate.file_path}:{candidate.line}` — {candidate.title}")
+
     # ── suggestions ──
     lines.extend(["", f"## {T.t('评审建议')}", ""])
     if not report.suggestions:
@@ -460,6 +466,7 @@ def render_markdown(report: ReviewReport, language: str = "en") -> str:
     visible_findings = [f for f in report.rule_findings if f.confidence >= 0.65]
     hidden_findings = [f for f in report.rule_findings if f.confidence < 0.65]
     lines.extend(["", f"## {T.t('规则扫描结果')}", ""])
+    lines.append("规则命中是未验证的检查线索，严重程度表示规则关注级别，不证明缺陷成立。" if zh else "Rule hits are unverified inspection leads. Severity denotes rule priority, not a confirmed defect.")
     if not report.rule_findings:
         lines.append(T.t("未命中规则。"))
     elif not visible_findings:

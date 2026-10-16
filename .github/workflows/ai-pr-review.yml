@@ -1,27 +1,11 @@
 name: AI PR Review
 
 on:
-  workflow_call:
-    inputs:
-      pr_number:
-        description: "PR number to review (optional; auto-detected for pull_request events)"
-        required: false
-        type: number
-      language:
-        description: "Output language (auto, en, or zh)"
-        required: false
-        type: string
-        default: "zh"
-    secrets:
-      OPENAI_API_KEY:
-        description: "OpenAI-compatible API key"
-        required: true
-      OPENAI_BASE_URL:
-        description: "OpenAI-compatible base URL"
-        required: false
-      REVIEW_MODEL:
-        description: "Model name for review"
-        required: false
+  # Self-review only: this job reviews *this* repository and deliberately checks
+  # out the PR's base branch as the reviewer, so a PR cannot break the tool that
+  # reviews it. Other repositories must call
+  # .github/workflows/ai-pr-review-reusable.yml instead, which installs the
+  # reviewer from this repository rather than running the caller's source.
   pull_request:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
@@ -128,7 +112,7 @@ jobs:
           fi
 
           REVIEWER_ARGS=()
-          if uv run python -m src.cli.main --help | grep -q -- "--reviewer-version"; then
+          if uv run python -c 'import sys; from typer.main import get_command; from src.cli.main import app; command = get_command(app); sys.exit(0 if any("--reviewer-version" in getattr(p, "opts", []) for p in command.params) else 1)'; then
             REVIEWER_ARGS=(
               --reviewer-version "main-fallback"
               --execution-status "degraded"
@@ -189,8 +173,13 @@ jobs:
             if (!fs.existsSync(path)) return;
 
             const report = JSON.parse(fs.readFileSync(path, "utf8"));
+            // One source for the publishing threshold: the reviewer stamps it into
+            // the report so this file cannot drift from the Python settings.
+            const minConfidence = typeof report.metrics?.publish_min_confidence === "number"
+              ? report.metrics.publish_min_confidence
+              : 0.80;
             const aiSuggestions = (report.suggestions || [])
-              .filter(s => s.confidence >= 0.80 && s.line != null)
+              .filter(s => s.confidence >= minConfidence && s.line != null)
               .map(s => ({
                 file_path: s.file_path,
                 line: s.line,
@@ -201,23 +190,19 @@ jobs:
                 recommendation: s.recommendation,
                 source: "AI",
               }));
-            const ruleFindings = (report.rule_findings || [])
-              .filter(r => (r.confidence ?? 0.7) >= 0.65 && r.line != null)
-              .map(r => ({
-                file_path: r.file_path,
-                line: r.line,
-                severity: r.severity,
-                confidence: r.confidence ?? 0.7,
-                title: r.title,
-                reason: r.evidence,
-                recommendation: r.recommendation,
-                source: "Rule",
-              }));
-            const inlineComments = [...aiSuggestions, ...ruleFindings].slice(0, 10);
+            // Raw rule hits have no established failure scenario or verified evidence.
+            const MAX_INLINE = 10;
+            const inlineComments = aiSuggestions.slice(0, MAX_INLINE);
 
-            if (inlineComments.length === 0) {
-              core.info("No line-level suggestions or rule findings to post.");
+            if (aiSuggestions.length === 0) {
+              core.info(`No suggestions at or above confidence ${minConfidence} to post.`);
               return;
+            }
+            if (aiSuggestions.length > inlineComments.length) {
+              core.warning(
+                `Publishing the first ${MAX_INLINE} of ${aiSuggestions.length} suggestions; ` +
+                `${aiSuggestions.length - inlineComments.length} were not posted.`
+              );
             }
 
             const prNumber = context.payload.pull_request.number;
@@ -228,6 +213,8 @@ jobs:
             }
 
             core.info(`Posting ${inlineComments.length} inline review comment(s)...`);
+            let posted = 0;
+            let failed = 0;
             for (const s of inlineComments) {
               try {
                 const body = `**${s.severity}** (${Math.round(s.confidence * 100)}%): ${s.title}\n\n${s.reason}\n\n> ${s.recommendation}`;
@@ -242,10 +229,14 @@ jobs:
                   body: body,
                 });
                 core.info(`  ✓ ${s.file_path}:${s.line} — ${s.title}`);
+                posted++;
               } catch (error) {
                 core.warning(`  ✗ ${s.file_path}:${s.line} — ${error.message}`);
+                failed++;
               }
             }
+            // A posting failure must be accountable, not just a warning in the log.
+            core.info(`Inline review published: ${posted} posted, ${failed} failed, ${inlineComments.length} attempted.`);
 
       - name: Post summary comment
         if: >-

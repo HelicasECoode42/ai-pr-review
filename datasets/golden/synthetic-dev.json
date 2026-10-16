@@ -1,0 +1,88 @@
+[
+  {
+    "case_id": "division",
+    "source": "synthetic",
+    "split": "dev",
+    "group": "division",
+    "metadata": {
+      "nwo": "synthetic/division",
+      "pr_number": 1,
+      "title": "Simplify implementation",
+      "base": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "diff": "diff --git a/sample.py b/sample.py\n--- a/sample.py\n+++ b/sample.py\n@@ -1,2 +1,2 @@\n def average(total, count):\n-    return total / count if count else 0\n+    return total / count\n",
+    "findings": [
+      {
+        "id": "division-bug",
+        "file": "sample.py",
+        "description": "Removing the count guard raises ZeroDivisionError for count=0.",
+        "failure_scenario": "Call average(3, 0).",
+        "category": "correctness",
+        "severity": "medium"
+      }
+    ],
+    "negative_verified": false,
+    "label_provenance": "Hand-constructed cases with executable behavior checks in tests/test_golden_behavior.py; not ReviewBench or real PRs."
+  },
+  {
+    "case_id": "negative-index",
+    "source": "synthetic",
+    "split": "dev",
+    "group": "negative-index",
+    "metadata": {
+      "nwo": "synthetic/negative-index",
+      "pr_number": 1,
+      "title": "Simplify implementation",
+      "base": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "diff": "diff --git a/sample.py b/sample.py\n--- a/sample.py\n+++ b/sample.py\n@@ -1,2 +1,2 @@\n def lookup(values, index):\n-    return values[index] if 0 <= index < len(values) else None\n+    return values[index] if index < len(values) else None\n",
+    "findings": [
+      {
+        "id": "negative-index-bug",
+        "file": "sample.py",
+        "description": "Negative indices return an element instead of rejecting invalid input.",
+        "failure_scenario": "Call lookup([10], -1): expected None, receives 10.",
+        "category": "correctness",
+        "severity": "medium"
+      }
+    ],
+    "negative_verified": false,
+    "label_provenance": "Hand-constructed cases with executable behavior checks in tests/test_golden_behavior.py; not ReviewBench or real PRs."
+  },
+  {
+    "case_id": "safe-division",
+    "source": "synthetic",
+    "split": "dev",
+    "group": "safe-division",
+    "metadata": {
+      "nwo": "synthetic/safe-division",
+      "pr_number": 1,
+      "title": "Simplify implementation",
+      "base": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "diff": "diff --git a/sample.py b/sample.py\n--- a/sample.py\n+++ b/sample.py\n@@ -1,2 +1,2 @@\n def average(total, count):\n-    return total / count if count else 0\n+    return 0 if count == 0 else total / count\n",
+    "findings": [],
+    "negative_verified": true,
+    "label_provenance": "Hand-constructed cases with executable behavior checks in tests/test_golden_behavior.py; not ReviewBench or real PRs."
+  },
+  {
+    "case_id": "safe-index",
+    "source": "synthetic",
+    "split": "dev",
+    "group": "safe-index",
+    "metadata": {
+      "nwo": "synthetic/safe-index",
+      "pr_number": 1,
+      "title": "Simplify implementation",
+      "base": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "diff": "diff --git a/sample.py b/sample.py\n--- a/sample.py\n+++ b/sample.py\n@@ -1,2 +1,2 @@\n def lookup(values, index):\n-    return values[index] if 0 <= index < len(values) else None\n+    return None if index < 0 or index >= len(values) else values[index]\n",
+    "findings": [],
+    "negative_verified": true,
+    "label_provenance": "Hand-constructed cases with executable behavior checks in tests/test_golden_behavior.py; not ReviewBench or real PRs."
+  }
+]

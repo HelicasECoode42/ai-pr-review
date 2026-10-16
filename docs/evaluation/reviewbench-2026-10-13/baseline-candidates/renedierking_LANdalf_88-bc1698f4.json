@@ -1,0 +1,10 @@
+{
+  "pr": {
+    "repo": "https://github.com/renedierking/LANdalf",
+    "pr_number": 88,
+    "base": "cc81fa3dc87a8a50654c1279b3bdb2761e94f832",
+    "head": "bc1698f4dbc3a99dee0a6dcf7629813f2027682a"
+  },
+  "agent": "ai-pr-review",
+  "findings": []
+}

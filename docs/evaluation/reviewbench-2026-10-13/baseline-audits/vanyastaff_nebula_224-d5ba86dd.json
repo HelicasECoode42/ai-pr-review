@@ -1,0 +1,780 @@
+{
+  "model": "deepseek-v4-flash",
+  "latency_seconds": 75.00655291700969,
+  "diff_sha256": "e86a2d01c0b1733bdfded69dd8161d4ebd7b277dc8fccdfe887391e7e550bfb6",
+  "strategy": {
+    "evidence": true,
+    "critic": false,
+    "context_pack": true,
+    "two_stage": false,
+    "verify_signals": false,
+    "min_confidence": 0.65,
+    "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "report": {
+    "pr": {
+      "repo": "vanyastaff/nebula",
+      "number": 224,
+      "title": "feat(credential): v3 universal schemes, key rotation, security hardening",
+      "author": null,
+      "base_ref": "c4879eb1c460e45c11ce28e3e8a305194023b64e",
+      "head_ref": "d5ba86dd1014b79e263d93a1e324eeec0d0b306c",
+      "head_sha": "d5ba86dd1014b79e263d93a1e324eeec0d0b306c",
+      "html_url": null
+    },
+    "files": [
+      {
+        "filename": ".claude/active-work.md",
+        "status": "modified",
+        "additions": 13,
+        "deletions": 34,
+        "changes": 47,
+        "previous_filename": null,
+        "patch_sha256": "99f54642695656d0bbbb4528252cee41c3e4dc49b95fc25b13f45b3dcad71f4d"
+      },
+      {
+        "filename": ".claude/crates/core.md",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 6,
+        "changes": 9,
+        "previous_filename": null,
+        "patch_sha256": "0dd0f8e8c521e90fbabd2b1a90e8718fa04431dc18937f65919630cce6d8e3f9"
+      },
+      {
+        "filename": ".claude/crates/credential.md",
+        "status": "modified",
+        "additions": 20,
+        "deletions": 77,
+        "changes": 97,
+        "previous_filename": null,
+        "patch_sha256": "c1ff1859bd09cd21b0a5908cf7847c63dda1c5ff6ff1b1ab7cfb5dfccf482040"
+      },
+      {
+        "filename": ".github/workflows/ci.yml",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "43c1476a64d911995c507ab86578563d75c9856b40ddd5670bafb3456387fd59"
+      },
+      {
+        "filename": "crates/action/src/context.rs",
+        "status": "modified",
+        "additions": 11,
+        "deletions": 15,
+        "changes": 26,
+        "previous_filename": null,
+        "patch_sha256": "d842e3e465885221ea413a9ed98e17b5d3584e60e5f7b3bf104a34e98506de0e"
+      },
+      {
+        "filename": "crates/action/src/testing.rs",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 3,
+        "changes": 6,
+        "previous_filename": null,
+        "patch_sha256": "39ea668338286e84eae318e70b39ba249c98fdca4bed15e728c468b30489ea23"
+      },
+      {
+        "filename": "crates/core/src/auth.rs",
+        "status": "modified",
+        "additions": 42,
+        "deletions": 5,
+        "changes": 47,
+        "previous_filename": null,
+        "patch_sha256": "42a93e13feaba549fc6832610b7c465aa5815836acc16b83dbe4cfa735f76575"
+      },
+      {
+        "filename": "crates/core/src/auth_pattern.rs",
+        "status": "added",
+        "additions": 93,
+        "deletions": 0,
+        "changes": 93,
+        "previous_filename": null,
+        "patch_sha256": "2e4695f003285aa7a1f71eedee9e7c454903e4c2f28339458d54cc3e2b1179e4"
+      },
+      {
+        "filename": "crates/core/src/lib.rs",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 0,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "286ac4eb374f01c35fb116102d8d9d3681b06ad1023c36adfb9135727b89b4c1"
+      },
+      {
+        "filename": "crates/credential/examples/credential_description.rs",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 0,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "e216b79657b046fede09d6bbe3e2d0914d620a765fce591a6065cca21f85feb4"
+      },
+      {
+        "filename": "crates/credential/macros/src/auth_scheme.rs",
+        "status": "added",
+        "additions": 43,
+        "deletions": 0,
+        "changes": 43,
+        "previous_filename": null,
+        "patch_sha256": "385d004cf84b3db04d109b045094ec9a9e00b128c029c77f7ab31809d42eb715"
+      },
+      {
+        "filename": "crates/credential/macros/src/credential.rs",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 0,
+        "changes": 1,
+        "previous_filename": null,
+        "patch_sha256": "7540a2f3cf4bb10c950628d5591f94bddc77ad82cad9bf70d616c888fc9b996c"
+      },
+      {
+        "filename": "crates/credential/macros/src/lib.rs",
+        "status": "modified",
+        "additions": 39,
+        "deletions": 2,
+        "changes": 41,
+        "previous_filename": null,
+        "patch_sha256": "b50f128d31c5b7deb885a48f850f5355c2613ae5ddada418fc26ae56eed4c411"
+      },
+      {
+        "filename": "crates/credential/src/context.rs",
+        "status": "modified",
+        "additions": 10,
+        "deletions": 7,
+        "changes": 17,
+        "previous_filename": null,
+        "patch_sha256": "520c5647b171a5f6784e30401220ce7b2e608d0f86647aee236143806cff7e01"
+      },
+      {
+        "filename": "crates/credential/src/credential.rs",
+        "status": "modified",
+        "additions": 19,
+        "deletions": 10,
+        "changes": 29,
+        "previous_filename": null,
+        "patch_sha256": "4f98ed4c9f1818320fe902cf05c0c9d9eace602645933fb7e40eea2f49e944d7"
+      },
+      {
+        "filename": "crates/credential/src/credentials/api_key.rs",
+        "status": "modified",
+        "additions": 15,
+        "deletions": 14,
+        "changes": 29,
+        "previous_filename": null,
+        "patch_sha256": "fde4e2ddf53f331efd0d7c2d67b57cbccbf097f7b88f92e4be229a1d50b48b3a"
+      },
+      {
+        "filename": "crates/credential/src/credentials/basic_auth.rs",
+        "status": "modified",
+        "additions": 13,
+        "deletions": 12,
+        "changes": 25,
+        "previous_filename": null,
+        "patch_sha256": "6ce9bdaa8ee27ca99df8f3c64068de34da0b18cf840360a9dd4929c304d57288"
+      },
+      {
+        "filename": "crates/credential/src/credentials/database.rs",
+        "status": "removed",
+        "additions": 0,
+        "deletions": 315,
+        "changes": 315,
+        "previous_filename": null,
+        "patch_sha256": "d1b581669d1b9d745490da1335af151ab52f952127a58100fcf690106fe2bfe0"
+      },
+      {
+        "filename": "crates/credential/src/credentials/header_auth.rs",
+        "status": "removed",
+        "additions": 0,
+        "deletions": 197,
+        "changes": 197,
+        "previous_filename": null,
+        "patch_sha256": "1a5b9946112548b03afd41c3935c21bf86c261dfbe1cd969a8864220164e9372"
+      },
+      {
+        "filename": "crates/credential/src/credentials/mod.rs",
+        "status": "modified",
+        "additions": 4,
+        "deletions": 10,
+        "changes": 14,
+        "previous_filename": null,
+        "patch_sha256": "d137087f97baca3df18311090828634ca5e6a5854a62ed33444151ab34760ada"
+      },
+      {
+        "filename": "crates/credential/src/credentials/oauth2.rs",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 0,
+        "changes": 1,
+        "previous_filename": null,
+        "patch_sha256": "bfc9468b632bec0c6e8a3b5be02d68a287aae776b1657cc1ad022808bb318c26"
+      },
+      {
+        "filename": "crates/credential/src/crypto.rs",
+        "status": "modified",
+        "additions": 107,
+        "deletions": 11,
+        "changes": 118,
+        "previous_filename": null,
+        "patch_sha256": "5549e3e59c3489829510ca2cab70ecf172c2c1b37abbceaeeeec4f99a4c34242"
+      },
+      {
+        "filename": "crates/credential/src/description.rs",
+        "status": "modified",
+        "additions": 14,
+        "deletions": 0,
+        "changes": 14,
+        "previous_filename": null,
+        "patch_sha256": "2660f33268240403a9c1b1dcbac02e31d62aecb76c75d3043de515fecba97111"
+      },
+      {
+        "filename": "crates/credential/src/error.rs",
+        "status": "modified",
+        "additions": 7,
+        "deletions": 7,
+        "changes": 14,
+        "previous_filename": null,
+        "patch_sha256": "79babf14715e90e3959b476ba07bb6d2528b1aadc19f372e61900f6141d2d9bf"
+      },
+      {
+        "filename": "crates/credential/src/handle.rs",
+        "status": "modified",
+        "additions": 17,
+        "deletions": 17,
+        "changes": 34,
+        "previous_filename": null,
+        "patch_sha256": "0e9769c88333f7f045e31bc9476b06fec90a3ea9d1e35850afba4645cca36cfb"
+      },
+      {
+        "filename": "crates/credential/src/layer/encryption.rs",
+        "status": "modified",
+        "additions": 256,
+        "deletions": 38,
+        "changes": 294,
+        "previous_filename": null,
+        "patch_sha256": "5b4279e58ce3cccfd8b2d3bd71bb1110b7bbf726d1ccdbdde939994f7fce68d3"
+      },
+      {
+        "filename": "crates/credential/src/lib.rs",
+        "status": "modified",
+        "additions": 8,
+        "deletions": 10,
+        "changes": 18,
+        "previous_filename": null,
+        "patch_sha256": "3febb7fc5ec6e57ad7d379486147b74248dda3ace882e42a68ad7d5e312d0c62"
+      },
+      {
+        "filename": "crates/credential/src/registry.rs",
+        "status": "modified",
+        "additions": 9,
+        "deletions": 9,
+        "changes": 18,
+        "previous_filename": null,
+        "patch_sha256": "c1eea69014f81b619235baba47c455eb4b70ba331155f7c70d265b7755084c4e"
+      },
+      {
+        "filename": "crates/credential/src/resolve.rs",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 2,
+        "changes": 5,
+        "previous_filename": null,
+        "patch_sha256": "8aac510e76f0ae6fc644809ffd5dd70243b2bfbe13deee7ec2ed739f341503ac"
+      },
+      {
+        "filename": "crates/credential/src/resolver.rs",
+        "status": "modified",
+        "additions": 17,
+        "deletions": 15,
+        "changes": 32,
+        "previous_filename": null,
+        "patch_sha256": "d45946661816fed0dcb7a18de0ec728d2b95612ccfb90267cb9ea6f057f3c347"
+      },
+      {
+        "filename": "crates/credential/src/rotation/backup.rs",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 0,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "c8e81d8cb0e34a82f416e1939918454ad143776530ebdebeaaccb29e372d3a70"
+      },
+      {
+        "filename": "crates/credential/src/scheme/api_key.rs",
+        "status": "removed",
+        "additions": 0,
+        "deletions": 70,
+        "changes": 70,
+        "previous_filename": null,
+        "patch_sha256": "a4f3c163aa8eeffb219a25c4bdd580e189a6eac5788389cfe903eb10e2969aae"
+      },
+      {
+        "filename": "crates/credential/src/scheme/aws.rs",
+        "status": "removed",
+        "additions": 0,
+        "deletions": 124,
+        "changes": 124,
+        "previous_filename": null,
+        "patch_sha256": "29c0d22924be243e111b07b392712b85c28e2425913c44190f3e0b24f440b4d3"
+      },
+      {
+        "filename": "crates/credential/src/scheme/basic.rs",
+        "status": "removed",
+        "additions": 0,
+        "deletions": 57,
+        "changes": 57,
+        "previous_filename": null,
+        "patch_sha256": "cf231741156e7ee5d6f2746b31795e4742a96342aadf0d934e50d66681debfb9"
+      },
+      {
+        "filename": "crates/credential/src/scheme/bearer.rs",
+        "status": "removed",
+        "additions": 0,
+        "deletions": 48,
+        "changes": 48,
+        "previous_filename": null,
+        "patch_sha256": "ac74dc284cb374434d21f1e1f1a5a3506dd577f06b21e735f1a8533d3edda81c"
+      },
+      {
+        "filename": "crates/credential/src/scheme/certificate.rs",
+        "status": "modified",
+        "additions": 73,
+        "deletions": 50,
+        "changes": 123,
+        "previous_filename": null,
+        "patch_sha256": "2cbf4bcf2ed2322baa91bd261e6186a655df6ffd9ce1a701183242305f9f03d0"
+      },
+      {
+        "filename": "crates/credential/src/scheme/challenge_secret.rs",
+        "status": "added",
+        "additions": 92,
+        "deletions": 0,
+        "changes": 92,
+        "previous_filename": null,
+        "patch_sha256": "a48b67b7ff7d4248c16f1248a86db8f05afdbd8be7f698560a62a7309cdf03c2"
+      },
+      {
+        "filename": "crates/credential/src/scheme/coercion.rs",
+        "status": "modified",
+        "additions": 10,
+        "deletions": 121,
+        "changes": 131,
+        "previous_filename": null,
+        "patch_sha256": "f79a7a470ba0ef5bf4ee83e98c2a4afd681465b58418a9eebdda2d169b6dc460"
+      },
+      {
+        "filename": "crates/credential/src/scheme/connection_uri.rs",
+        "status": "added",
+        "additions": 73,
+        "deletions": 0,
+        "changes": 73,
+        "previous_filename": null,
+        "patch_sha256": "bfb0534c9a03311164e3ca60946146496c6c071310390ee07129f306cf90f76c"
+      },
+      {
+        "filename": "crates/credential/src/scheme/database.rs",
+        "status": "removed",
+        "additions": 0,
+        "deletions": 91,
+        "changes": 91,
+        "previous_filename": null,
+        "patch_sha256": "cdbcf9d4ed2ea4fe23dd1164493a938de2b71e6de648ab707935e22bf39fd664"
+      },
+      {
+        "filename": "crates/credential/src/scheme/federated_assertion.rs",
+        "status": "added",
+        "additions": 117,
+        "deletions": 0,
+        "changes": 117,
+        "previous_filename": null,
+        "patch_sha256": "38d77ab08a5c75dcd0c50034fec827cf47bd66ae9f3014ed4d8f4f0afec1e769"
+      },
+      {
+        "filename": "crates/credential/src/scheme/header.rs",
+        "status": "removed",
+        "additions": 0,
+        "deletions": 77,
+        "changes": 77,
+        "previous_filename": null,
+        "patch_sha256": "e23ec3998ee41f2bc7c4f37771aff085f97e4e034b5147d92b1d3f766c688b71"
+      },
+      {
+        "filename": "crates/credential/src/scheme/hmac.rs",
+        "status": "removed",
+        "additions": 0,
+        "deletions": 80,
+        "changes": 80,
+        "previous_filename": null,
+        "patch_sha256": "2267e7bfa6f0cf35e8d011ff5fc2ba6b0bd3c631f50437995aae8dcf3d9ccec9"
+      },
+      {
+        "filename": "crates/credential/src/scheme/identity_password.rs",
+        "status": "added",
+        "additions": 78,
+        "deletions": 0,
+        "changes": 78,
+        "previous_filename": null,
+        "patch_sha256": "9f64500d6327c9cb779117e2c1e4ae882835f9bdd1d95bb99cd8ccff4fb41e8c"
+      },
+      {
+        "filename": "crates/credential/src/scheme/instance_binding.rs",
+        "status": "added",
+        "additions": 87,
+        "deletions": 0,
+        "changes": 87,
+        "previous_filename": null,
+        "patch_sha256": "b17c630f33d516884bbeb89fd1346eb2e14d4751808363b106ef97eb4fe95785"
+      },
+      {
+        "filename": "crates/credential/src/scheme/kerberos.rs",
+        "status": "removed",
+        "additions": 0,
+        "deletions": 100,
+        "changes": 100,
+        "previous_filename": null,
+        "patch_sha256": "e0d0a6cae48638ee4d4512ca487acd2839c0ffdc2ffe9ea5b072101109ea3c47"
+      },
+      {
+        "filename": "crates/credential/src/scheme/key_pair.rs",
+        "status": "added",
+        "additions": 121,
+        "deletions": 0,
+        "changes": 121,
+        "previous_filename": null,
+        "patch_sha256": "f80f77797bb7327b407aeec50f1e13d4474b9b8c660501084f6112a719abe3aa"
+      },
+      {
+        "filename": "crates/credential/src/scheme/ldap.rs",
+        "status": "removed",
+        "additions": 0,
+        "deletions": 159,
+        "changes": 159,
+        "previous_filename": null,
+        "patch_sha256": "c143e219df7d38576d507defab6e50f56ef04a5f50643255844d3eef5b3aa279"
+      },
+      {
+        "filename": "crates/credential/src/scheme/mod.rs",
+        "status": "modified",
+        "additions": 24,
+        "deletions": 27,
+        "changes": 51,
+        "previous_filename": null,
+        "patch_sha256": "9633e3ebe4d662d440f512db0cf2c1b685a7707f116e05e94bed5ab430a7f246"
+      },
+      {
+        "filename": "crates/credential/src/scheme/oauth2.rs",
+        "status": "modified",
+        "additions": 4,
+        "deletions": 4,
+        "changes": 8,
+        "previous_filename": null,
+        "patch_sha256": "31ea4d7070f21d93edede1a13be25469d87b2e07aec59eda37dc027ddcb7197a"
+      },
+      {
+        "filename": "crates/credential/src/scheme/otp_seed.rs",
+        "status": "added",
+        "additions": 110,
+        "deletions": 0,
+        "changes": 110,
+        "previous_filename": null,
+        "patch_sha256": "539582f24188f2e1c8625137b5f93c7df185137b0f4988134ef93971c91866dd"
+      },
+      {
+        "filename": "crates/credential/src/scheme/saml.rs",
+        "status": "removed",
+        "additions": 0,
+        "deletions": 128,
+        "changes": 128,
+        "previous_filename": null,
+        "patch_sha256": "c63a08b9ecd610df9a356eeb59b9c8f196c0d23e1ed8ffb7d54e3c03966df35f"
+      },
+      {
+        "filename": "crates/credential/src/scheme/secret_token.rs",
+        "status": "added",
+        "additions": 67,
+        "deletions": 0,
+        "changes": 67,
+        "previous_filename": null,
+        "patch_sha256": "0913ee902ae5e070bb73fa04875d7f97420f8e81efc6da610a70b49a53c68180"
+      },
+      {
+        "filename": "crates/credential/src/scheme/shared_key.rs",
+        "status": "added",
+        "additions": 87,
+        "deletions": 0,
+        "changes": 87,
+        "previous_filename": null,
+        "patch_sha256": "17c15402a834b775dcac9c546e43be2a407bbe909d84f76d52a8a9a17e0a6448"
+      },
+      {
+        "filename": "crates/credential/src/scheme/signing_key.rs",
+        "status": "added",
+        "additions": 79,
+        "deletions": 0,
+        "changes": 79,
+        "previous_filename": null,
+        "patch_sha256": "dbac6d87eb12fc40ecbfa9a9f3cc6ee661b2b069100ae512a1c4d689a71956f2"
+      },
+      {
+        "filename": "crates/credential/src/scheme/ssh.rs",
+        "status": "removed",
+        "additions": 0,
+        "deletions": 171,
+        "changes": 171,
+        "previous_filename": null,
+        "patch_sha256": "b6b92cb049deb94ffa5ccc5005c0408c5ee2428c527463f18432a99acca5bf02"
+      },
+      {
+        "filename": "crates/credential/src/snapshot.rs",
+        "status": "modified",
+        "additions": 58,
+        "deletions": 59,
+        "changes": 117,
+        "previous_filename": null,
+        "patch_sha256": "860029b2525232db2b03262008119be7501e66b6f482a737034fe0dd682b9d20"
+      },
+      {
+        "filename": "crates/credential/src/state.rs",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 2,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "c547302ad2d576a0cee35a8a5994feb27d2105c618e917e3dd8b01ae3a193cca"
+      },
+      {
+        "filename": "crates/credential/src/static_protocol.rs",
+        "status": "modified",
+        "additions": 17,
+        "deletions": 15,
+        "changes": 32,
+        "previous_filename": null,
+        "patch_sha256": "f568af339a6d56a8c28023985ba5d4c424c3728102e0fb5d8ad09223f5b0fdfe"
+      },
+      {
+        "filename": "crates/credential/tests/units/encryption_tests.rs",
+        "status": "modified",
+        "additions": 9,
+        "deletions": 6,
+        "changes": 15,
+        "previous_filename": null,
+        "patch_sha256": "331124222541d470997317f4010adce98e0fb83bc5e031a685e6457b997f7132"
+      },
+      {
+        "filename": "crates/credential/tests/units/pending_lifecycle_tests.rs",
+        "status": "modified",
+        "additions": 5,
+        "deletions": 4,
+        "changes": 9,
+        "previous_filename": null,
+        "patch_sha256": "1e7a4d9f9746f8f725a396b4ebef920a516a68bd28b65b9c9479bab91b3c4cc9"
+      },
+      {
+        "filename": "crates/credential/tests/units/resolve_snapshot_tests.rs",
+        "status": "modified",
+        "additions": 19,
+        "deletions": 20,
+        "changes": 39,
+        "previous_filename": null,
+        "patch_sha256": "f1588bf3c46ad1dd32cb02dbcced4efdc03c692836ccd59a86e72d8a8048cc64"
+      },
+      {
+        "filename": "crates/credential/tests/units/scheme_roundtrip_tests.rs",
+        "status": "modified",
+        "additions": 96,
+        "deletions": 187,
+        "changes": 283,
+        "previous_filename": null,
+        "patch_sha256": "24fa708b8978f47d804b5fefd67fca1e433f863cc3f97b3a367e3bf4c8ce2aac"
+      },
+      {
+        "filename": "crates/credential/tests/units/thundering_herd_tests.rs",
+        "status": "modified",
+        "additions": 6,
+        "deletions": 5,
+        "changes": 11,
+        "previous_filename": null,
+        "patch_sha256": "0aed4e5e46c512bad7f1d64a79c95693bc9617187a313ad9da7c513bccd24736"
+      },
+      {
+        "filename": "crates/resource/src/resource.rs",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 2,
+        "changes": 4,
+        "previous_filename": null,
+        "patch_sha256": "5246c52b2cd7e97fe0e207b206b22546c77911f6a8412aa5286f72f6463b014b"
+      },
+      {
+        "filename": "crates/runtime/src/blob.rs",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "8fd5742e9ff7d2654ed1e6721e36850594ecd17ee3ea2c91d673a020e4a7274a"
+      },
+      {
+        "filename": "crates/sdk/src/prelude.rs",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 8,
+        "changes": 11,
+        "previous_filename": null,
+        "patch_sha256": "7f419b58961e1c9187bb5f04c58f5049a071d923535df4356be0ef804deba739"
+      },
+      {
+        "filename": "crates/webhook/src/rate_limit.rs",
+        "status": "modified",
+        "additions": 6,
+        "deletions": 2,
+        "changes": 8,
+        "previous_filename": null,
+        "patch_sha256": "2141108c61bdaa79f413f5ec256a6e44b83cdf0aa36cf91358a26b166a517f20"
+      },
+      {
+        "filename": "crates/webhook/src/verifier.rs",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 8,
+        "changes": 10,
+        "previous_filename": null,
+        "patch_sha256": "1a04c8c89b8e6a5b4db042521d3bfed57b527b17f521d3e789543ec735b3d52d"
+      }
+    ],
+    "summary": "This PR reworks the credential encryption layer to support multi-key operation with lazy re-encryption on read, makes AAD binding mandatory (removing the legacy no-AAD fallback), and adds a large set of new pattern-based auth schemes while deleting several legacy scheme/credential modules. The highest-risk area is crates/credential/src/layer/encryption.rs, where a `get` can now perform a write and where legacy data handling changed. Reviewers should focus on the rotation read path (error handling, returned version, legacy key-id compatibility) and on the upgrade path for data encrypted before AAD binding.",
+    "risk_level": "low",
+    "rule_findings": [],
+    "suggestions": [],
+    "used_ai": true,
+    "ai_failure_reason": null,
+    "analysis_warnings": [
+      "4 suggestion(s) filtered out (low confidence, unchanged line, or duplicate)",
+      "Patch context was truncated to fit token budget; some files were not analyzed by AI."
+    ],
+    "context_truncated": true,
+    "context_token_count": 7507,
+    "patch_token_budget": 6000,
+    "context_tokenizer": "cl100k_base",
+    "hidden_suggestions_count": 4,
+    "skipped_context_files": [],
+    "hidden_rule_findings_count": 0,
+    "reviewer_version": "pr-branch",
+    "execution_status": "success",
+    "degradation_reason": null,
+    "report_confidence": "normal",
+    "completeness": [
+      {
+        "item": "PR 元信息获取",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "变更文件获取",
+        "status": "success",
+        "detail": "69 个文件"
+      },
+      {
+        "item": "AI 上下文文件",
+        "status": "success",
+        "detail": "全部文件进入上下文"
+      },
+      {
+        "item": "AI 分析",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "规则扫描",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "Patch 上下文",
+        "status": "partial",
+        "detail": "裁剪 — 超出 token 预算"
+      },
+      {
+        "item": "PR head 语法诊断",
+        "status": "success",
+        "detail": "未检测到语法错误"
+      }
+    ],
+    "pr_syntax_check_ok": true,
+    "review_meta": {
+      "reviewed_commit": "d5ba86dd1014b79e263d93a1e324eeec0d0b306c",
+      "trigger_event": null,
+      "workflow_run_url": null,
+      "updated_at": null,
+      "review_mode": "full_pr"
+    },
+    "fix_tracking": [],
+    "confirmed_signals": [],
+    "dismissed_signals": [],
+    "unresolved_signals": [],
+    "unverified_signals": [],
+    "evidence_rejections": [],
+    "critic_decisions": [],
+    "stage_results": [],
+    "metrics": {
+      "raw_signal_count": 0,
+      "main_review_prompt_signal_count": 0,
+      "independent_suggestion_count": 0,
+      "evidence_rejected_suggestion_count": 0,
+      "critic_request_count": 0,
+      "critic_confirmed_count": 0,
+      "critic_dismissed_count": 0,
+      "critic_uncertain_count": 0,
+      "critic_unverified_count": 0,
+      "context_token_count": 7507,
+      "signal_verification_request_count": 0,
+      "telemetry_only_signal_count": 0,
+      "confirmed_signal_count": 0,
+      "dismissed_signal_count": 0,
+      "unresolved_signal_count": 0,
+      "unverified_signal_count": 0
+    }
+  },
+  "input_coverage": {
+    "binary_files": [],
+    "metadata_only_files": [],
+    "context_truncated": true,
+    "skipped_files": []
+  },
+  "request_count": 1,
+  "usage_records": [
+    {
+      "model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 8798,
+        "completion_tokens": 15886,
+        "total_tokens": 24684,
+        "prompt_tokens_details": {
+          "cached_tokens": 8576
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 14191
+        },
+        "prompt_cache_hit_tokens": 8576,
+        "prompt_cache_miss_tokens": 222
+      },
+      "request_id": "4c9445f7-d549-4a9a-9026-f013396c7cd0"
+    }
+  ],
+  "token_usage": {
+    "prompt_tokens": 8798,
+    "completion_tokens": 15886,
+    "total_tokens": 24684
+  },
+  "cost_usd": null,
+  "reviewer_commit": "acabdc0fafd67aa7946a451928f8c27e1a571202",
+  "working_tree_dirty": true,
+  "reviewer_source_sha256": "60cb296a54c9e453c85c74e32f03dc75024c44138263e2e885d21c1b315a658a",
+  "retry_transport": "streaming",
+  "timeout_seconds": 180,
+  "total_time_budget_seconds": 300,
+  "max_output_tokens": 32768
+}

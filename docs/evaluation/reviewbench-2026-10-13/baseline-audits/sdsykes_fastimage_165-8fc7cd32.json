@@ -1,0 +1,275 @@
+{
+  "model": "deepseek-v4-flash",
+  "latency_seconds": 195.85895679199893,
+  "diff_sha256": "08b05b1aa354463a4a408c2ac2b4d7fdf260d508941edffacf3a46555d57d0b1",
+  "strategy": {
+    "evidence": true,
+    "critic": false,
+    "context_pack": true,
+    "two_stage": false,
+    "verify_signals": false,
+    "min_confidence": 0.65,
+    "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "report": {
+    "pr": {
+      "repo": "sdsykes/fastimage",
+      "number": 165,
+      "title": "Add resolution support for image formats (JPEG, TIFF, PNG, BMP) along with unit parsing",
+      "author": null,
+      "base_ref": "7a0dcf780e6d8cd7686520a3a1f57e7cd85b0b46",
+      "head_ref": "8fc7cd32904240c2c841e70aef2ba5c3bb659ffd",
+      "head_sha": "8fc7cd32904240c2c841e70aef2ba5c3bb659ffd",
+      "html_url": null
+    },
+    "files": [
+      {
+        "filename": ".gitignore",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 0,
+        "changes": 1,
+        "previous_filename": null,
+        "patch_sha256": "afb33f82659c6d4ecfbfd14329344ee64b171dc5133131a219d5d854f9d93936"
+      },
+      {
+        "filename": "README.md",
+        "status": "modified",
+        "additions": 10,
+        "deletions": 0,
+        "changes": 10,
+        "previous_filename": null,
+        "patch_sha256": "f6407c7cb8e6bd98692ca67b3256a6cb2bda88716fc54e082180b478259d1d75"
+      },
+      {
+        "filename": "lib/fastimage/fastimage.rb",
+        "status": "modified",
+        "additions": 42,
+        "deletions": 1,
+        "changes": 43,
+        "previous_filename": null,
+        "patch_sha256": "2a1f29467ee5625ccea663b9e539ecc865c7fdebe312264f6e803bc6b5b16d56"
+      },
+      {
+        "filename": "lib/fastimage/fastimage_parsing/bmp.rb",
+        "status": "modified",
+        "additions": 11,
+        "deletions": 0,
+        "changes": 11,
+        "previous_filename": null,
+        "patch_sha256": "7001766d0b62df5e7d75aa602cf4df161e0485e546e4f72af5ca120fb41a44e1"
+      },
+      {
+        "filename": "lib/fastimage/fastimage_parsing/exif.rb",
+        "status": "modified",
+        "additions": 82,
+        "deletions": 24,
+        "changes": 106,
+        "previous_filename": null,
+        "patch_sha256": "e1e52a6fdef7d54e923d169ea415b2e097d99cb3b5f9eb9f4b9f91c00fe670f9"
+      },
+      {
+        "filename": "lib/fastimage/fastimage_parsing/image_base.rb",
+        "status": "modified",
+        "additions": 7,
+        "deletions": 0,
+        "changes": 7,
+        "previous_filename": null,
+        "patch_sha256": "cda6d5e0e3cdd616185f343aec9d61e6bb0724eced108464c98256168f091ef9"
+      },
+      {
+        "filename": "lib/fastimage/fastimage_parsing/jpeg.rb",
+        "status": "modified",
+        "additions": 74,
+        "deletions": 5,
+        "changes": 79,
+        "previous_filename": null,
+        "patch_sha256": "c576a89053f195ab0db3fe2d1bbcb8a41375d2436f4e82c0eeb8b3aac8b7269d"
+      },
+      {
+        "filename": "lib/fastimage/fastimage_parsing/png.rb",
+        "status": "modified",
+        "additions": 24,
+        "deletions": 1,
+        "changes": 25,
+        "previous_filename": null,
+        "patch_sha256": "28f8e7bea4dea085b4ee61eb9864ccaeec43610bdf9b8fa8ce6fb281f3c1c764"
+      },
+      {
+        "filename": "lib/fastimage/fastimage_parsing/tiff.rb",
+        "status": "modified",
+        "additions": 13,
+        "deletions": 0,
+        "changes": 13,
+        "previous_filename": null,
+        "patch_sha256": "7f1afa3662eb0ae5930958b14d3313d2a5edc8e0733efb07e53d7afd9ff6a221"
+      },
+      {
+        "filename": "test/fixtures/test_no_resolution_unit.png",
+        "status": "added",
+        "additions": 0,
+        "deletions": 0,
+        "changes": 0,
+        "previous_filename": null,
+        "patch_sha256": "6b8c150da9064d31986b87b42830f5dd505fc4c2d1081ed4a8f6362d61db5e77"
+      },
+      {
+        "filename": "test/fixtures/test_with_resolution.png",
+        "status": "added",
+        "additions": 0,
+        "deletions": 0,
+        "changes": 0,
+        "previous_filename": null,
+        "patch_sha256": "a9d4c5acefbecc8cc1cd8187c4eea59310dab9ec0e2c64cddf13ae7465c9da3a"
+      },
+      {
+        "filename": "test/test.rb",
+        "status": "modified",
+        "additions": 77,
+        "deletions": 52,
+        "changes": 129,
+        "previous_filename": null,
+        "patch_sha256": "9aaf33ca1cdcd7c96ad83ab9cce53c4cac73ae80557c31b73212656f886fc7f2"
+      }
+    ],
+    "summary": "This PR adds image resolution-metadata support: a new class method FastImage.resolution(uri), instance methods #resolution/#resolution_units, and format-specific parsers for JPEG (JFIF APP0 + EXIF), PNG (pHYs), BMP (DIB XPelsPerMeter/YPelsPerMeter) and TIFF (EXIF rational tags). The EXIF reader was reworked to a two-pass approach (collect RATIONAL offsets, then read them), and tests extend GoodFixtures with a resolution column plus a full sweep test. Reviewers should focus on the nil-result memoization in FastImage#resolution, the EOF behavior of the new JPEG scan loop, and the forward-only rational-offset handling in the EXIF parser.",
+    "risk_level": "low",
+    "rule_findings": [],
+    "suggestions": [],
+    "used_ai": true,
+    "ai_failure_reason": null,
+    "analysis_warnings": [
+      "3 suggestion(s) filtered out (low confidence, unchanged line, or duplicate)",
+      "Patch context was truncated to fit token budget; some files were not analyzed by AI."
+    ],
+    "context_truncated": true,
+    "context_token_count": 6915,
+    "patch_token_budget": 6000,
+    "context_tokenizer": "cl100k_base",
+    "hidden_suggestions_count": 3,
+    "skipped_context_files": [],
+    "hidden_rule_findings_count": 0,
+    "reviewer_version": "pr-branch",
+    "execution_status": "success",
+    "degradation_reason": null,
+    "report_confidence": "normal",
+    "completeness": [
+      {
+        "item": "PR 元信息获取",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "变更文件获取",
+        "status": "success",
+        "detail": "12 个文件"
+      },
+      {
+        "item": "AI 上下文文件",
+        "status": "success",
+        "detail": "全部文件进入上下文"
+      },
+      {
+        "item": "AI 分析",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "规则扫描",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "Patch 上下文",
+        "status": "partial",
+        "detail": "裁剪 — 超出 token 预算"
+      },
+      {
+        "item": "PR head 语法诊断",
+        "status": "success",
+        "detail": "未检测到语法错误"
+      }
+    ],
+    "pr_syntax_check_ok": true,
+    "review_meta": {
+      "reviewed_commit": "8fc7cd32904240c2c841e70aef2ba5c3bb659ffd",
+      "trigger_event": null,
+      "workflow_run_url": null,
+      "updated_at": null,
+      "review_mode": "full_pr"
+    },
+    "fix_tracking": [],
+    "confirmed_signals": [],
+    "dismissed_signals": [],
+    "unresolved_signals": [],
+    "unverified_signals": [],
+    "evidence_rejections": [],
+    "critic_decisions": [],
+    "stage_results": [],
+    "metrics": {
+      "raw_signal_count": 0,
+      "main_review_prompt_signal_count": 0,
+      "independent_suggestion_count": 0,
+      "evidence_rejected_suggestion_count": 0,
+      "critic_request_count": 0,
+      "critic_confirmed_count": 0,
+      "critic_dismissed_count": 0,
+      "critic_uncertain_count": 0,
+      "critic_unverified_count": 0,
+      "context_token_count": 6915,
+      "signal_verification_request_count": 0,
+      "telemetry_only_signal_count": 0,
+      "confirmed_signal_count": 0,
+      "dismissed_signal_count": 0,
+      "unresolved_signal_count": 0,
+      "unverified_signal_count": 0
+    }
+  },
+  "input_coverage": {
+    "binary_files": [
+      "test/fixtures/test_no_resolution_unit.png",
+      "test/fixtures/test_with_resolution.png"
+    ],
+    "metadata_only_files": [
+      "test/fixtures/test_no_resolution_unit.png",
+      "test/fixtures/test_with_resolution.png"
+    ],
+    "context_truncated": true,
+    "skipped_files": []
+  },
+  "request_count": 1,
+  "usage_records": [
+    {
+      "model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 7991,
+        "completion_tokens": 42147,
+        "total_tokens": 50138,
+        "prompt_tokens_details": {
+          "cached_tokens": 7808
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 41062
+        },
+        "prompt_cache_hit_tokens": 7808,
+        "prompt_cache_miss_tokens": 183
+      },
+      "request_id": "988f38de-6839-494f-bc12-a0ce17274939",
+      "finish_reason": "stop",
+      "stream_complete": true
+    }
+  ],
+  "token_usage": {
+    "prompt_tokens": 7991,
+    "completion_tokens": 42147,
+    "total_tokens": 50138
+  },
+  "cost_usd": null,
+  "reviewer_commit": "200ab1002c0362761cbcc1cac145bbd7d2ad47b8",
+  "working_tree_dirty": true,
+  "reviewer_source_sha256": "d22560c2d9a3cd28eb8957bde561acf758276bd32ede42392f9b6648b54a5561",
+  "transport": "streaming",
+  "timeout_seconds": 180,
+  "total_time_budget_seconds": 300,
+  "max_output_tokens": 65536
+}

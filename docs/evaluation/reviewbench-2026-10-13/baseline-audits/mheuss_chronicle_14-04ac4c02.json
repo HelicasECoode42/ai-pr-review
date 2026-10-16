@@ -1,0 +1,285 @@
+{
+  "model": "deepseek-v4-flash",
+  "latency_seconds": 63.5319093339931,
+  "diff_sha256": "876dba2b88f997e2c7aa2bad3dfecfd866b15e02c1e5052514e8e71cc97ed402",
+  "strategy": {
+    "evidence": true,
+    "critic": false,
+    "context_pack": true,
+    "two_stage": false,
+    "verify_signals": false,
+    "min_confidence": 0.65,
+    "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "report": {
+    "pr": {
+      "repo": "mheuss/chronicle",
+      "number": 14,
+      "title": "feat(storage): storage & data security hardening (HEU-405)",
+      "author": null,
+      "base_ref": "17e33ca1ebf643d47201a8f94b8ab3e88848cf23",
+      "head_ref": "04ac4c02d48083676c14dd3fa70d26ca102bd50e",
+      "head_sha": "04ac4c02d48083676c14dd3fa70d26ca102bd50e",
+      "html_url": null
+    },
+    "files": [
+      {
+        "filename": "chronicle-daemon/Cargo.lock",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 0,
+        "changes": 1,
+        "previous_filename": null,
+        "patch_sha256": "96eb25d5757f6788b892fa26e4274d9989dbf5ba1639123c2c3ed57f70a85c87"
+      },
+      {
+        "filename": "chronicle-daemon/crates/storage/Cargo.toml",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 0,
+        "changes": 1,
+        "previous_filename": null,
+        "patch_sha256": "be878fdcb8855369b7576665923c095c8213da1e25e43dc99b577f71d0117615"
+      },
+      {
+        "filename": "chronicle-daemon/crates/storage/src/audio.rs",
+        "status": "modified",
+        "additions": 5,
+        "deletions": 2,
+        "changes": 7,
+        "previous_filename": null,
+        "patch_sha256": "131c786461031b73cfd7ed07c6d3490665027c3854104c08401f5edaa5184285"
+      },
+      {
+        "filename": "chronicle-daemon/crates/storage/src/files.rs",
+        "status": "modified",
+        "additions": 14,
+        "deletions": 143,
+        "changes": 157,
+        "previous_filename": null,
+        "patch_sha256": "a4c8eef5194d55cda1e28bf41597ce306c15d61192877640149f9b4d0a9bda4c"
+      },
+      {
+        "filename": "chronicle-daemon/crates/storage/src/lib.rs",
+        "status": "modified",
+        "additions": 145,
+        "deletions": 48,
+        "changes": 193,
+        "previous_filename": null,
+        "patch_sha256": "507c01f7666497e0d74b94b2e3557b92fa173424a76184d1618fb65aaa18f437"
+      },
+      {
+        "filename": "chronicle-daemon/crates/storage/src/media.rs",
+        "status": "added",
+        "additions": 571,
+        "deletions": 0,
+        "changes": 571,
+        "previous_filename": null,
+        "patch_sha256": "8443b1794f433bc61518365113e76aeca6dff7d58be119275992179a830afeb9"
+      },
+      {
+        "filename": "chronicle-daemon/crates/storage/src/models.rs",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 2,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "69a2941aee0c98864ff34aff923629de3b35c2e61f498ea99542a1a1c0873e46"
+      },
+      {
+        "filename": "chronicle-daemon/crates/storage/src/retention.rs",
+        "status": "modified",
+        "additions": 209,
+        "deletions": 122,
+        "changes": 331,
+        "previous_filename": null,
+        "patch_sha256": "a296b8c390f86ac8b1e23df72b1c2c5f5202ed2f9f5aed46eeb195f4692f6efe"
+      },
+      {
+        "filename": "chronicle-daemon/crates/storage/src/schema.rs",
+        "status": "modified",
+        "additions": 2,
+        "deletions": 5,
+        "changes": 7,
+        "previous_filename": null,
+        "patch_sha256": "5bf729605380b3273bbca13e9dc914b2e4baaf041cedaec1bf5d409f0e69da82"
+      },
+      {
+        "filename": "chronicle-daemon/crates/storage/src/screenshots.rs",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "81ca20001ba19a55e92e8585fa589865cabdcb8dda0005c49daa20a99168e97d"
+      },
+      {
+        "filename": "chronicle-daemon/crates/storage/src/search.rs",
+        "status": "modified",
+        "additions": 57,
+        "deletions": 49,
+        "changes": 106,
+        "previous_filename": null,
+        "patch_sha256": "4b76102d63a4d45fcc786de40c62d82504188aaf773c1dfc2dd7c57ed7a09733"
+      },
+      {
+        "filename": "chronicle-daemon/crates/storage/tests/integration.rs",
+        "status": "modified",
+        "additions": 35,
+        "deletions": 13,
+        "changes": 48,
+        "previous_filename": null,
+        "patch_sha256": "34d2ca5e668d14c6542bb67164aa4480639de1a9fa915d1b9bfa8a64684227fe"
+      },
+      {
+        "filename": "chronicle-daemon/src/main.rs",
+        "status": "modified",
+        "additions": 11,
+        "deletions": 0,
+        "changes": 11,
+        "previous_filename": null,
+        "patch_sha256": "d9387db0d695ddcf95c39ecad885f39366f818d84d32b22e9b1c300d6b31a5fe"
+      },
+      {
+        "filename": "chronicle-daemon/src/pipeline.rs",
+        "status": "modified",
+        "additions": 71,
+        "deletions": 20,
+        "changes": 91,
+        "previous_filename": null,
+        "patch_sha256": "932549e631ebc4de12441b14452bc4623d5c7737456bc14ea23af3f114fca974"
+      }
+    ],
+    "summary": "This PR introduces a new `MediaManager` abstraction (chronicle-daemon/crates/storage/src/media.rs) that centralizes media file lifecycle operations with permission hardening (0o600 files / 0o700 dirs), path validation, and generic orphan-cleanup helpers, and rewires retention/pipeline/lib to use it. Reviewers should focus on whether the path-containment guarantees hold for symlinks and for the parts of a path that are not canonicalized, and on whether the 0o700/0o600 guarantees also hold for pre-existing files/directories on upgraded installations. Most of the change is refactoring of duplicated screenshot/audio cleanup logic into descriptor-driven generic code, so correctness of the new `media.rs` primitives is the main risk surface.",
+    "risk_level": "low",
+    "rule_findings": [],
+    "suggestions": [],
+    "used_ai": true,
+    "ai_failure_reason": null,
+    "analysis_warnings": [
+      "3 suggestion(s) filtered out (low confidence, unchanged line, or duplicate)",
+      "Patch context was truncated to fit token budget; some files were not analyzed by AI."
+    ],
+    "context_truncated": true,
+    "context_token_count": 6611,
+    "patch_token_budget": 6000,
+    "context_tokenizer": "cl100k_base",
+    "hidden_suggestions_count": 3,
+    "skipped_context_files": [],
+    "hidden_rule_findings_count": 0,
+    "reviewer_version": "pr-branch",
+    "execution_status": "success",
+    "degradation_reason": null,
+    "report_confidence": "normal",
+    "completeness": [
+      {
+        "item": "PR 元信息获取",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "变更文件获取",
+        "status": "success",
+        "detail": "14 个文件"
+      },
+      {
+        "item": "AI 上下文文件",
+        "status": "success",
+        "detail": "全部文件进入上下文"
+      },
+      {
+        "item": "AI 分析",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "规则扫描",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "Patch 上下文",
+        "status": "partial",
+        "detail": "裁剪 — 超出 token 预算"
+      },
+      {
+        "item": "PR head 语法诊断",
+        "status": "success",
+        "detail": "未检测到语法错误"
+      }
+    ],
+    "pr_syntax_check_ok": true,
+    "review_meta": {
+      "reviewed_commit": "04ac4c02d48083676c14dd3fa70d26ca102bd50e",
+      "trigger_event": null,
+      "workflow_run_url": null,
+      "updated_at": null,
+      "review_mode": "full_pr"
+    },
+    "fix_tracking": [],
+    "confirmed_signals": [],
+    "dismissed_signals": [],
+    "unresolved_signals": [],
+    "unverified_signals": [],
+    "evidence_rejections": [],
+    "critic_decisions": [],
+    "stage_results": [],
+    "metrics": {
+      "raw_signal_count": 0,
+      "main_review_prompt_signal_count": 0,
+      "independent_suggestion_count": 0,
+      "evidence_rejected_suggestion_count": 0,
+      "critic_request_count": 0,
+      "critic_confirmed_count": 0,
+      "critic_dismissed_count": 0,
+      "critic_uncertain_count": 0,
+      "critic_unverified_count": 0,
+      "context_token_count": 6611,
+      "signal_verification_request_count": 0,
+      "telemetry_only_signal_count": 0,
+      "confirmed_signal_count": 0,
+      "dismissed_signal_count": 0,
+      "unresolved_signal_count": 0,
+      "unverified_signal_count": 0
+    }
+  },
+  "input_coverage": {
+    "binary_files": [],
+    "metadata_only_files": [],
+    "context_truncated": true,
+    "skipped_files": []
+  },
+  "request_count": 1,
+  "usage_records": [
+    {
+      "model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 7594,
+        "completion_tokens": 14597,
+        "total_tokens": 22191,
+        "prompt_tokens_details": {
+          "cached_tokens": 7424
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 12991
+        },
+        "prompt_cache_hit_tokens": 7424,
+        "prompt_cache_miss_tokens": 170
+      },
+      "request_id": "3316d26d-f678-4fb1-84f9-03c0cc0c313c"
+    }
+  ],
+  "token_usage": {
+    "prompt_tokens": 7594,
+    "completion_tokens": 14597,
+    "total_tokens": 22191
+  },
+  "cost_usd": null,
+  "reviewer_commit": "200ab1002c0362761cbcc1cac145bbd7d2ad47b8",
+  "working_tree_dirty": true,
+  "reviewer_source_sha256": "f06d31d67053fc56be31ee3149087d8573a8e08cb382d5a4297313be307c708c",
+  "transport": "streaming",
+  "timeout_seconds": 180,
+  "total_time_budget_seconds": 300,
+  "max_output_tokens": 32768
+}

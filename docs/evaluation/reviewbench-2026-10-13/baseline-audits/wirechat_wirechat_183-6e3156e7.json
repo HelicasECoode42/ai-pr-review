@@ -1,0 +1,357 @@
+{
+  "model": "deepseek-v4-flash",
+  "latency_seconds": 145.8487759999989,
+  "diff_sha256": "bafc750ce634b1e0e357932c5af659cc9b2fecd142c3b699ef99395dbd7fa09c",
+  "strategy": {
+    "evidence": true,
+    "critic": false,
+    "context_pack": true,
+    "two_stage": false,
+    "verify_signals": false,
+    "min_confidence": 0.65,
+    "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "report": {
+    "pr": {
+      "repo": "wirechat/wirechat",
+      "number": 183,
+      "title": "Harden chat/chats scroll state and pagination concurrency in Livewire UI",
+      "author": null,
+      "base_ref": "7f645146da1285f3817a9dfcb04be0a53ee50ecd",
+      "head_ref": "6e3156e78da9b47cb4c6d596883b3ef0730b8cf8",
+      "head_sha": "6e3156e78da9b47cb4c6d596883b3ef0730b8cf8",
+      "html_url": null
+    },
+    "files": [
+      {
+        "filename": ".DS_Store",
+        "status": "modified",
+        "additions": 0,
+        "deletions": 0,
+        "changes": 0,
+        "previous_filename": null,
+        "patch_sha256": "da26f38cffb5095c3384161ce7dcf54ad2f61365259ad70523be3bc81c5c3312"
+      },
+      {
+        "filename": ".github/.DS_Store",
+        "status": "modified",
+        "additions": 0,
+        "deletions": 0,
+        "changes": 0,
+        "previous_filename": null,
+        "patch_sha256": "7708588e9b6f19128fa07881cf7e9a0897c0fd64edbc10c90638054bf84c0431"
+      },
+      {
+        "filename": "database/.DS_Store",
+        "status": "modified",
+        "additions": 0,
+        "deletions": 0,
+        "changes": 0,
+        "previous_filename": null,
+        "patch_sha256": "c922002b0cd11b816fd5b9f1fbae2b3993727e74c1446f478960c9d6dfc66fb9"
+      },
+      {
+        "filename": "lang/.DS_Store",
+        "status": "modified",
+        "additions": 0,
+        "deletions": 0,
+        "changes": 0,
+        "previous_filename": null,
+        "patch_sha256": "54dcba0675ac870fcf3f4e6c63cc3412066c5228eb797d68b428621d55731e6e"
+      },
+      {
+        "filename": "resources/.DS_Store",
+        "status": "modified",
+        "additions": 0,
+        "deletions": 0,
+        "changes": 0,
+        "previous_filename": null,
+        "patch_sha256": "1fcd49109ff264aab7a4ab839cc78c8ad1da69332d7821f3865a8d529c6c7eaf"
+      },
+      {
+        "filename": "resources/views/livewire/chat/partials/body.blade.php",
+        "status": "modified",
+        "additions": 224,
+        "deletions": 87,
+        "changes": 311,
+        "previous_filename": null,
+        "patch_sha256": "2900e9d549821dd17991a7330ae25f2c728bdfa99d32373628e89cfb7c098d49"
+      },
+      {
+        "filename": "resources/views/livewire/chats/chats.blade.php",
+        "status": "modified",
+        "additions": 6,
+        "deletions": 2,
+        "changes": 8,
+        "previous_filename": null,
+        "patch_sha256": "febaec743800fb52852ffea6be536dfbba279a1b0ff044d2be15263382846d5a"
+      },
+      {
+        "filename": "resources/views/livewire/chats/partials/list.blade.php",
+        "status": "modified",
+        "additions": 11,
+        "deletions": 17,
+        "changes": 28,
+        "previous_filename": null,
+        "patch_sha256": "b940698a35c7284a0a0e30e76c3def262ce8817daef9be4d49266211b2e6b516"
+      },
+      {
+        "filename": "resources/views/livewire/chats/partials/message-body.blade.php",
+        "status": "modified",
+        "additions": 8,
+        "deletions": 6,
+        "changes": 14,
+        "previous_filename": null,
+        "patch_sha256": "84d9fc63480a45d713200053b8296fe22f17e34b11f8a1afc436988f703a56c7"
+      },
+      {
+        "filename": "resources/views/livewire/widgets/wire-chat.blade.php",
+        "status": "modified",
+        "additions": 11,
+        "deletions": 0,
+        "changes": 11,
+        "previous_filename": null,
+        "patch_sha256": "5ae49ec2c421ea7d04c9443d9e7d3759368a5d56fc6926b8dd219b4895fe92c6"
+      },
+      {
+        "filename": "resources/views/pages/chat.blade.php",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "a2dbcdaec064d3564828ab65d507900c3dda4499ab3d36e2f3c583aa4a535c43"
+      },
+      {
+        "filename": "resources/views/pages/chats.blade.php",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "changes": 2,
+        "previous_filename": null,
+        "patch_sha256": "43887ad859bf5632a215ec43708704b68423adf07915022c767ba31ef38b894d"
+      },
+      {
+        "filename": "src/.DS_Store",
+        "status": "modified",
+        "additions": 0,
+        "deletions": 0,
+        "changes": 0,
+        "previous_filename": null,
+        "patch_sha256": "a4592652d25793b2b8b50f307fcdfdc54f245f39a26a4e8ecf2b8bfefb53e1e3"
+      },
+      {
+        "filename": "src/Livewire/Chat/Chat.php",
+        "status": "modified",
+        "additions": 245,
+        "deletions": 28,
+        "changes": 273,
+        "previous_filename": null,
+        "patch_sha256": "b69c3a470edcbb8d61c1fcb5b1c5d75ebf71627aabd5fa4a460d1e01a795da42"
+      },
+      {
+        "filename": "src/WirechatServiceProvider.php",
+        "status": "modified",
+        "additions": 3,
+        "deletions": 0,
+        "changes": 3,
+        "previous_filename": null,
+        "patch_sha256": "504a9c1355094896663644d29276fcd5b48c1432895fbd36a5e008429563f6bb"
+      },
+      {
+        "filename": "tests/.DS_Store",
+        "status": "modified",
+        "additions": 0,
+        "deletions": 0,
+        "changes": 0,
+        "previous_filename": null,
+        "patch_sha256": "bda6bc19f12ad418c57b5234aa184b8f2b24b3160dc282e230107fd4415489a3"
+      },
+      {
+        "filename": "tests/Feature/ChatTest.php",
+        "status": "modified",
+        "additions": 148,
+        "deletions": 1,
+        "changes": 149,
+        "previous_filename": null,
+        "patch_sha256": "61b01e0145f1e16f410b04cadcf88e692f3be63e1f24df7a1d099d4c7fc1dc0b"
+      },
+      {
+        "filename": "tests/Feature/ChatsTest.php",
+        "status": "modified",
+        "additions": 66,
+        "deletions": 4,
+        "changes": 70,
+        "previous_filename": null,
+        "patch_sha256": "f15923e896202e501687f62209ee534193ffa7460ccda96d2c0e54ee75c56bf5"
+      },
+      {
+        "filename": "tests/Feature/IndexTest.php",
+        "status": "modified",
+        "additions": 8,
+        "deletions": 0,
+        "changes": 8,
+        "previous_filename": null,
+        "patch_sha256": "fdec509a6fb8b32709cc99300988652d1d0332c0dc92f714e7a204630f49bba9"
+      },
+      {
+        "filename": "tests/Feature/ViewTest.php",
+        "status": "modified",
+        "additions": 50,
+        "deletions": 0,
+        "changes": 50,
+        "previous_filename": null,
+        "patch_sha256": "90f8bab0ffd7c8810dd942c32a19bd16c49da2b231bb392aee1f6536641550d1"
+      }
+    ],
+    "summary": "This PR replaces the previous offset-based pagination in the Livewire chat UI with a cursor/window model: `Chat` gains `loadOlder()`, `loadNewer()`, `jumpToMessage()`, `loadLatestWindow()` plus cursor/canLoad* state, and `loadMore()`/`loadMessages()` become legacy aliases. The Alpine code in `chat/partials/body.blade.php` is rewritten around anchor-based scroll restoration, in-flight guards and a jump/target retry loop, and the tests are extended. Reviewers should focus on the interaction between the new server-side flags (`canLoadOlder`, `canLoadNewer`, cursors) and the client-side flags (`loadingOlder`, `pendingPrependRestore`, `initializing`), since the two sides must stay in lockstep or pagination can permanently stall.",
+    "risk_level": "low",
+    "rule_findings": [],
+    "suggestions": [],
+    "used_ai": true,
+    "ai_failure_reason": null,
+    "analysis_warnings": [
+      "3 suggestion(s) filtered out (low confidence, unchanged line, or duplicate)",
+      "Patch context was truncated to fit token budget; some files were not analyzed by AI."
+    ],
+    "context_truncated": true,
+    "context_token_count": 7296,
+    "patch_token_budget": 6000,
+    "context_tokenizer": "cl100k_base",
+    "hidden_suggestions_count": 3,
+    "skipped_context_files": [],
+    "hidden_rule_findings_count": 0,
+    "reviewer_version": "pr-branch",
+    "execution_status": "success",
+    "degradation_reason": null,
+    "report_confidence": "normal",
+    "completeness": [
+      {
+        "item": "PR 元信息获取",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "变更文件获取",
+        "status": "success",
+        "detail": "20 个文件"
+      },
+      {
+        "item": "AI 上下文文件",
+        "status": "success",
+        "detail": "全部文件进入上下文"
+      },
+      {
+        "item": "AI 分析",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "规则扫描",
+        "status": "success",
+        "detail": "成功"
+      },
+      {
+        "item": "Patch 上下文",
+        "status": "partial",
+        "detail": "裁剪 — 超出 token 预算"
+      },
+      {
+        "item": "PR head 语法诊断",
+        "status": "success",
+        "detail": "未检测到语法错误"
+      }
+    ],
+    "pr_syntax_check_ok": true,
+    "review_meta": {
+      "reviewed_commit": "6e3156e78da9b47cb4c6d596883b3ef0730b8cf8",
+      "trigger_event": null,
+      "workflow_run_url": null,
+      "updated_at": null,
+      "review_mode": "full_pr"
+    },
+    "fix_tracking": [],
+    "confirmed_signals": [],
+    "dismissed_signals": [],
+    "unresolved_signals": [],
+    "unverified_signals": [],
+    "evidence_rejections": [],
+    "critic_decisions": [],
+    "stage_results": [],
+    "metrics": {
+      "raw_signal_count": 0,
+      "main_review_prompt_signal_count": 0,
+      "independent_suggestion_count": 0,
+      "evidence_rejected_suggestion_count": 0,
+      "critic_request_count": 0,
+      "critic_confirmed_count": 0,
+      "critic_dismissed_count": 0,
+      "critic_uncertain_count": 0,
+      "critic_unverified_count": 0,
+      "context_token_count": 7296,
+      "signal_verification_request_count": 0,
+      "telemetry_only_signal_count": 0,
+      "confirmed_signal_count": 0,
+      "dismissed_signal_count": 0,
+      "unresolved_signal_count": 0,
+      "unverified_signal_count": 0
+    }
+  },
+  "input_coverage": {
+    "binary_files": [
+      ".DS_Store",
+      ".github/.DS_Store",
+      "database/.DS_Store",
+      "lang/.DS_Store",
+      "resources/.DS_Store",
+      "src/.DS_Store",
+      "tests/.DS_Store"
+    ],
+    "metadata_only_files": [
+      ".DS_Store",
+      ".github/.DS_Store",
+      "database/.DS_Store",
+      "lang/.DS_Store",
+      "resources/.DS_Store",
+      "src/.DS_Store",
+      "tests/.DS_Store"
+    ],
+    "context_truncated": true,
+    "skipped_files": []
+  },
+  "request_count": 1,
+  "usage_records": [
+    {
+      "model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 8386,
+        "completion_tokens": 29853,
+        "total_tokens": 38239,
+        "prompt_tokens_details": {
+          "cached_tokens": 8192
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 28068
+        },
+        "prompt_cache_hit_tokens": 8192,
+        "prompt_cache_miss_tokens": 194
+      },
+      "request_id": "1f7cc53c-84df-407b-b30d-c0307adbef98",
+      "finish_reason": "stop",
+      "stream_complete": true
+    }
+  ],
+  "token_usage": {
+    "prompt_tokens": 8386,
+    "completion_tokens": 29853,
+    "total_tokens": 38239
+  },
+  "cost_usd": null,
+  "reviewer_commit": "200ab1002c0362761cbcc1cac145bbd7d2ad47b8",
+  "working_tree_dirty": true,
+  "reviewer_source_sha256": "d22560c2d9a3cd28eb8957bde561acf758276bd32ede42392f9b6648b54a5561",
+  "transport": "streaming",
+  "timeout_seconds": 180,
+  "total_time_budget_seconds": 300,
+  "max_output_tokens": 65536
+}

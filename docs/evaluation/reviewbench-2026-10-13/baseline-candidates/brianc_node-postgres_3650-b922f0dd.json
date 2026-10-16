@@ -1,0 +1,10 @@
+{
+  "pr": {
+    "repo": "https://github.com/brianc/node-postgres",
+    "pr_number": 3650,
+    "base": "c6028a875f953eff9e8e403622b0aac127d1b4a6",
+    "head": "b922f0ddfa3914cc7b05387cd12fc606bc658dc4"
+  },
+  "agent": "ai-pr-review",
+  "findings": []
+}

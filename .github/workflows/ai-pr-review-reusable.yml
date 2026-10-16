@@ -1,0 +1,252 @@
+# Reusable AI PR Review workflow.
+#
+# Call it from any repository:
+#
+#   name: AI PR Review
+#   on: [pull_request]
+#   jobs:
+#     review:
+#       uses: HelicasECoode42/ai-pr-review/.github/workflows/ai-pr-review-reusable.yml@main
+#       with:
+#         language: auto
+#       secrets:
+#         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+#
+# This file installs the reviewer from the tool repository and runs it against
+# the caller's checked-out repository. It never runs the caller's own source as
+# the reviewer, which is what the self-review workflow in this repository does.
+#
+# SECURITY: `uvx --from git+…@reviewer_ref` executes whatever that ref points to
+# *at run time*, inside your CI, with your secrets. `reviewer_ref` therefore
+# defaults to a moving branch and must be pinned to a tag or commit SHA for any
+# repository that matters:
+#
+#   with:
+#     reviewer_ref: v0.1.0        # or a full 40-character commit SHA
+#
+# The reviewer also uses the caller's own OPENAI_API_KEY and uploads the diff and
+# evidence excerpts to the configured OPENAI_BASE_URL. Set max_input_tokens to cap
+# what one pull request can spend.
+name: AI PR Review (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        description: "PR number to review (optional; taken from the event when omitted)"
+        required: false
+        type: number
+      language:
+        description: "Output language: auto, en, or zh"
+        required: false
+        type: string
+        default: "auto"
+      reviewer_ref:
+        description: "Ref of ai-pr-review to run. Pin to a tag or commit SHA; 'main' executes moving code."
+        required: false
+        type: string
+        default: "main"
+      post_inline:
+        description: "Post high-confidence findings as inline review comments"
+        required: false
+        type: boolean
+        default: false
+      max_input_tokens:
+        description: "Optional cap on model input tokens (patch context + evidence)"
+        required: false
+        type: number
+      max_suggestions:
+        description: "Maximum number of suggestions to emit"
+        required: false
+        type: number
+        default: 20
+    secrets:
+      OPENAI_API_KEY:
+        description: "OpenAI-compatible API key (the caller's own key)"
+        required: true
+      OPENAI_BASE_URL:
+        description: "OpenAI-compatible base URL"
+        required: false
+      REVIEW_MODEL:
+        description: "Model name for the review"
+        required: false
+      CRITIC_MODEL:
+        description: "Optional second model for adversarial review"
+        required: false
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    # One run per PR and ref: without this, two pushes race and both comment.
+    concurrency:
+      group: ai-pr-review-${{ github.repository }}-${{ github.event.pull_request.number || inputs.pr_number }}
+      cancel-in-progress: false
+    steps:
+      # The caller's repository: the reviewer reads its diff at the frozen SHA.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Resolve PR number
+        id: pr
+        run: |
+          pr="${{ github.event.pull_request.number || inputs.pr_number }}"
+          if [ -z "${pr}" ]; then
+            echo "::error::No pull request to review. Run this workflow on a pull_request event or pass with.pr_number."
+            exit 1
+          fi
+          echo "number=${pr}" >> "$GITHUB_OUTPUT"
+
+      - name: Run the reviewer from the tool repository
+        # Inputs reach the shell only through env vars: interpolating ${{ }} straight
+        # into a run script would let a caller-controlled value inject commands.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+          REVIEW_MODEL: ${{ secrets.REVIEW_MODEL }}
+          CRITIC_MODEL: ${{ secrets.CRITIC_MODEL }}
+          MAX_REVIEW_INPUT_TOKENS: ${{ inputs.max_input_tokens }}
+          INPUT_LANGUAGE: ${{ inputs.language }}
+          INPUT_MAX_SUGGESTIONS: ${{ inputs.max_suggestions }}
+          INPUT_REVIEWER_REF: ${{ inputs.reviewer_ref }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          TARGET_REPO: ${{ github.repository }}
+        run: |
+          mkdir -p reports
+          args=(--format json --output reports/pr-review.json
+                --max-suggestions "${INPUT_MAX_SUGGESTIONS}")
+          # The CLI validates --language against en|zh, so "auto" means omit it.
+          if [ "${INPUT_LANGUAGE}" != "auto" ]; then
+            args+=(--language "${INPUT_LANGUAGE}")
+          fi
+          # One model run: the JSON report is the source for both the summary
+          # comment and the optional inline comments.
+          uvx --from "git+https://github.com/HelicasECoode42/ai-pr-review@${INPUT_REVIEWER_REF}" \
+            ai-pr-review "${TARGET_REPO}" "${PR_NUMBER}" "${args[@]}"
+
+      - name: Upload review report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-review
+          path: reports/pr-review.json
+          if-no-files-found: warn
+
+      - name: Post summary comment
+        if: always()
+        continue-on-error: true
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        with:
+          script: |
+            const fs = require("fs");
+            const path = "reports/pr-review.json";
+            if (!fs.existsSync(path)) {
+              core.warning("No review report was produced; nothing to post.");
+              return;
+            }
+            const report = JSON.parse(fs.readFileSync(path, "utf8"));
+            const prNumber = context.payload.pull_request?.number || Number(process.env.PR_NUMBER);
+            const suggestions = report.suggestions || [];
+            const pending = report.pending_suggestions || [];
+            const lines = [
+              "<!-- ai-pr-review-bot -->",
+              "## AI PR Review",
+              "",
+              report.summary || "(no summary)",
+              "",
+              `- risk: **${report.risk_level || "unknown"}**`,
+              `- report confidence: **${report.report_confidence || "unknown"}**`,
+              `- suggestions: **${suggestions.length}**, needing context: **${pending.length}**`,
+              `- reviewed commit: \`${report.review_meta?.reviewed_commit || "unknown"}\``,
+            ];
+            // Withheld candidates are listed, not counted away: a finding the
+            // reviewer found but could not evidence is still information the author
+            // needs, and hiding it is what made the tool look like it found nothing.
+            const pendingItems = (report.pending_suggestions || []).slice(0, 10);
+            if (pendingItems.length) {
+              lines.push("", "<details><summary>待确认候选（证据不足，未发布为行内评论）</summary>", "");
+              for (const item of pendingItems) {
+                const where = item.line ? `${item.file_path}:${item.line}` : item.file_path;
+                const why = String(item.reason || "").replace(/\s+/g, " ").slice(0, 160);
+                lines.push(`- \`${where}\` — ${item.title}${why ? `（${why}）` : ""}`);
+              }
+              lines.push("", "</details>");
+            }
+            if (report.analysis_warnings?.length) {
+              lines.push("", "### Warnings", ...report.analysis_warnings.slice(0, 10).map(w => `- ${w}`));
+            }
+            const body = lines.join("\n");
+            const existing = (await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber,
+            })).find(c => (c.body || "").includes("<!-- ai-pr-review-bot -->"));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body,
+              });
+              core.info("Updated the existing AI review summary comment.");
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber, body,
+              });
+              core.info("Created the AI review summary comment.");
+            }
+
+      - name: Post inline comments (opt-in)
+        if: ${{ inputs.post_inline }}
+        continue-on-error: true
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        with:
+          script: |
+            const fs = require("fs");
+            const path = "reports/pr-review.json";
+            if (!fs.existsSync(path)) return;
+            const report = JSON.parse(fs.readFileSync(path, "utf8"));
+            // The reviewer stamps the threshold so this file cannot drift from
+            // the Python settings.
+            const minConfidence = typeof report.metrics?.publish_min_confidence === "number"
+              ? report.metrics.publish_min_confidence
+              : 0.80;
+            const commitId = report.pr?.head_sha;
+            const prNumber = context.payload.pull_request?.number || Number(process.env.PR_NUMBER);
+            if (!commitId) {
+              core.warning("No head_sha in the report; cannot anchor inline comments.");
+              return;
+            }
+            const candidates = (report.suggestions || [])
+              .filter(s => s.confidence >= minConfidence && s.line != null);
+            const MAX_INLINE = 10;
+            const inline = candidates.slice(0, MAX_INLINE);
+            if (candidates.length > inline.length) {
+              core.warning(
+                `Publishing the first ${MAX_INLINE} of ${candidates.length} suggestions; ` +
+                `${candidates.length - inline.length} were not posted.`
+              );
+            }
+            let posted = 0;
+            let failed = 0;
+            for (const s of inline) {
+              try {
+                await github.rest.pulls.createReviewComment({
+                  owner: context.repo.owner, repo: context.repo.repo, pull_number: prNumber,
+                  commit_id: commitId, path: s.file_path, line: s.line, side: "RIGHT",
+                  body: `**${s.severity}** (${Math.round(s.confidence * 100)}%): ${s.title}\n\n${s.reason}\n\n> ${s.recommendation}`,
+                });
+                posted++;
+              } catch (error) {
+                core.warning(`  ✗ ${s.file_path}:${s.line} — ${error.message}`);
+                failed++;
+              }
+            }
+            core.info(`Inline review published: ${posted} posted, ${failed} failed, ${inline.length} attempted.`);

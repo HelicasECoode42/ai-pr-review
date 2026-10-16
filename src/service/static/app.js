@@ -233,6 +233,16 @@ function renderResults() {
 
   // Suggestions
   renderSuggestions((r.suggestions || []));
+  let pending = document.getElementById("pending-candidates");
+  if (!pending) {
+    pending = document.createElement("div");
+    pending.id = "pending-candidates";
+    document.getElementById("suggestions-list").after(pending);
+  }
+  const candidates = r.pending_suggestions || [];
+  pending.innerHTML = candidates.length ? `<h3>Needs additional context (${candidates.length})</h3>
+    <p>Unconfirmed candidates; excluded from verified findings and inline comments.</p>
+    ${candidates.map(s => `<p><strong>${escHtml(s.title)}</strong> — ${escHtml(s.file_path)}:${s.line ?? ""}</p>`).join("")}` : "";
   renderCompleteness((r.completeness || []));
   renderMarkdown(_markdown);
 

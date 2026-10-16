@@ -1,0 +1,10 @@
+{
+  "pr": {
+    "repo": "https://github.com/AA-Factory/aafactory-prototype",
+    "pr_number": 17,
+    "base": "e7f558c7360abac335af2df22f4ed376992b30ab",
+    "head": "a1978cb75950a879df8805e4a5f373eb6678f6f9"
+  },
+  "agent": "ai-pr-review",
+  "findings": []
+}

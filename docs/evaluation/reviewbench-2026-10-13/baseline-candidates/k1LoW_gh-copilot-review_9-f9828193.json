@@ -1,0 +1,18 @@
+{
+  "pr": {
+    "repo": "https://github.com/k1LoW/gh-copilot-review",
+    "pr_number": 9,
+    "base": "5f3765a9ef25d9c5a57699418bed105d9ac54691",
+    "head": "f98281938e63acd1d2df9b89d6af98dcf58c9fa8"
+  },
+  "agent": "ai-pr-review",
+  "findings": [
+    {
+      "file": "internal/github/github.go",
+      "start_line": 116,
+      "end_line": 116,
+      "message": "Freshness is decided by review timestamp vs. commit timestamp instead of the reviewed commit SHA: `return latestCopilotReview.After(lastCommitDate), nil` treats a review as fresh whenever its `submitted_at` is later than the head commit's `committer.date`, without checking which commit the review actually covers. The PR description states the check should compare each Copilot review's `commit_id` against the current PR head SHA, which this implementation does not do. Commit timestamps are also not reliable ordering evidence: `git rebase --committer-date-is-author-date`, `GIT_COMMITTER_DATE`, or imported/cherry-picked patches can give the current head commit a `committer.date` older than a review that was submitted for a previous commit.\nScenario: Copilot starts reviewing commit A; while it is running, the developer pushes commit B (committer date 10:00); Copilot then submits its review of commit A at 10:05. `latestCopilotReview` (10:05) is after `lastCommitDate` (10:00), so the function reports fresh and cmd/root.go exits early: commit B is never reviewed even though Copilot's review only covered A.\nRead the PR head SHA (`GET repos/{owner}/{repo}/pulls/{n}` -> `head.sha`) and compare it to the `commit_id` field of the Copilot reviews, e.g. return fresh only when some Copilot review has `commit_id == headSHA`; keep the timestamp only as a fallback when `commit_id` is empty.",
+      "producer": "ai-pr-review"
+    }
+  ]
+}

@@ -1,0 +1,2271 @@
+{
+  "pr": {
+    "repo": "HelicasECoode42/ai-pr-review",
+    "number": 45,
+    "title": "ReviewBench and review reliability improvements",
+    "body": null,
+    "author": null,
+    "base_ref": "main",
+    "head_ref": "e3f0aee4e6fb26740776065a61148d8811f597b3",
+    "head_sha": "e3f0aee4e6fb26740776065a61148d8811f597b3",
+    "html_url": null
+  },
+  "files": [
+    {
+      "filename": ".github/workflows/ai-pr-review.yml",
+      "status": "modified",
+      "additions": 4,
+      "deletions": 14,
+      "changes": 18,
+      "previous_filename": null,
+      "patch_sha256": "946d6455a27858a48693d38905a0fbbdf7cd7c9bcaee8bf0c081c4eec49f8bb2"
+    },
+    {
+      "filename": ".github/workflows/ci.yml",
+      "status": "modified",
+      "additions": 1,
+      "deletions": 1,
+      "changes": 2,
+      "previous_filename": null,
+      "patch_sha256": "0846dd93bfb595673340f52c5c0857384af7d14b13174d40c3abc6f1a7649860"
+    },
+    {
+      "filename": "README.md",
+      "status": "modified",
+      "additions": 6,
+      "deletions": 0,
+      "changes": 6,
+      "previous_filename": null,
+      "patch_sha256": "c94a56d4574d16784e044d55f46bf33ca1586e8b24ca85274ea39b9b29e401af"
+    },
+    {
+      "filename": "datasets/golden/synthetic-dev.json",
+      "status": "added",
+      "additions": 88,
+      "deletions": 0,
+      "changes": 88,
+      "previous_filename": null,
+      "patch_sha256": "79ae34ba1da8e4af1d7064c5fc3d85b4f03e116387e18302d39f588843a8af03"
+    },
+    {
+      "filename": "docs/evaluation-driven-review.md",
+      "status": "added",
+      "additions": 211,
+      "deletions": 0,
+      "changes": 211,
+      "previous_filename": null,
+      "patch_sha256": "4f6ea7b1ae0d3ba0a0e30a856cdb91db02498ea6e3f29bcf451cdecc1d930ca6"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/REPORT.md",
+      "status": "added",
+      "additions": 101,
+      "deletions": 0,
+      "changes": 101,
+      "previous_filename": null,
+      "patch_sha256": "7c20f226cb5590aabb923273f6cfce9a6bf79ffe009ac324b9f66a2fdd56fe68"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/attempt-history.json",
+      "status": "added",
+      "additions": 601,
+      "deletions": 0,
+      "changes": 601,
+      "previous_filename": null,
+      "patch_sha256": "98e9d41aa85ad622b86222105605d1eb804c34ddfc9a2b7be5417aa18c2ccaa2"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/AA-Factory_aafactory-prototype_17-a1978cb7.json",
+      "status": "added",
+      "additions": 167,
+      "deletions": 0,
+      "changes": 167,
+      "previous_filename": null,
+      "patch_sha256": "1a72e8d083a3233558f639f0af851520f8d4844955ec7caf73d2dbe47be0e74f"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/AY2526S2-CS2103T-W14-3_tp_152-e0a9ce03.json",
+      "status": "added",
+      "additions": 330,
+      "deletions": 0,
+      "changes": 330,
+      "previous_filename": null,
+      "patch_sha256": "38af4df4da733572796f2f501642525588a6184958853498b42be736b17ddff3"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/DisciplinedSoftware_Codebase-Conversion_1-4b46d68c.json",
+      "status": "added",
+      "additions": 379,
+      "deletions": 0,
+      "changes": 379,
+      "previous_filename": null,
+      "patch_sha256": "5fe9ca00fec5b57f3a911260dbac8ef8fdadd0ef5eded9323f622172215b3395"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/Marvell-Consulting_statswales-frontend_626-30ba27a5.json",
+      "status": "added",
+      "additions": 185,
+      "deletions": 0,
+      "changes": 185,
+      "previous_filename": null,
+      "patch_sha256": "8e2c08318776ed794c60332022deb593f718237641a55a06fda5ecf52b2966de"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/NCATSTranslator_translator-ingests_336-efb31e9c.json",
+      "status": "added",
+      "additions": 200,
+      "deletions": 0,
+      "changes": 200,
+      "previous_filename": null,
+      "patch_sha256": "2af3a6d470d2ea5e320e1dd65a2b0ee5589083d264fcf8e140e0fd62f995ddc3"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/PaulStSmith_figlet-comment-generator_32-1d0b6642.json",
+      "status": "added",
+      "additions": 348,
+      "deletions": 0,
+      "changes": 348,
+      "previous_filename": null,
+      "patch_sha256": "63bd0959fd4ea60fb185f2b0d25f83938f7f0e557fe33132266a52339f23e96b"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/PierreJanineh_TechDebtMCP_135-16a54f0f.json",
+      "status": "added",
+      "additions": 259,
+      "deletions": 0,
+      "changes": 259,
+      "previous_filename": null,
+      "patch_sha256": "8e7b7e3831c7b2d34d652ef3065b0c064cea67a98b519e88e5f3f14207952b21"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/allan-mobley-jr_gimmes_468-e1477f8b.json",
+      "status": "added",
+      "additions": 209,
+      "deletions": 0,
+      "changes": 209,
+      "previous_filename": null,
+      "patch_sha256": "3d6a67268a6fc3454254fa9be7a9ab2b266785ef0a769bc3afa0857c0407cfb4"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/ardevd_jadx-collaboration_3-853179dc.json",
+      "status": "added",
+      "additions": 200,
+      "deletions": 0,
+      "changes": 200,
+      "previous_filename": null,
+      "patch_sha256": "f1f1f7891ce23eb89d5dddc33f7870225ec144aa2e88b22f681ff20b7f067fa8"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/brexhq_CrabTrap_15-5ef0884c.json",
+      "status": "added",
+      "additions": 212,
+      "deletions": 0,
+      "changes": 212,
+      "previous_filename": null,
+      "patch_sha256": "766b2a7a593956d3c85a6cc45d1ef3fbe585c668be1b1318a62682b85853383e"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/brianc_node-postgres_3650-b922f0dd.json",
+      "status": "added",
+      "additions": 210,
+      "deletions": 0,
+      "changes": 210,
+      "previous_filename": null,
+      "patch_sha256": "220e512f3fa0211a5f95e9c3f0702272ac1f03d4c834f465aa4915ea666a292d"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/cmik_apilix_12-0c34439a.json",
+      "status": "added",
+      "additions": 352,
+      "deletions": 0,
+      "changes": 352,
+      "previous_filename": null,
+      "patch_sha256": "4fe172c4f3f99c2c96d20c9095d2cee94201f89b49684ab119e77520d1695d76"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/gagneurlab_PROTRIDER_10-b462b109.json",
+      "status": "added",
+      "additions": 397,
+      "deletions": 0,
+      "changes": 397,
+      "previous_filename": null,
+      "patch_sha256": "c9221d427ff0610b0976fd86025cd02e136a4c92a32de580e69f2f5e0a6136ca"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/k1LoW_gh-copilot-review_9-f9828193.json",
+      "status": "added",
+      "additions": 191,
+      "deletions": 0,
+      "changes": 191,
+      "previous_filename": null,
+      "patch_sha256": "02884bbfe4a2369f851365472998e84f8cc5644296020a5eb5ad9d9159500c28"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/konturio_disaster-ninja-fe_1230-d169e9da.json",
+      "status": "added",
+      "additions": 174,
+      "deletions": 0,
+      "changes": 174,
+      "previous_filename": null,
+      "patch_sha256": "ddcf30e150f8ac7278ed1cf43f890740594545558b4c184621ccf9d72f328487"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/mheuss_chronicle_14-04ac4c02.json",
+      "status": "added",
+      "additions": 285,
+      "deletions": 0,
+      "changes": 285,
+      "previous_filename": null,
+      "patch_sha256": "acdd2a459599406197de02fc4794c12b65957aaccdaf7f7d2df50283bb62d53c"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/renedierking_LANdalf_88-bc1698f4.json",
+      "status": "added",
+      "additions": 176,
+      "deletions": 0,
+      "changes": 176,
+      "previous_filename": null,
+      "patch_sha256": "5f629833163650f1ab7ce423483fcde66410513fbbd6ed34297fc135dd2deddd"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/scotthamilton77_agents-config_1-1fc78970.json",
+      "status": "added",
+      "additions": 546,
+      "deletions": 0,
+      "changes": 546,
+      "previous_filename": null,
+      "patch_sha256": "5007e4a9ab0e4333a870fecdf3a9a019b2d93d5aaa82b1d850ee784a573ca9d7"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/scottlz0310_Mcp-Docker_29-e7705d26.json",
+      "status": "added",
+      "additions": 248,
+      "deletions": 0,
+      "changes": 248,
+      "previous_filename": null,
+      "patch_sha256": "0ae6b759d77f50d0da89c8d2d26e5ae29e13e1332d63663b1d5036602ff3bada"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/sdsykes_fastimage_165-8fc7cd32.json",
+      "status": "added",
+      "additions": 275,
+      "deletions": 0,
+      "changes": 275,
+      "previous_filename": null,
+      "patch_sha256": "834a13c2e815f3d2a9463ca4eb82e42b18e666b540723262899f189ae4cc49c1"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/simnaut_emdash_2-41d75006.json",
+      "status": "added",
+      "additions": 3841,
+      "deletions": 0,
+      "changes": 3841,
+      "previous_filename": null,
+      "patch_sha256": "41a4d5fb5eb2ae5edbfa55819b69b473d05b16bd6b2f4533ae2299e0fe406d41"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/superhighfives_pika_200-b227aff0.json",
+      "status": "added",
+      "additions": 318,
+      "deletions": 0,
+      "changes": 318,
+      "previous_filename": null,
+      "patch_sha256": "1c202808b9920b525d84361dd37478e58d0d698b2972840e565447c336d2c572"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/superyyrrzz_ForgeMap_106-2f3977ed.json",
+      "status": "added",
+      "additions": 192,
+      "deletions": 0,
+      "changes": 192,
+      "previous_filename": null,
+      "patch_sha256": "aa60410635fa0c9de0051406f1d14376918789707d34c2e61626d18662dfaa1f"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/vanyastaff_nebula_224-d5ba86dd.json",
+      "status": "added",
+      "additions": 780,
+      "deletions": 0,
+      "changes": 780,
+      "previous_filename": null,
+      "patch_sha256": "089545f1bd03cd1a3772bd0b1fbf48a2b612bddda2dad2b50755773865d585c0"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/wirechat_wirechat_183-6e3156e7.json",
+      "status": "added",
+      "additions": 357,
+      "deletions": 0,
+      "changes": 357,
+      "previous_filename": null,
+      "patch_sha256": "8b03e4f7a25480cad6020b270e59ac593fec17b3d463f972f0503ff6064ed082"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/AA-Factory_aafactory-prototype_17-a1978cb7.json",
+      "status": "added",
+      "additions": 10,
+      "deletions": 0,
+      "changes": 10,
+      "previous_filename": null,
+      "patch_sha256": "38e7d52f5b63341d08cd19a1be121649c9ed3347ba546920ce7b6524796ff770"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/AY2526S2-CS2103T-W14-3_tp_152-e0a9ce03.json",
+      "status": "added",
+      "additions": 10,
+      "deletions": 0,
+      "changes": 10,
+      "previous_filename": null,
+      "patch_sha256": "ad65b3cc527385d273d6041944de313154f40d614700d276be06884e162a3b2f"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/DisciplinedSoftware_Codebase-Conversion_1-4b46d68c.json",
+      "status": "added",
+      "additions": 18,
+      "deletions": 0,
+      "changes": 18,
+      "previous_filename": null,
+      "patch_sha256": "f702dd7273c3740b86c0e292458d61f236f9f7eb419f591abc2282ed3f5b98e8"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/Marvell-Consulting_statswales-frontend_626-30ba27a5.json",
+      "status": "added",
+      "additions": 10,
+      "deletions": 0,
+      "changes": 10,
+      "previous_filename": null,
+      "patch_sha256": "734c07b2b59dc24af8cc56c4dd817f42f3032e6f701dec9b321c5a81cf0d6c3d"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/NCATSTranslator_translator-ingests_336-efb31e9c.json",
+      "status": "added",
+      "additions": 18,
+      "deletions": 0,
+      "changes": 18,
+      "previous_filename": null,
+      "patch_sha256": "62ff3dd8aa8bb37ed364d40acaa1db3c8bf0e68333292fa44d9a8eac4a5d5bf9"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/PaulStSmith_figlet-comment-generator_32-1d0b6642.json",
+      "status": "added",
+      "additions": 10,
+      "deletions": 0,
+      "changes": 10,
+      "previous_filename": null,
+      "patch_sha256": "ece4928e7daa1fca8abf373e6047f1bfbbf093ea87726910a53c86ea236f1833"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/PierreJanineh_TechDebtMCP_135-16a54f0f.json",
+      "status": "added",
+      "additions": 18,
+      "deletions": 0,
+      "changes": 18,
+      "previous_filename": null,
+      "patch_sha256": "632de585d06bbaaab415a0bd3b897acbcaa58f00f8bcc896858de0e9863e371f"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/allan-mobley-jr_gimmes_468-e1477f8b.json",
+      "status": "added",
+      "additions": 18,
+      "deletions": 0,
+      "changes": 18,
+      "previous_filename": null,
+      "patch_sha256": "c280eb2cea974848cff3e8684087fb4c9b6df7b085eabce1ec58d15cc3d15040"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/ardevd_jadx-collaboration_3-853179dc.json",
+      "status": "added",
+      "additions": 18,
+      "deletions": 0,
+      "changes": 18,
+      "previous_filename": null,
+      "patch_sha256": "374ff248bf7f4e658f3163d7bcffcf35e9e0e1d3fa04dc3262de08d604b8403a"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/brexhq_CrabTrap_15-5ef0884c.json",
+      "status": "added",
+      "additions": 10,
+      "deletions": 0,
+      "changes": 10,
+      "previous_filename": null,
+      "patch_sha256": "7f638f69353a331678c52ab4ce4c74db71926ad945b341f71705b4b99d9c969c"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/brianc_node-postgres_3650-b922f0dd.json",
+      "status": "added",
+      "additions": 10,
+      "deletions": 0,
+      "changes": 10,
+      "previous_filename": null,
+      "patch_sha256": "a3fc623fe2d1cd99fc15b47db6dd46a125508adf24eee56e0fb6964a0765d3d3"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/cmik_apilix_12-0c34439a.json",
+      "status": "added",
+      "additions": 10,
+      "deletions": 0,
+      "changes": 10,
+      "previous_filename": null,
+      "patch_sha256": "8a43b69cb790ec2e9111e49b225da6ca4431a064c605384b517e23498fd0af5c"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/gagneurlab_PROTRIDER_10-b462b109.json",
+      "status": "added",
+      "additions": 25,
+      "deletions": 0,
+      "changes": 25,
+      "previous_filename": null,
+      "patch_sha256": "8f25430641cb5997a194d5c33e32d3364ea95ed3331020c22f5d748fd6d47c03"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/k1LoW_gh-copilot-review_9-f9828193.json",
+      "status": "added",
+      "additions": 18,
+      "deletions": 0,
+      "changes": 18,
+      "previous_filename": null,
+      "patch_sha256": "50361a34a89928377e26c702a4b6537b231177e5801af1ffabf236d1a6ecebdc"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/konturio_disaster-ninja-fe_1230-d169e9da.json",
+      "status": "added",
+      "additions": 10,
+      "deletions": 0,
+      "changes": 10,
+      "previous_filename": null,
+      "patch_sha256": "93f3e50e22cc953ed596d08d67dabaadf877a3e62dacb96624cc1d7b7b80b6aa"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/mheuss_chronicle_14-04ac4c02.json",
+      "status": "added",
+      "additions": 10,
+      "deletions": 0,
+      "changes": 10,
+      "previous_filename": null,
+      "patch_sha256": "aedce347f6d1515c914ac74dc329de3ec72c14ace7b81f8354ef4cc069893bcd"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/renedierking_LANdalf_88-bc1698f4.json",
+      "status": "added",
+      "additions": 10,
+      "deletions": 0,
+      "changes": 10,
+      "previous_filename": null,
+      "patch_sha256": "b69ae9d3941bbbb93bb9aaafe4819f5406dbbee2afe0242a8c8aca2b18c8e404"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/scotthamilton77_agents-config_1-1fc78970.json",
+      "status": "added",
+      "additions": 18,
+      "deletions": 0,
+      "changes": 18,
+      "previous_filename": null,
+      "patch_sha256": "80b48913fd931e346847e7286cf14329f6740841855977848474ab37d6462d30"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/scottlz0310_Mcp-Docker_29-e7705d26.json",
+      "status": "added",
+      "additions": 18,
+      "deletions": 0,
+      "changes": 18,
+      "previous_filename": null,
+      "patch_sha256": "2ad07ee6095fcdad20489c1fc4dd3b849867fc70c3b4e4d7a64af5da3d1e56e9"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/sdsykes_fastimage_165-8fc7cd32.json",
+      "status": "added",
+      "additions": 10,
+      "deletions": 0,
+      "changes": 10,
+      "previous_filename": null,
+      "patch_sha256": "c3f080a1e108815369edc854ba8c259a78fd01198af145788403e1d4f430efa8"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/simnaut_emdash_2-41d75006.json",
+      "status": "added",
+      "additions": 10,
+      "deletions": 0,
+      "changes": 10,
+      "previous_filename": null,
+      "patch_sha256": "94491dbdab0e3113fa6578f8ad4c2764249ee9b2e87962647ccdf53e18004072"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/superhighfives_pika_200-b227aff0.json",
+      "status": "added",
+      "additions": 18,
+      "deletions": 0,
+      "changes": 18,
+      "previous_filename": null,
+      "patch_sha256": "6125e31f0e158370cf0864f9808d7c5291985e649ae8298056a0c4c946a14c12"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/superyyrrzz_ForgeMap_106-2f3977ed.json",
+      "status": "added",
+      "additions": 18,
+      "deletions": 0,
+      "changes": 18,
+      "previous_filename": null,
+      "patch_sha256": "9cbd5e42fe7be901885be7c1b4c4f559a88f32aa90e6b3e3d29fadcded589d4a"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/vanyastaff_nebula_224-d5ba86dd.json",
+      "status": "added",
+      "additions": 10,
+      "deletions": 0,
+      "changes": 10,
+      "previous_filename": null,
+      "patch_sha256": "d6d74d5250f009170c43818f730b00b9c84e2eda903016b7e23f8b75640c729e"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/wirechat_wirechat_183-6e3156e7.json",
+      "status": "added",
+      "additions": 10,
+      "deletions": 0,
+      "changes": 10,
+      "previous_filename": null,
+      "patch_sha256": "432cf5b973a6aa7fad795a3dfae0e25f4be229ff3dd82f0147769f77a291ed6e"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-score.details.json",
+      "status": "added",
+      "additions": 355,
+      "deletions": 0,
+      "changes": 355,
+      "previous_filename": null,
+      "patch_sha256": "0f6c588851a9036d84464f666cde6b0349c44e3e867a06708d12941bb23fd127"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/baseline-score.json",
+      "status": "added",
+      "additions": 4286,
+      "deletions": 0,
+      "changes": 4286,
+      "previous_filename": null,
+      "patch_sha256": "aa8cdd16e6657d4540bba113852504dbad9873e46ea8dfdbda8581506a42316c"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/critic-audits/AA-Factory_aafactory-prototype_17-a1978cb7.json",
+      "status": "added",
+      "additions": 9,
+      "deletions": 0,
+      "changes": 9,
+      "previous_filename": null,
+      "patch_sha256": "2c179124f2bb8e3c74eb40814eb9b313ebff83b585d996e7d0572c1f30e9c2b2"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/critic-audits/AY2526S2-CS2103T-W14-3_tp_152-e0a9ce03.json",
+      "status": "added",
+      "additions": 9,
+      "deletions": 0,
+      "changes": 9,
+      "previous_filename": null,
+      "patch_sha256": "22e8500d896e04be6a5956e3476f3f592a7527d53ee9b07878b7f59b09b0a5ac"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/critic-audits/DisciplinedSoftware_Codebase-Conversion_1-4b46d68c.json",
+      "status": "added",
+      "additions": 39,
+      "deletions": 0,
+      "changes": 39,
+      "previous_filename": null,
+      "patch_sha256": "1b72fe3829f075245fa78fe4142cd4c1495a9cc456799dc1bdf6a839c2c93889"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/critic-audits/Marvell-Consulting_statswales-frontend_626-30ba27a5.json",
+      "status": "added",
+      "additions": 9,
+      "deletions": 0,
+      "changes": 9,
+      "previous_filename": null,
+      "patch_sha256": "3b31765d9b96715becfd0325a0a596289e38e9c8a1deed01f9e0a0f85e4d18e2"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/critic-audits/NCATSTranslator_translator-ingests_336-efb31e9c.json",
+      "status": "added",
+      "additions": 39,
+      "deletions": 0,
+      "changes": 39,
+      "previous_filename": null,
+      "patch_sha256": "e275bc33fd263507a257c7ee6ed6b8819fcc81a85b8e9c65c863b046b511dfa7"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/critic-audits/PaulStSmith_figlet-comment-generator_32-1d0b6642.json",
+      "status": "added",
+      "additions": 9,
+      "deletions": 0,
+      "changes": 9,
+      "previous_filename": null,
+      "patch_sha256": "0abf52d804a4446c370bfcb15eadebfb9caf1f759760ee039b0d7b74497cf7e8"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/critic-audits/PierreJanineh_TechDebtMCP_135-16a54f0f.json",
+      "status": "added",
+      "additions": 39,
+      "deletions": 0,
+      "changes": 39,
+      "previous_filename": null,
+      "patch_sha256": "4f564e28bbc5e56adf3402b000bcc82389447bf16db0d0c569d175261f6ad259"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/critic-audits/allan-mobley-jr_gimmes_468-e1477f8b.json",
+      "status": "added",
+      "additions": 39,
+      "deletions": 0,
+      "changes": 39,
+      "previous_filename": null,
+      "patch_sha256": "b2c826ac0b0daef26c1847641a4ac09c99d02926d29bb281ff8135e3a5984007"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/critic-audits/ardevd_jadx-collaboration_3-853179dc.json",
+      "status": "added",
+      "additions": 39,
+      "deletions": 0,
+      "changes": 39,
+      "previous_filename": null,
+      "patch_sha256": "d5a06a6a569437c0313b2a313d9737b592c2657416791a667074b06eae480261"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/critic-audits/brexhq_CrabTrap_15-5ef0884c.json",
+      "status": "added",
+      "additions": 9,
+      "deletions": 0,
+      "changes": 9,
+      "previous_filename": null,
+      "patch_sha256": "efa5aa96deab1c832fcfdc8930be7cce03dcea87594fb3e15658f220abdf5a23"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/critic-audits/brianc_node-postgres_3650-b922f0dd.json",
+      "status": "added",
+      "additions": 9,
+      "deletions": 0,
+      "changes": 9,
+      "previous_filename": null,
+      "patch_sha256": "6e5ccf20a00ba67da896c48a804ccf6b93371e9525c8eda2c4b1e19eca27cb9e"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/critic-audits/cmik_apilix_12-0c34439a.json",
+      "status": "added",
+      "additions": 9,
+      "deletions": 0,
+      "changes": 9,
+      "previous_filename": null,
+      "patch_sha256": "6837ca78459a3b0e985ae80de4f7471320d6037de95700173e7cf2c1c4883871"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/critic-audits/gagneurlab_PROTRIDER_10-b462b109.json",
+      "status": "added",
+      "additions": 48,
+      "deletions": 0,
+      "changes": 48,
+      "previous_filename": null,
+      "patch_sha256": "6cdb03a60b4a778ce15c916506e1f973e13f1803f3c4cb2c59de1e00f427af37"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/critic-audits/k1LoW_gh-copilot-review_9-f9828193.json",
+      "status": "added",
+      "additions": 39,
+      "deletions": 0,
+      "changes": 39,
+      "previous_filename": null,
+      "patch_sha256": "b438b22c0c2001af9a0a15c7f160c60f04d3ef9b1c58715f02a9172d88723a3b"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/critic-audits/konturio_disaster-ninja-fe_1230-d169e9da.json",
+      "status": "added",
+      "additions": 9,
+      "deletions": 0,
+      "changes": 9,
+      "previous_filename": null,
+      "patch_sha256": "9935ad7f35a1475893543d7b69ac2a216b5c654fb3331ff7242a99da717e03b9"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/critic-audits/mheuss_chronicle_14-04ac4c02.json",
+      "status": "added",
+      "additions": 9,
+      "deletions": 0,
+      "changes": 9,
+      "previous_filename": null,
+      "patch_sha256": "09e19428547d3e4e2d7491c9dc51a38b8eff350b15459bb746372d034b3fcb7b"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/critic-audits/renedierking_LANdalf_88-bc1698f4.json",
+      "status": "added",
+      "additions": 9,
+      "deletions": 0,
+      "changes": 9,
+      "previous_filename": null,
+      "patch_sha256": "8405988ac33397c0a2ed07a4431bb06b33da05215ab60960e270b23214a2e5ec"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/critic-audits/scotthamilton77_agents-config_1-1fc78970.json",
+      "status": "added",
+      "additions": 9,
+      "deletions": 0,
+      "changes": 9,
+      "previous_filename": null,
+      "patch_sha256": "526a303aa2ae3139efc74e441e66b035461d628b328aa897f559a83960efa17c"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/critic-audits/scottlz0310_Mcp-Docker_29-e7705d26.json",
+      "status": "added",
+      "additions": 9,
+      "deletions": 0,
+      "changes": 9,
+      "previous_filename": null,
+      "patch_sha256": "be343308812c5ed85da371defac6efe0cd1b82385d31d8ccb1465d9de8d1e5fa"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/critic-audits/sdsykes_fastimage_165-8fc7cd32.json",
+      "status": "added",
+      "additions": 9,
+      "deletions": 0,
+      "changes": 9,
+      "previous_filename": null,
+      "patch_sha256": "d922394fca341cb24e6d24aa5351f3c875134e87c2c6ff4e5d24cb6547640bf9"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/critic-audits/simnaut_emdash_2-41d75006.json",
+      "status": "added",
+      "additions": 9,
+      "deletions": 0,
+      "changes": 9,
+      "previous_filename": null,
+      "patch_sha256": "be050a862169c8579f432e9aa6046f57f40a445b64c7cc8385bfdad35b3b0a0d"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/critic-audits/superhighfives_pika_200-b227aff0.json",
+      "status": "added",
+      "additions": 39,
+      "deletions": 0,
+      "changes": 39,
+      "previous_filename": null,
+      "patch_sha256": "2d2aac4dd17e2a0ba6b7f1adee95befbaf89730c4c78e252bad4dcbf521d01df"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/critic-audits/superyyrrzz_ForgeMap_106-2f3977ed.json",
+      "status": "added",
+      "additions": 39,
+      "deletions": 0,
+      "changes": 39,
+      "previous_filename": null,
+      "patch_sha256": "8c6c44fbe0eb7e2c414e8ac02fe8ef6a13f72c3af28e0ff9a806a189b66dc24b"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/critic-audits/vanyastaff_nebula_224-d5ba86dd.json",
+      "status": "added",
+      "additions": 9,
+      "deletions": 0,
+      "changes": 9,
+      "previous_filename": null,
+      "patch_sha256": "2d5b14ec054e7b84029ca17ad6ef21ef1c2a5a0c4c7fec0566e77dc1e5c0b016"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/critic-audits/wirechat_wirechat_183-6e3156e7.json",
+      "status": "added",
+      "additions": 9,
+      "deletions": 0,
+      "changes": 9,
+      "previous_filename": null,
+      "patch_sha256": "3821529db2a1545e02d88ba613de57f6cbb85090af3d4dd2e7651ddb8be9a8fa"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/critic-removed-findings.json",
+      "status": "added",
+      "additions": 70,
+      "deletions": 0,
+      "changes": 70,
+      "previous_filename": null,
+      "patch_sha256": "1de12adce137e84d45af3a05edeeef911fcdc8b4dbc45174f3d093d001557e60"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/critic-score.details.json",
+      "status": "added",
+      "additions": 314,
+      "deletions": 0,
+      "changes": 314,
+      "previous_filename": null,
+      "patch_sha256": "ff9affbe680b46baaa58af1db5618ddc28c231cf2dd3679deac5cc23c5c603e5"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/critic-score.json",
+      "status": "added",
+      "additions": 4286,
+      "deletions": 0,
+      "changes": 4286,
+      "previous_filename": null,
+      "patch_sha256": "9bc62dbbf3e79473fc26710a0e502ee027b5d52e31b17a7b7048cc17924b0b00"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/input-preparation.json",
+      "status": "added",
+      "additions": 559,
+      "deletions": 0,
+      "changes": 559,
+      "previous_filename": null,
+      "patch_sha256": "91e0dae84b15787a40292b66d7abfb97ffae1e25973316087cd1c64839426106"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/run-summary.json",
+      "status": "added",
+      "additions": 950,
+      "deletions": 0,
+      "changes": 950,
+      "previous_filename": null,
+      "patch_sha256": "e0004362c69b946e6c98f9d9a9fc838f9a6aa016d2f5ad0cd3264754a9859be0"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-2026-10-13/self-review-reliability-check.json",
+      "status": "added",
+      "additions": 11,
+      "deletions": 0,
+      "changes": 11,
+      "previous_filename": null,
+      "patch_sha256": "76ba076c0e921d805c488e20095726ca1fa97460f98e315a128bf0fdccc75137"
+    },
+    {
+      "filename": "docs/evaluation/reviewbench-input-smoke.json",
+      "status": "added",
+      "additions": 113,
+      "deletions": 0,
+      "changes": 113,
+      "previous_filename": null,
+      "patch_sha256": "79b797a75ad1a45db1c36602668f227ace815e502da35e93838fbd0263b9a4ce"
+    },
+    {
+      "filename": "docs/evaluation/synthetic-metrics.json",
+      "status": "added",
+      "additions": 45,
+      "deletions": 0,
+      "changes": 45,
+      "previous_filename": null,
+      "patch_sha256": "ede87ac402f615b7fa2dbdc030a7a75d7b917c66e23374bd2b6b35dd752c0133"
+    },
+    {
+      "filename": "docs/evaluation/synthetic-model-run.json",
+      "status": "added",
+      "additions": 112,
+      "deletions": 0,
+      "changes": 112,
+      "previous_filename": null,
+      "patch_sha256": "34e0524bc7966a628d4d073d66a9cc2dfd448f89512dec41791686c05ec0d87c"
+    },
+    {
+      "filename": "docs/review-research-and-development-standard.md",
+      "status": "added",
+      "additions": 300,
+      "deletions": 0,
+      "changes": 300,
+      "previous_filename": null,
+      "patch_sha256": "dd1c79ef19038096100ece7db4b11602b1dfa8cef448709f721c31f65190054b"
+    },
+    {
+      "filename": "src/analyzer/context_builder.py",
+      "status": "modified",
+      "additions": 27,
+      "deletions": 8,
+      "changes": 35,
+      "previous_filename": null,
+      "patch_sha256": "d5f81735547dd1f625bb234d3af79b0900e7d1195594aec97c46db20c85b89b4"
+    },
+    {
+      "filename": "src/analyzer/diff_parser.py",
+      "status": "modified",
+      "additions": 2,
+      "deletions": 0,
+      "changes": 2,
+      "previous_filename": null,
+      "patch_sha256": "ab89831c549a3f6fc7812970cc5981fca6e8786ceb15751fbe48f33a9dca5c65"
+    },
+    {
+      "filename": "src/analyzer/risk_rules.py",
+      "status": "modified",
+      "additions": 3,
+      "deletions": 1,
+      "changes": 4,
+      "previous_filename": null,
+      "patch_sha256": "0401b475e310daea7a77f86035a2e7746763ae0e02c1e78ddefda4f03c592c15"
+    },
+    {
+      "filename": "src/evaluation/__init__.py",
+      "status": "added",
+      "additions": 1,
+      "deletions": 0,
+      "changes": 1,
+      "previous_filename": null,
+      "patch_sha256": "041ca5bf75d2b5bbead762fe3d3894a15b33cfbc55d95bd0e4dab87ca468ab2a"
+    },
+    {
+      "filename": "src/evaluation/adjudicate.py",
+      "status": "added",
+      "additions": 93,
+      "deletions": 0,
+      "changes": 93,
+      "previous_filename": null,
+      "patch_sha256": "e269cc7ab15fb0d0b8e84574bf716e926dca45746cb7915d297b00847b6f3e0d"
+    },
+    {
+      "filename": "src/evaluation/corpus.py",
+      "status": "added",
+      "additions": 287,
+      "deletions": 0,
+      "changes": 287,
+      "previous_filename": null,
+      "patch_sha256": "8adda72e8ab4f1f3216467254ddff28b6cc98b03ffab619ee67a1d049f19a784"
+    },
+    {
+      "filename": "src/evaluation/critic_replay.py",
+      "status": "added",
+      "additions": 118,
+      "deletions": 0,
+      "changes": 118,
+      "previous_filename": null,
+      "patch_sha256": "934d6daaf04e0663d289eb8bdf03952c44b85341aef922be8024c5a24538c8a9"
+    },
+    {
+      "filename": "src/evaluation/experiment.py",
+      "status": "added",
+      "additions": 106,
+      "deletions": 0,
+      "changes": 106,
+      "previous_filename": null,
+      "patch_sha256": "986553c1a4858dadda85fef628d8605e8950c6d7e843e836054a4733083f2e86"
+    },
+    {
+      "filename": "src/evaluation/improvement.py",
+      "status": "added",
+      "additions": 59,
+      "deletions": 0,
+      "changes": 59,
+      "previous_filename": null,
+      "patch_sha256": "97370b384ca21257ec7a1d965b7ae968c73506bba0bb9e1cf83202bd6f26b634"
+    },
+    {
+      "filename": "src/evaluation/parallel_retry.py",
+      "status": "added",
+      "additions": 181,
+      "deletions": 0,
+      "changes": 181,
+      "previous_filename": null,
+      "patch_sha256": "9f50a983f44244c12fb8b4294d87eabd49f4602ac62e600fd72bcdda5d5c4bb1"
+    },
+    {
+      "filename": "src/evaluation/retry.py",
+      "status": "added",
+      "additions": 120,
+      "deletions": 0,
+      "changes": 120,
+      "previous_filename": null,
+      "patch_sha256": "3c2987c47cc7db41554a72f3f875ea01a5f3279df0d728c3acdb7e371561cd2c"
+    },
+    {
+      "filename": "src/evaluation/reviewbench.py",
+      "status": "added",
+      "additions": 295,
+      "deletions": 0,
+      "changes": 295,
+      "previous_filename": null,
+      "patch_sha256": "7fcff613dff0ba036d0c65991fbf8331ff969a50f70c0ce014a7e9a334fbeac4"
+    },
+    {
+      "filename": "src/evaluation/runtime.py",
+      "status": "added",
+      "additions": 69,
+      "deletions": 0,
+      "changes": 69,
+      "previous_filename": null,
+      "patch_sha256": "9d5f83e9c20e04767b7d9aea6d77ba5ea95917d09a6406be2574938ca17c9482"
+    },
+    {
+      "filename": "src/evaluation/scoring.py",
+      "status": "added",
+      "additions": 115,
+      "deletions": 0,
+      "changes": 115,
+      "previous_filename": null,
+      "patch_sha256": "b275927bfc92c31a8903a94ad04dc6f1cf6be047248512154ad3806b58e8de69"
+    },
+    {
+      "filename": "src/models.py",
+      "status": "modified",
+      "additions": 2,
+      "deletions": 0,
+      "changes": 2,
+      "previous_filename": null,
+      "patch_sha256": "fe931d11421e429f7785b2d2a8856e75793d654afe7f87aa320de43ea5d02e85"
+    },
+    {
+      "filename": "src/output/markdown.py",
+      "status": "modified",
+      "additions": 13,
+      "deletions": 6,
+      "changes": 19,
+      "previous_filename": null,
+      "patch_sha256": "8e74f4dafa820826d79aa23828772257ffdaf2677b2fdd9784ec38a093228924"
+    },
+    {
+      "filename": "src/reviewer/critic.py",
+      "status": "modified",
+      "additions": 34,
+      "deletions": 11,
+      "changes": 45,
+      "previous_filename": null,
+      "patch_sha256": "04acc7074f8c22afc4d350f2457fab13bae8e3db5a4718efd70d058a9343990d"
+    },
+    {
+      "filename": "src/reviewer/deep_review.py",
+      "status": "modified",
+      "additions": 38,
+      "deletions": 21,
+      "changes": 59,
+      "previous_filename": null,
+      "patch_sha256": "981be96c480b8820e39219b7b67e2dcda84b1f04bdb9e5a6eb4b0be3dfeb1349"
+    },
+    {
+      "filename": "src/reviewer/engine.py",
+      "status": "modified",
+      "additions": 62,
+      "deletions": 16,
+      "changes": 78,
+      "previous_filename": null,
+      "patch_sha256": "640468f41ccc5e5f4307f72c100c3837987bd2f19f5299fcb9987418449afebb"
+    },
+    {
+      "filename": "src/reviewer/provider.py",
+      "status": "modified",
+      "additions": 113,
+      "deletions": 9,
+      "changes": 122,
+      "previous_filename": null,
+      "patch_sha256": "296ac806e76da145787fd1427cf314bb9004419055eabd1183a5e16d72fdaa8e"
+    },
+    {
+      "filename": "src/reviewer/review_merger.py",
+      "status": "modified",
+      "additions": 4,
+      "deletions": 3,
+      "changes": 7,
+      "previous_filename": null,
+      "patch_sha256": "b036a7ab95777424292e008731c7092e92532c7d56834a00a621c95dc6d1050b"
+    },
+    {
+      "filename": "src/reviewer/signal_contracts.py",
+      "status": "modified",
+      "additions": 2,
+      "deletions": 0,
+      "changes": 2,
+      "previous_filename": null,
+      "patch_sha256": "adbd40b9ea8629f13d58eb947a57e2473c076ca571f4124d5e5c7cb4066840ac"
+    },
+    {
+      "filename": "src/reviewer/signal_verifier.py",
+      "status": "modified",
+      "additions": 2,
+      "deletions": 1,
+      "changes": 3,
+      "previous_filename": null,
+      "patch_sha256": "3ceb0d9a8ad046e1e95a52716a8bd00b41f5992d5288e24dc719c8cc76b2e1a2"
+    },
+    {
+      "filename": "src/reviewer/triage.py",
+      "status": "modified",
+      "additions": 29,
+      "deletions": 10,
+      "changes": 39,
+      "previous_filename": null,
+      "patch_sha256": "75afa4dbfbce9fd0ee8fd35472ec52ae2eb7c0d0bfc3b1daf8b98c157c85e128"
+    },
+    {
+      "filename": "src/reviewer/two_stage.py",
+      "status": "modified",
+      "additions": 62,
+      "deletions": 107,
+      "changes": 169,
+      "previous_filename": null,
+      "patch_sha256": "df233d3388a293de1d978e57f6ee4d92cae9cff873a927da24248fb4997efb67"
+    },
+    {
+      "filename": "src/service/static/app.js",
+      "status": "modified",
+      "additions": 10,
+      "deletions": 0,
+      "changes": 10,
+      "previous_filename": null,
+      "patch_sha256": "b00a0a02c319ca609dcd0e98bb98d9675aecaebfe2d7a56b93584158d59e9636"
+    },
+    {
+      "filename": "tests/test_context_builder.py",
+      "status": "modified",
+      "additions": 18,
+      "deletions": 0,
+      "changes": 18,
+      "previous_filename": null,
+      "patch_sha256": "9d516d5fba01e14edfdc76f22821b6d08208aa97baabc82cf9540db5d2833dbf"
+    },
+    {
+      "filename": "tests/test_critic.py",
+      "status": "modified",
+      "additions": 20,
+      "deletions": 0,
+      "changes": 20,
+      "previous_filename": null,
+      "patch_sha256": "ad13cabbfd2d3f7a10494fd6cd254965ddc05cdf3529e63e474825e968dea305"
+    },
+    {
+      "filename": "tests/test_evaluation.py",
+      "status": "added",
+      "additions": 186,
+      "deletions": 0,
+      "changes": 186,
+      "previous_filename": null,
+      "patch_sha256": "95f0f65cfe3a3630050d5aa813d07fd0357183e0a6db5c7959131bc8e8e6cd25"
+    },
+    {
+      "filename": "tests/test_golden_behavior.py",
+      "status": "added",
+      "additions": 33,
+      "deletions": 0,
+      "changes": 33,
+      "previous_filename": null,
+      "patch_sha256": "3062c52a5d629818dba7d5aec31df6cb32743eeb782254c9ecbe26bd8dacc6b6"
+    },
+    {
+      "filename": "tests/test_provider.py",
+      "status": "modified",
+      "additions": 53,
+      "deletions": 0,
+      "changes": 53,
+      "previous_filename": null,
+      "patch_sha256": "a3373e2e698f85abb3622443d9b66a862426049ac65daa661bc776a3b8a2992e"
+    },
+    {
+      "filename": "tests/test_risk_rules.py",
+      "status": "modified",
+      "additions": 11,
+      "deletions": 0,
+      "changes": 11,
+      "previous_filename": null,
+      "patch_sha256": "5999bdd7751bf94d827b62d5f0b41618052f2ca1dda1420dc08ccdcd73451791"
+    },
+    {
+      "filename": "tests/test_signal_pipeline.py",
+      "status": "modified",
+      "additions": 2,
+      "deletions": 1,
+      "changes": 3,
+      "previous_filename": null,
+      "patch_sha256": "2c0d770a4289b3a71fe15424de444eaa83f62c8a5b0070435b3db16c749d64a3"
+    },
+    {
+      "filename": "tests/test_verification_reliability.py",
+      "status": "added",
+      "additions": 300,
+      "deletions": 0,
+      "changes": 300,
+      "previous_filename": null,
+      "patch_sha256": "a4d2eb5d1336e6e5ad152bc11aed09142bc99063d691c2fad399ff1c62d7bf40"
+    },
+    {
+      "filename": "tools/reviewbench/Dockerfile",
+      "status": "added",
+      "additions": 9,
+      "deletions": 0,
+      "changes": 9,
+      "previous_filename": null,
+      "patch_sha256": "0d91ba459637cca5f950b3ec5a578cebc7cb9733210e0fc84054d80a3cd38466"
+    },
+    {
+      "filename": "tools/reviewbench/issue.md",
+      "status": "added",
+      "additions": 17,
+      "deletions": 0,
+      "changes": 17,
+      "previous_filename": null,
+      "patch_sha256": "4421537d3025edcf232100e593c5ac2223bb08d0219c611d46721d9e3d20d0b9"
+    },
+    {
+      "filename": "tools/reviewbench/pr.md",
+      "status": "added",
+      "additions": 23,
+      "deletions": 0,
+      "changes": 23,
+      "previous_filename": null,
+      "patch_sha256": "e9741a4604c348006fd35af96cd0032a364ac2e065a688692c0002c5e585d468"
+    },
+    {
+      "filename": "vscode-extension/package-lock.json",
+      "status": "modified",
+      "additions": 519,
+      "deletions": 2474,
+      "changes": 2993,
+      "previous_filename": null,
+      "patch_sha256": "7fb05c34b4e2087ef804b74dd07263ae93b35ddac5b6dfbdf5f06e92a9f95aa8"
+    },
+    {
+      "filename": "vscode-extension/package.json",
+      "status": "modified",
+      "additions": 1,
+      "deletions": 1,
+      "changes": 2,
+      "previous_filename": null,
+      "patch_sha256": "fa36bac9ec1541c01447f49b05c6635959e3ac44b02ed2f0ce270d8c5294d604"
+    }
+  ],
+  "summary": "This PR adds a ReviewBench evaluation harness (new src/evaluation/* modules for corpus preparation, retries, replay, scoring and adjudication), makes the reviewer pipeline more failure-aware (provider streaming/timeouts/usage records, two-stage result object with stage status, deep/triage changes) and lands a large volume of evaluation artifacts, datasets and docs. The reviewer work is mostly inside src/reviewer and src/analyzer, while the new evaluation code under src/evaluation is where correctness of the harness (diff parsing, status labeling, candidate/finding matching, scoring) must be checked, since results produced there are used as the project's quality evidence.",
+  "risk_level": "low",
+  "rule_findings": [
+    {
+      "file_path": ".github/workflows/ai-pr-review.yml",
+      "line": null,
+      "severity": "medium",
+      "rule_id": "risk-path-infra-workflow",
+      "title": "CI/CD workflow changed",
+      "evidence": "File path `.github/workflows/ai-pr-review.yml` matches `^\\.github/workflows/`.",
+      "recommendation": "Workflow changes affect review pipeline stability. Verify fallback and gate logic.",
+      "confidence": 0.55
+    },
+    {
+      "file_path": ".github/workflows/ci.yml",
+      "line": null,
+      "severity": "medium",
+      "rule_id": "risk-path-infra-workflow",
+      "title": "CI/CD workflow changed",
+      "evidence": "File path `.github/workflows/ci.yml` matches `^\\.github/workflows/`.",
+      "recommendation": "Workflow changes affect review pipeline stability. Verify fallback and gate logic.",
+      "confidence": 0.55
+    },
+    {
+      "file_path": "src/evaluation/corpus.py",
+      "line": 9,
+      "severity": "high",
+      "rule_id": "shell-execution",
+      "title": "Shell command execution changed",
+      "evidence": "import subprocess",
+      "recommendation": "Validate user-controlled input and avoid shell=True or string-built commands.",
+      "confidence": 0.75
+    },
+    {
+      "file_path": "src/evaluation/corpus.py",
+      "line": 23,
+      "severity": "high",
+      "rule_id": "shell-execution",
+      "title": "Shell command execution changed",
+      "evidence": "return subprocess.check_output(",
+      "recommendation": "Validate user-controlled input and avoid shell=True or string-built commands.",
+      "confidence": 0.75
+    },
+    {
+      "file_path": "src/evaluation/corpus.py",
+      "line": 24,
+      "severity": "high",
+      "rule_id": "shell-execution",
+      "title": "Shell command execution changed",
+      "evidence": "[\"git\", \"-C\", str(root), *args], text=True, stderr=subprocess.PIPE, timeout=180",
+      "recommendation": "Validate user-controlled input and avoid shell=True or string-built commands.",
+      "confidence": 0.75
+    },
+    {
+      "file_path": "src/evaluation/corpus.py",
+      "line": 80,
+      "severity": "high",
+      "rule_id": "shell-execution",
+      "title": "Shell command execution changed",
+      "evidence": "except subprocess.CalledProcessError:",
+      "recommendation": "Validate user-controlled input and avoid shell=True or string-built commands.",
+      "confidence": 0.75
+    },
+    {
+      "file_path": "src/evaluation/corpus.py",
+      "line": 101,
+      "severity": "high",
+      "rule_id": "shell-execution",
+      "title": "Shell command execution changed",
+      "evidence": "except subprocess.CalledProcessError:",
+      "recommendation": "Validate user-controlled input and avoid shell=True or string-built commands.",
+      "confidence": 0.75
+    },
+    {
+      "file_path": "src/evaluation/corpus.py",
+      "line": 117,
+      "severity": "high",
+      "rule_id": "shell-execution",
+      "title": "Shell command execution changed",
+      "evidence": "except (subprocess.SubprocessError, OSError, ValueError) as exc:",
+      "recommendation": "Validate user-controlled input and avoid shell=True or string-built commands.",
+      "confidence": 0.75
+    },
+    {
+      "file_path": "src/evaluation/corpus.py",
+      "line": 120,
+      "severity": "high",
+      "rule_id": "shell-execution",
+      "title": "Shell command execution changed",
+      "evidence": "if isinstance(exc, subprocess.CalledProcessError):",
+      "recommendation": "Validate user-controlled input and avoid shell=True or string-built commands.",
+      "confidence": 0.75
+    },
+    {
+      "file_path": "src/evaluation/corpus.py",
+      "line": 258,
+      "severity": "high",
+      "rule_id": "shell-execution",
+      "title": "Shell command execution changed",
+      "evidence": "subprocess.run(command, cwd=args.benchmark, check=True)",
+      "recommendation": "Validate user-controlled input and avoid shell=True or string-built commands.",
+      "confidence": 0.75
+    },
+    {
+      "file_path": "src/evaluation/reviewbench.py",
+      "line": 9,
+      "severity": "high",
+      "rule_id": "shell-execution",
+      "title": "Shell command execution changed",
+      "evidence": "import subprocess",
+      "recommendation": "Validate user-controlled input and avoid shell=True or string-built commands.",
+      "confidence": 0.75
+    },
+    {
+      "file_path": "src/evaluation/reviewbench.py",
+      "line": 285,
+      "severity": "high",
+      "rule_id": "shell-execution",
+      "title": "Shell command execution changed",
+      "evidence": "or subprocess.check_output([\"git\", \"rev-parse\", \"HEAD\"], text=True).strip()",
+      "recommendation": "Validate user-controlled input and avoid shell=True or string-built commands.",
+      "confidence": 0.75
+    },
+    {
+      "file_path": "src/evaluation/runtime.py",
+      "line": 6,
+      "severity": "high",
+      "rule_id": "shell-execution",
+      "title": "Shell command execution changed",
+      "evidence": "import subprocess",
+      "recommendation": "Validate user-controlled input and avoid shell=True or string-built commands.",
+      "confidence": 0.75
+    },
+    {
+      "file_path": "src/evaluation/runtime.py",
+      "line": 59,
+      "severity": "high",
+      "rule_id": "shell-execution",
+      "title": "Shell command execution changed",
+      "evidence": "commit = subprocess.check_output([\"git\", \"rev-parse\", \"HEAD\"], cwd=root, text=True).strip()",
+      "recommendation": "Validate user-controlled input and avoid shell=True or string-built commands.",
+      "confidence": 0.75
+    },
+    {
+      "file_path": "src/evaluation/runtime.py",
+      "line": 60,
+      "severity": "high",
+      "rule_id": "shell-execution",
+      "title": "Shell command execution changed",
+      "evidence": "dirty = bool(subprocess.check_output([\"git\", \"status\", \"--porcelain\"], cwd=root, text=True))",
+      "recommendation": "Validate user-controlled input and avoid shell=True or string-built commands.",
+      "confidence": 0.75
+    },
+    {
+      "file_path": "src/reviewer/critic.py",
+      "line": null,
+      "severity": "medium",
+      "rule_id": "risk-path-infra-reviewer",
+      "title": "Review tool infrastructure changed",
+      "evidence": "File path `src/reviewer/critic.py` matches `^src/cli/|^src/reviewer/|^src/github/`.",
+      "recommendation": "Changes to reviewer code may affect review stability, fallback behavior, or workflow gating. Request a second reviewer.",
+      "confidence": 0.55
+    },
+    {
+      "file_path": "src/reviewer/deep_review.py",
+      "line": null,
+      "severity": "medium",
+      "rule_id": "risk-path-infra-reviewer",
+      "title": "Review tool infrastructure changed",
+      "evidence": "File path `src/reviewer/deep_review.py` matches `^src/cli/|^src/reviewer/|^src/github/`.",
+      "recommendation": "Changes to reviewer code may affect review stability, fallback behavior, or workflow gating. Request a second reviewer.",
+      "confidence": 0.55
+    },
+    {
+      "file_path": "src/reviewer/engine.py",
+      "line": null,
+      "severity": "medium",
+      "rule_id": "risk-path-infra-reviewer",
+      "title": "Review tool infrastructure changed",
+      "evidence": "File path `src/reviewer/engine.py` matches `^src/cli/|^src/reviewer/|^src/github/`.",
+      "recommendation": "Changes to reviewer code may affect review stability, fallback behavior, or workflow gating. Request a second reviewer.",
+      "confidence": 0.55
+    },
+    {
+      "file_path": "src/reviewer/provider.py",
+      "line": null,
+      "severity": "medium",
+      "rule_id": "risk-path-infra-reviewer",
+      "title": "Review tool infrastructure changed",
+      "evidence": "File path `src/reviewer/provider.py` matches `^src/cli/|^src/reviewer/|^src/github/`.",
+      "recommendation": "Changes to reviewer code may affect review stability, fallback behavior, or workflow gating. Request a second reviewer.",
+      "confidence": 0.55
+    },
+    {
+      "file_path": "src/reviewer/review_merger.py",
+      "line": null,
+      "severity": "medium",
+      "rule_id": "risk-path-infra-reviewer",
+      "title": "Review tool infrastructure changed",
+      "evidence": "File path `src/reviewer/review_merger.py` matches `^src/cli/|^src/reviewer/|^src/github/`.",
+      "recommendation": "Changes to reviewer code may affect review stability, fallback behavior, or workflow gating. Request a second reviewer.",
+      "confidence": 0.55
+    },
+    {
+      "file_path": "src/reviewer/signal_contracts.py",
+      "line": null,
+      "severity": "medium",
+      "rule_id": "risk-path-infra-reviewer",
+      "title": "Review tool infrastructure changed",
+      "evidence": "File path `src/reviewer/signal_contracts.py` matches `^src/cli/|^src/reviewer/|^src/github/`.",
+      "recommendation": "Changes to reviewer code may affect review stability, fallback behavior, or workflow gating. Request a second reviewer.",
+      "confidence": 0.55
+    },
+    {
+      "file_path": "src/reviewer/signal_verifier.py",
+      "line": null,
+      "severity": "medium",
+      "rule_id": "risk-path-infra-reviewer",
+      "title": "Review tool infrastructure changed",
+      "evidence": "File path `src/reviewer/signal_verifier.py` matches `^src/cli/|^src/reviewer/|^src/github/`.",
+      "recommendation": "Changes to reviewer code may affect review stability, fallback behavior, or workflow gating. Request a second reviewer.",
+      "confidence": 0.55
+    },
+    {
+      "file_path": "src/reviewer/triage.py",
+      "line": null,
+      "severity": "medium",
+      "rule_id": "risk-path-infra-reviewer",
+      "title": "Review tool infrastructure changed",
+      "evidence": "File path `src/reviewer/triage.py` matches `^src/cli/|^src/reviewer/|^src/github/`.",
+      "recommendation": "Changes to reviewer code may affect review stability, fallback behavior, or workflow gating. Request a second reviewer.",
+      "confidence": 0.55
+    },
+    {
+      "file_path": "src/reviewer/two_stage.py",
+      "line": null,
+      "severity": "medium",
+      "rule_id": "risk-path-infra-reviewer",
+      "title": "Review tool infrastructure changed",
+      "evidence": "File path `src/reviewer/two_stage.py` matches `^src/cli/|^src/reviewer/|^src/github/`.",
+      "recommendation": "Changes to reviewer code may affect review stability, fallback behavior, or workflow gating. Request a second reviewer.",
+      "confidence": 0.55
+    },
+    {
+      "file_path": "tests/test_golden_behavior.py",
+      "line": 17,
+      "severity": "critical",
+      "rule_id": "dynamic-execution",
+      "title": "Dynamic code execution introduced",
+      "evidence": "exec(definition + \"\\n\" + old, before)",
+      "recommendation": "Avoid dynamic execution or strictly sandbox and validate the input.",
+      "confidence": 0.75
+    },
+    {
+      "file_path": "tests/test_golden_behavior.py",
+      "line": 18,
+      "severity": "critical",
+      "rule_id": "dynamic-execution",
+      "title": "Dynamic code execution introduced",
+      "evidence": "exec(definition + \"\\n\" + new, after)",
+      "recommendation": "Avoid dynamic execution or strictly sandbox and validate the input.",
+      "confidence": 0.75
+    },
+    {
+      "file_path": "tests/test_risk_rules.py",
+      "line": 40,
+      "severity": "low",
+      "rule_id": "secret-logging",
+      "title": "Potential secret logging",
+      "evidence": "patch = '@@ -0,0 +1 @@\\n+print(\"token\", token)'",
+      "recommendation": "Do not write credentials or secrets to logs. Mask sensitive values before logging.",
+      "confidence": 0.4
+    },
+    {
+      "file_path": "tests/test_signal_pipeline.py",
+      "line": 24,
+      "severity": "low",
+      "rule_id": "secret-logging",
+      "title": "Potential secret logging",
+      "evidence": "'\"reason\":\"The changed line logs the token.\",\"evidence\":[\"print(token)\"],'",
+      "recommendation": "Do not write credentials or secrets to logs. Mask sensitive values before logging.",
+      "confidence": 0.4
+    },
+    {
+      "file_path": "tests/test_verification_reliability.py",
+      "line": 14,
+      "severity": "low",
+      "rule_id": "secret-logging",
+      "title": "Potential secret logging",
+      "evidence": "filename=\"app.py\", status=FileStatus.MODIFIED, patch=\"@@ -1 +1 @@\\n-old\\n+print(token)\\n\"",
+      "recommendation": "Do not write credentials or secrets to logs. Mask sensitive values before logging.",
+      "confidence": 0.4
+    },
+    {
+      "file_path": "tests/test_verification_reliability.py",
+      "line": 22,
+      "severity": "low",
+      "rule_id": "secret-logging",
+      "title": "Potential secret logging",
+      "evidence": "evidence=\"print(token)\",",
+      "recommendation": "Do not write credentials or secrets to logs. Mask sensitive values before logging.",
+      "confidence": 0.4
+    },
+    {
+      "file_path": "tests/test_verification_reliability.py",
+      "line": 53,
+      "severity": "low",
+      "rule_id": "secret-logging",
+      "title": "Potential secret logging",
+      "evidence": "evidence=[\"print(token)\"],",
+      "recommendation": "Do not write credentials or secrets to logs. Mask sensitive values before logging.",
+      "confidence": 0.4
+    },
+    {
+      "file_path": "tests/test_verification_reliability.py",
+      "line": 97,
+      "severity": "low",
+      "rule_id": "secret-logging",
+      "title": "Potential secret logging",
+      "evidence": "assert \"print(token)\" in provider.calls[0][1]",
+      "recommendation": "Do not write credentials or secrets to logs. Mask sensitive values before logging.",
+      "confidence": 0.4
+    },
+    {
+      "file_path": "tests/test_verification_reliability.py",
+      "line": 126,
+      "severity": "low",
+      "rule_id": "secret-logging",
+      "title": "Potential secret logging",
+      "evidence": "+ \"\\n@@ -500 +500 @@\\n-old\\n+print(token)\\n\"",
+      "recommendation": "Do not write credentials or secrets to logs. Mask sensitive values before logging.",
+      "confidence": 0.4
+    },
+    {
+      "file_path": "tests/test_verification_reliability.py",
+      "line": 130,
+      "severity": "low",
+      "rule_id": "secret-logging",
+      "title": "Potential secret logging",
+      "evidence": "assert \"print(token)\" in excerpt",
+      "recommendation": "Do not write credentials or secrets to logs. Mask sensitive values before logging.",
+      "confidence": 0.4
+    },
+    {
+      "file_path": "tests/test_verification_reliability.py",
+      "line": 202,
+      "severity": "low",
+      "rule_id": "secret-logging",
+      "title": "Potential secret logging",
+      "evidence": "evidence=[\"print(token)\"],",
+      "recommendation": "Do not write credentials or secrets to logs. Mask sensitive values before logging.",
+      "confidence": 0.4
+    },
+    {
+      "file_path": "src/evaluation/corpus.py",
+      "line": 179,
+      "severity": "medium",
+      "rule_id": "ast-broad-except",
+      "title": "Overly broad exception handler",
+      "evidence": "except Exception as exc:\n                record.update(\n                    status=\"failed\",\n                    error=type(exc).__name__,\n                    failure=exc.record() if isinstance(exc, EvaluationFailure) else None,\n                )\n                stopped = isinstance(exc, EvaluationFailure) and exc.fatal",
+      "recommendation": "Catch specific exception types or re-raise after logging.",
+      "confidence": 0.7
+    },
+    {
+      "file_path": "src/evaluation/experiment.py",
+      "line": 59,
+      "severity": "medium",
+      "rule_id": "ast-broad-except",
+      "title": "Overly broad exception handler",
+      "evidence": "except Exception as exc:\n                # Never count an execution failure as a no-defect prediction.\n                records.append(\n                    {\n                        \"case_id\": case.case_id,\n                        \"variant\": variant,\n                        \"status\": \"failed\",\n                        \"error\": type(exc).__name__,\n                        \"failure\": exc.record() if isinstance(exc, EvaluationFailure) else None,\n                    }\n                )\n                stopped = isinstance(exc, EvaluationFailure) and exc.fatal",
+      "recommendation": "Catch specific exception types or re-raise after logging.",
+      "confidence": 0.7
+    },
+    {
+      "file_path": "src/evaluation/parallel_retry.py",
+      "line": 73,
+      "severity": "medium",
+      "rule_id": "ast-broad-except",
+      "title": "Overly broad exception handler",
+      "evidence": "except Exception as exc:\n            record.update(\n                status=\"failed\",\n                error=type(exc).__name__,\n                failure=exc.record() if isinstance(exc, EvaluationFailure) else None,\n            )\n            if isinstance(exc, EvaluationFailure) and exc.fatal:\n                stopped.set()",
+      "recommendation": "Catch specific exception types or re-raise after logging.",
+      "confidence": 0.7
+    },
+    {
+      "file_path": "src/evaluation/parallel_retry.py",
+      "line": 126,
+      "severity": "medium",
+      "rule_id": "ast-broad-except",
+      "title": "Overly broad exception handler",
+      "evidence": "except Exception as exc:\n                records[task[\"case_id\"]] = {\n                    \"case_id\": task[\"case_id\"],\n                    \"status\": \"failed\",\n                    \"error\": type(exc).__name__,\n                }\n                stopped.set()",
+      "recommendation": "Catch specific exception types or re-raise after logging.",
+      "confidence": 0.7
+    },
+    {
+      "file_path": "src/evaluation/retry.py",
+      "line": 68,
+      "severity": "medium",
+      "rule_id": "ast-broad-except",
+      "title": "Overly broad exception handler",
+      "evidence": "except Exception as exc:\n                record.update(\n                    status=\"failed\",\n                    error=type(exc).__name__,\n                    failure=exc.record() if isinstance(exc, EvaluationFailure) else None,\n                )\n                consecutive_failures += 1\n                stopped = (\n                    consecutive_failures >= 3 or isinstance(exc, EvaluationFailure) and exc.fatal\n                )",
+      "recommendation": "Catch specific exception types or re-raise after logging.",
+      "confidence": 0.7
+    },
+    {
+      "file_path": "tests/test_golden_behavior.py",
+      "line": 17,
+      "severity": "critical",
+      "rule_id": "ast-dangerous-exec",
+      "title": "Dynamic code execution",
+      "evidence": "exec(definition + \"\\n\" + old, before)",
+      "recommendation": "Avoid exec/compile with user input. Use explicit logic or sandbox.",
+      "confidence": 0.9
+    },
+    {
+      "file_path": "tests/test_golden_behavior.py",
+      "line": 18,
+      "severity": "critical",
+      "rule_id": "ast-dangerous-exec",
+      "title": "Dynamic code execution",
+      "evidence": "exec(definition + \"\\n\" + new, after)",
+      "recommendation": "Avoid exec/compile with user input. Use explicit logic or sandbox.",
+      "confidence": 0.9
+    }
+  ],
+  "suggestions": [],
+  "used_ai": true,
+  "ai_failure_reason": null,
+  "analysis_warnings": [
+    "2 suggestion(s) filtered out (low confidence, unchanged line, or duplicate)",
+    "Patch context was truncated to fit token budget; some files were not analyzed by AI.",
+    "1 candidate(s) need additional context; not confirmed defects.",
+    "124 file(s) excluded from AI patch context: src/evaluation/adjudicate.py, src/reviewer/engine.py, src/evaluation/runtime.py, src/evaluation/improvement.py, src/reviewer/deep_review.py, src/reviewer/critic.py, src/reviewer/triage.py, src/analyzer/context_builder.py, src/output/markdown.py, .github/workflows/ai-pr-review.yml, src/service/static/app.js, src/reviewer/review_merger.py, src/analyzer/risk_rules.py, src/reviewer/signal_verifier.py, .github/workflows/ci.yml, src/analyzer/diff_parser.py, src/models.py, src/reviewer/signal_contracts.py, src/evaluation/__init__.py, docs/evaluation/reviewbench-2026-10-13/baseline-score.json, docs/evaluation/reviewbench-2026-10-13/critic-score.json, docs/evaluation/reviewbench-2026-10-13/baseline-audits/simnaut_emdash_2-41d75006.json, vscode-extension/package-lock.json, docs/evaluation/reviewbench-2026-10-13/run-summary.json, docs/evaluation/reviewbench-2026-10-13/baseline-audits/vanyastaff_nebula_224-d5ba86dd.json, docs/evaluation/reviewbench-2026-10-13/attempt-history.json, docs/evaluation/reviewbench-2026-10-13/input-preparation.json, docs/evaluation/reviewbench-2026-10-13/baseline-audits/scotthamilton77_agents-config_1-1fc78970.json, docs/evaluation/reviewbench-2026-10-13/baseline-audits/gagneurlab_PROTRIDER_10-b462b109.json, docs/evaluation/reviewbench-2026-10-13/baseline-audits/DisciplinedSoftware_Codebase-Conversion_1-4b46d68c.json, docs/evaluation/reviewbench-2026-10-13/baseline-audits/wirechat_wirechat_183-6e3156e7.json, docs/evaluation/reviewbench-2026-10-13/baseline-score.details.json, docs/evaluation/reviewbench-2026-10-13/baseline-audits/cmik_apilix_12-0c34439a.json, docs/evaluation/reviewbench-2026-10-13/baseline-audits/PaulStSmith_figlet-comment-generator_32-1d0b6642.json, docs/evaluation/reviewbench-2026-10-13/baseline-audits/AY2526S2-CS2103T-W14-3_tp_152-e0a9ce03.json, docs/evaluation/reviewbench-2026-10-13/baseline-audits/superhighfives_pika_200-b227aff0.json, docs/evaluation/reviewbench-2026-10-13/critic-score.details.json, docs/review-research-and-development-standard.md, tests/test_verification_reliability.py, docs/evaluation/reviewbench-2026-10-13/baseline-audits/mheuss_chronicle_14-04ac4c02.json, docs/evaluation/reviewbench-2026-10-13/baseline-audits/sdsykes_fastimage_165-8fc7cd32.json, docs/evaluation/reviewbench-2026-10-13/baseline-audits/PierreJanineh_TechDebtMCP_135-16a54f0f.json, docs/evaluation/reviewbench-2026-10-13/baseline-audits/scottlz0310_Mcp-Docker_29-e7705d26.json, docs/evaluation/reviewbench-2026-10-13/baseline-audits/brexhq_CrabTrap_15-5ef0884c.json, docs/evaluation-driven-review.md, docs/evaluation/reviewbench-2026-10-13/baseline-audits/brianc_node-postgres_3650-b922f0dd.json, docs/evaluation/reviewbench-2026-10-13/baseline-audits/allan-mobley-jr_gimmes_468-e1477f8b.json, docs/evaluation/reviewbench-2026-10-13/baseline-audits/NCATSTranslator_translator-ingests_336-efb31e9c.json, docs/evaluation/reviewbench-2026-10-13/baseline-audits/ardevd_jadx-collaboration_3-853179dc.json, docs/evaluation/reviewbench-2026-10-13/baseline-audits/superyyrrzz_ForgeMap_106-2f3977ed.json, docs/evaluation/reviewbench-2026-10-13/baseline-audits/k1LoW_gh-copilot-review_9-f9828193.json, tests/test_evaluation.py, docs/evaluation/reviewbench-2026-10-13/baseline-audits/Marvell-Consulting_statswales-frontend_626-30ba27a5.json, docs/evaluation/reviewbench-2026-10-13/baseline-audits/renedierking_LANdalf_88-bc1698f4.json, docs/evaluation/reviewbench-2026-10-13/baseline-audits/konturio_disaster-ninja-fe_1230-d169e9da.json, docs/evaluation/reviewbench-2026-10-13/baseline-audits/AA-Factory_aafactory-prototype_17-a1978cb7.json, docs/evaluation/reviewbench-input-smoke.json, docs/evaluation/synthetic-model-run.json, docs/evaluation/reviewbench-2026-10-13/REPORT.md, datasets/golden/synthetic-dev.json, docs/evaluation/reviewbench-2026-10-13/critic-removed-findings.json, tests/test_provider.py, docs/evaluation/reviewbench-2026-10-13/critic-audits/gagneurlab_PROTRIDER_10-b462b109.json, docs/evaluation/synthetic-metrics.json, docs/evaluation/reviewbench-2026-10-13/critic-audits/DisciplinedSoftware_Codebase-Conversion_1-4b46d68c.json, docs/evaluation/reviewbench-2026-10-13/critic-audits/NCATSTranslator_translator-ingests_336-efb31e9c.json, docs/evaluation/reviewbench-2026-10-13/critic-audits/PierreJanineh_TechDebtMCP_135-16a54f0f.json, docs/evaluation/reviewbench-2026-10-13/critic-audits/allan-mobley-jr_gimmes_468-e1477f8b.json, docs/evaluation/reviewbench-2026-10-13/critic-audits/ardevd_jadx-collaboration_3-853179dc.json, docs/evaluation/reviewbench-2026-10-13/critic-audits/k1LoW_gh-copilot-review_9-f9828193.json, docs/evaluation/reviewbench-2026-10-13/critic-audits/superhighfives_pika_200-b227aff0.json, docs/evaluation/reviewbench-2026-10-13/critic-audits/superyyrrzz_ForgeMap_106-2f3977ed.json, tests/test_golden_behavior.py, docs/evaluation/reviewbench-2026-10-13/baseline-candidates/gagneurlab_PROTRIDER_10-b462b109.json, tools/reviewbench/pr.md, tests/test_critic.py, docs/evaluation/reviewbench-2026-10-13/baseline-candidates/DisciplinedSoftware_Codebase-Conversion_1-4b46d68c.json, docs/evaluation/reviewbench-2026-10-13/baseline-candidates/NCATSTranslator_translator-ingests_336-efb31e9c.json, docs/evaluation/reviewbench-2026-10-13/baseline-candidates/PierreJanineh_TechDebtMCP_135-16a54f0f.json, docs/evaluation/reviewbench-2026-10-13/baseline-candidates/allan-mobley-jr_gimmes_468-e1477f8b.json, docs/evaluation/reviewbench-2026-10-13/baseline-candidates/ardevd_jadx-collaboration_3-853179dc.json, docs/evaluation/reviewbench-2026-10-13/baseline-candidates/k1LoW_gh-copilot-review_9-f9828193.json, docs/evaluation/reviewbench-2026-10-13/baseline-candidates/scotthamilton77_agents-config_1-1fc78970.json, docs/evaluation/reviewbench-2026-10-13/baseline-candidates/scottlz0310_Mcp-Docker_29-e7705d26.json, docs/evaluation/reviewbench-2026-10-13/baseline-candidates/superhighfives_pika_200-b227aff0.json, docs/evaluation/reviewbench-2026-10-13/baseline-candidates/superyyrrzz_ForgeMap_106-2f3977ed.json, tests/test_context_builder.py, tools/reviewbench/issue.md, docs/evaluation/reviewbench-2026-10-13/self-review-reliability-check.json, tests/test_risk_rules.py, docs/evaluation/reviewbench-2026-10-13/baseline-candidates/AA-Factory_aafactory-prototype_17-a1978cb7.json, docs/evaluation/reviewbench-2026-10-13/baseline-candidates/AY2526S2-CS2103T-W14-3_tp_152-e0a9ce03.json, docs/evaluation/reviewbench-2026-10-13/baseline-candidates/Marvell-Consulting_statswales-frontend_626-30ba27a5.json, docs/evaluation/reviewbench-2026-10-13/baseline-candidates/PaulStSmith_figlet-comment-generator_32-1d0b6642.json, docs/evaluation/reviewbench-2026-10-13/baseline-candidates/brexhq_CrabTrap_15-5ef0884c.json, docs/evaluation/reviewbench-2026-10-13/baseline-candidates/brianc_node-postgres_3650-b922f0dd.json, docs/evaluation/reviewbench-2026-10-13/baseline-candidates/cmik_apilix_12-0c34439a.json, docs/evaluation/reviewbench-2026-10-13/baseline-candidates/konturio_disaster-ninja-fe_1230-d169e9da.json, docs/evaluation/reviewbench-2026-10-13/baseline-candidates/mheuss_chronicle_14-04ac4c02.json, docs/evaluation/reviewbench-2026-10-13/baseline-candidates/renedierking_LANdalf_88-bc1698f4.json, docs/evaluation/reviewbench-2026-10-13/baseline-candidates/sdsykes_fastimage_165-8fc7cd32.json, docs/evaluation/reviewbench-2026-10-13/baseline-candidates/simnaut_emdash_2-41d75006.json, docs/evaluation/reviewbench-2026-10-13/baseline-candidates/vanyastaff_nebula_224-d5ba86dd.json, docs/evaluation/reviewbench-2026-10-13/baseline-candidates/wirechat_wirechat_183-6e3156e7.json, docs/evaluation/reviewbench-2026-10-13/critic-audits/AA-Factory_aafactory-prototype_17-a1978cb7.json, docs/evaluation/reviewbench-2026-10-13/critic-audits/AY2526S2-CS2103T-W14-3_tp_152-e0a9ce03.json, docs/evaluation/reviewbench-2026-10-13/critic-audits/Marvell-Consulting_statswales-frontend_626-30ba27a5.json, docs/evaluation/reviewbench-2026-10-13/critic-audits/PaulStSmith_figlet-comment-generator_32-1d0b6642.json, docs/evaluation/reviewbench-2026-10-13/critic-audits/brexhq_CrabTrap_15-5ef0884c.json, docs/evaluation/reviewbench-2026-10-13/critic-audits/brianc_node-postgres_3650-b922f0dd.json, docs/evaluation/reviewbench-2026-10-13/critic-audits/cmik_apilix_12-0c34439a.json, docs/evaluation/reviewbench-2026-10-13/critic-audits/konturio_disaster-ninja-fe_1230-d169e9da.json, docs/evaluation/reviewbench-2026-10-13/critic-audits/mheuss_chronicle_14-04ac4c02.json, docs/evaluation/reviewbench-2026-10-13/critic-audits/renedierking_LANdalf_88-bc1698f4.json, docs/evaluation/reviewbench-2026-10-13/critic-audits/scotthamilton77_agents-config_1-1fc78970.json, docs/evaluation/reviewbench-2026-10-13/critic-audits/scottlz0310_Mcp-Docker_29-e7705d26.json, docs/evaluation/reviewbench-2026-10-13/critic-audits/sdsykes_fastimage_165-8fc7cd32.json, docs/evaluation/reviewbench-2026-10-13/critic-audits/simnaut_emdash_2-41d75006.json, docs/evaluation/reviewbench-2026-10-13/critic-audits/vanyastaff_nebula_224-d5ba86dd.json, docs/evaluation/reviewbench-2026-10-13/critic-audits/wirechat_wirechat_183-6e3156e7.json, tools/reviewbench/Dockerfile, README.md, tests/test_signal_pipeline.py, vscode-extension/package.json"
+  ],
+  "context_truncated": true,
+  "context_token_count": 16299,
+  "patch_token_budget": 6000,
+  "context_tokenizer": "cl100k_base",
+  "hidden_suggestions_count": 2,
+  "skipped_context_files": [
+    {
+      "file_path": "src/evaluation/adjudicate.py",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "src/reviewer/engine.py",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "src/evaluation/runtime.py",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "src/evaluation/improvement.py",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "src/reviewer/deep_review.py",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "src/reviewer/critic.py",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "src/reviewer/triage.py",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "src/analyzer/context_builder.py",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "src/output/markdown.py",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": ".github/workflows/ai-pr-review.yml",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "src/service/static/app.js",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "src/reviewer/review_merger.py",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "src/analyzer/risk_rules.py",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "src/reviewer/signal_verifier.py",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": ".github/workflows/ci.yml",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "src/analyzer/diff_parser.py",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "src/models.py",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "src/reviewer/signal_contracts.py",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "src/evaluation/__init__.py",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-score.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/critic-score.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/simnaut_emdash_2-41d75006.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "vscode-extension/package-lock.json",
+      "reason": "lockfile"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/run-summary.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/vanyastaff_nebula_224-d5ba86dd.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/attempt-history.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/input-preparation.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/scotthamilton77_agents-config_1-1fc78970.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/gagneurlab_PROTRIDER_10-b462b109.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/DisciplinedSoftware_Codebase-Conversion_1-4b46d68c.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/wirechat_wirechat_183-6e3156e7.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-score.details.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/cmik_apilix_12-0c34439a.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/PaulStSmith_figlet-comment-generator_32-1d0b6642.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/AY2526S2-CS2103T-W14-3_tp_152-e0a9ce03.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/superhighfives_pika_200-b227aff0.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/critic-score.details.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/review-research-and-development-standard.md",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "tests/test_verification_reliability.py",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/mheuss_chronicle_14-04ac4c02.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/sdsykes_fastimage_165-8fc7cd32.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/PierreJanineh_TechDebtMCP_135-16a54f0f.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/scottlz0310_Mcp-Docker_29-e7705d26.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/brexhq_CrabTrap_15-5ef0884c.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation-driven-review.md",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/brianc_node-postgres_3650-b922f0dd.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/allan-mobley-jr_gimmes_468-e1477f8b.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/NCATSTranslator_translator-ingests_336-efb31e9c.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/ardevd_jadx-collaboration_3-853179dc.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/superyyrrzz_ForgeMap_106-2f3977ed.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/k1LoW_gh-copilot-review_9-f9828193.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "tests/test_evaluation.py",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/Marvell-Consulting_statswales-frontend_626-30ba27a5.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/renedierking_LANdalf_88-bc1698f4.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/konturio_disaster-ninja-fe_1230-d169e9da.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-audits/AA-Factory_aafactory-prototype_17-a1978cb7.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-input-smoke.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/synthetic-model-run.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/REPORT.md",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "datasets/golden/synthetic-dev.json",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/critic-removed-findings.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "tests/test_provider.py",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/critic-audits/gagneurlab_PROTRIDER_10-b462b109.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/synthetic-metrics.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/critic-audits/DisciplinedSoftware_Codebase-Conversion_1-4b46d68c.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/critic-audits/NCATSTranslator_translator-ingests_336-efb31e9c.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/critic-audits/PierreJanineh_TechDebtMCP_135-16a54f0f.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/critic-audits/allan-mobley-jr_gimmes_468-e1477f8b.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/critic-audits/ardevd_jadx-collaboration_3-853179dc.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/critic-audits/k1LoW_gh-copilot-review_9-f9828193.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/critic-audits/superhighfives_pika_200-b227aff0.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/critic-audits/superyyrrzz_ForgeMap_106-2f3977ed.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "tests/test_golden_behavior.py",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/gagneurlab_PROTRIDER_10-b462b109.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "tools/reviewbench/pr.md",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "tests/test_critic.py",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/DisciplinedSoftware_Codebase-Conversion_1-4b46d68c.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/NCATSTranslator_translator-ingests_336-efb31e9c.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/PierreJanineh_TechDebtMCP_135-16a54f0f.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/allan-mobley-jr_gimmes_468-e1477f8b.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/ardevd_jadx-collaboration_3-853179dc.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/k1LoW_gh-copilot-review_9-f9828193.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/scotthamilton77_agents-config_1-1fc78970.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/scottlz0310_Mcp-Docker_29-e7705d26.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/superhighfives_pika_200-b227aff0.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/superyyrrzz_ForgeMap_106-2f3977ed.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "tests/test_context_builder.py",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "tools/reviewbench/issue.md",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/self-review-reliability-check.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "tests/test_risk_rules.py",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/AA-Factory_aafactory-prototype_17-a1978cb7.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/AY2526S2-CS2103T-W14-3_tp_152-e0a9ce03.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/Marvell-Consulting_statswales-frontend_626-30ba27a5.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/PaulStSmith_figlet-comment-generator_32-1d0b6642.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/brexhq_CrabTrap_15-5ef0884c.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/brianc_node-postgres_3650-b922f0dd.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/cmik_apilix_12-0c34439a.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/konturio_disaster-ninja-fe_1230-d169e9da.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/mheuss_chronicle_14-04ac4c02.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/renedierking_LANdalf_88-bc1698f4.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/sdsykes_fastimage_165-8fc7cd32.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/simnaut_emdash_2-41d75006.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/vanyastaff_nebula_224-d5ba86dd.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/baseline-candidates/wirechat_wirechat_183-6e3156e7.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/critic-audits/AA-Factory_aafactory-prototype_17-a1978cb7.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/critic-audits/AY2526S2-CS2103T-W14-3_tp_152-e0a9ce03.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/critic-audits/Marvell-Consulting_statswales-frontend_626-30ba27a5.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/critic-audits/PaulStSmith_figlet-comment-generator_32-1d0b6642.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/critic-audits/brexhq_CrabTrap_15-5ef0884c.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/critic-audits/brianc_node-postgres_3650-b922f0dd.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/critic-audits/cmik_apilix_12-0c34439a.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/critic-audits/konturio_disaster-ninja-fe_1230-d169e9da.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/critic-audits/mheuss_chronicle_14-04ac4c02.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/critic-audits/renedierking_LANdalf_88-bc1698f4.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/critic-audits/scotthamilton77_agents-config_1-1fc78970.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/critic-audits/scottlz0310_Mcp-Docker_29-e7705d26.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/critic-audits/sdsykes_fastimage_165-8fc7cd32.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/critic-audits/simnaut_emdash_2-41d75006.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/critic-audits/vanyastaff_nebula_224-d5ba86dd.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "docs/evaluation/reviewbench-2026-10-13/critic-audits/wirechat_wirechat_183-6e3156e7.json",
+      "reason": "evaluation data (quoted external code, not executable source)"
+    },
+    {
+      "file_path": "tools/reviewbench/Dockerfile",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "README.md",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "tests/test_signal_pipeline.py",
+      "reason": "patch_budget_exhausted"
+    },
+    {
+      "file_path": "vscode-extension/package.json",
+      "reason": "patch_budget_exhausted"
+    }
+  ],
+  "hidden_rule_findings_count": 0,
+  "reviewer_version": "pr-branch",
+  "execution_status": "success",
+  "degradation_reason": null,
+  "report_confidence": "partial",
+  "completeness": [
+    {
+      "item": "PR 元信息获取",
+      "status": "success",
+      "detail": "成功"
+    },
+    {
+      "item": "变更文件获取",
+      "status": "success",
+      "detail": "133 个文件"
+    },
+    {
+      "item": "AI 上下文文件",
+      "status": "partial",
+      "detail": "上下文预算不足，部分补丁被裁剪或未进入上下文"
+    },
+    {
+      "item": "AI 分析",
+      "status": "success",
+      "detail": "成功"
+    },
+    {
+      "item": "规则扫描",
+      "status": "success",
+      "detail": "成功"
+    },
+    {
+      "item": "Patch 上下文",
+      "status": "partial",
+      "detail": "裁剪 — 超出 token 预算"
+    },
+    {
+      "item": "PR head 语法诊断",
+      "status": "success",
+      "detail": "未检测到语法错误"
+    }
+  ],
+  "pr_syntax_check_ok": true,
+  "review_meta": {
+    "reviewed_commit": null,
+    "trigger_event": null,
+    "workflow_run_url": null,
+    "updated_at": null,
+    "review_mode": "full_pr"
+  },
+  "fix_tracking": [],
+  "confirmed_signals": [],
+  "dismissed_signals": [],
+  "unresolved_signals": [],
+  "unverified_signals": [],
+  "evidence_rejections": [],
+  "critic_decisions": [
+    {
+      "suggestion_index": 0,
+      "file_path": "src/evaluation/reviewbench.py",
+      "line": 79,
+      "title": "Every ordinary modification is labeled RENAMED because there is no MODIFIED branch",
+      "decision": "dismissed",
+      "confidence": 0.7,
+      "reason": "The patch contradicts the premise. The supplied new-file code contains the complete four-branch ternary:\n\n    status = (\n        FileStatus.REMOVED\n        if new == \"/dev/null\"\n        else FileStatus.ADDED\n        if old == \"/dev/null\"\n        else FileStatus.RENAMED\n        if old[2:] != new[2:]\n        else FileStatus.MODIFIED\n    )\n\nSo the comparison `old[2:] != new[2:]` the candidate says is \"never made\" IS made, and a MODIFIED branch exists. That `status` value is consumed immediately by `ChangedFile(..., status=status, previous_filename=old[2:] if status == FileStatus.RENAMED else None, ...)`, so an ordinary edit (neither side /dev/null and old[2:]==new[2:]) resolves to MODIFIED, not RENAMED. The candidate's own recommendation is verbatim what the patch already implements. The failure scenario (all edits labeled RENAMED, MODIFIED path unreachable) cannot follow from this code."
+    },
+    {
+      "suggestion_index": 1,
+      "file_path": "src/evaluation/critic_replay.py",
+      "line": 62,
+      "title": "Critic replay re-attaches findings by identity, so findings for removed suggestions can survive",
+      "decision": "uncertain",
+      "confidence": 0.5,
+      "reason": "The code does build `keys = {(s.file_path, s.line, s.title) for s in kept}` (a set) and then re-attaches findings by testing that same identity tuple per suggestion, so the mapping is genuinely lossy for duplicate identity tuples: if two baseline suggestions share (file_path,line,title) and only one is in `kept`, the removed one's finding would also pass the `in keys` test and be copied. However, whether that state is reachable is not decidable from this patch alone. The scenario requires (a) duplicate-identity suggestions in the baseline and (b) `apply_critic`/`select_critic_candidates` removing exactly one of them. If removal is keyed by identity (plausible, given the surrounding pure-identity handling) both duplicates drop together and no bug occurs; removal semantics live in `apply_critic`, which is not in the supplied patch. The mechanism the candidate describes is real, but the triggering condition is unverified, so this is not confirmable as a concrete failure."
+    }
+  ],
+  "pending_suggestions": [
+    {
+      "file_path": "src/evaluation/critic_replay.py",
+      "line": 62,
+      "severity": "medium",
+      "confidence": 0.4,
+      "title": "Critic replay re-attaches findings by identity, so findings for removed suggestions can survive",
+      "reason": "After the Critic runs, `keys = {(s.file_path, s.line, s.title) for s in kept}` is a set, and the replay loop appends `finding` whenever the source suggestion's (file_path, line, title) is in that set. Positional pairing is lost: if two baseline suggestions share the same identity tuple (duplicate model output, e.g. the same title on the same line), `keys` collapses them, so when the Critic removes one of them the removed suggestion's finding is still copied into the replay candidate. The candidate JSON then contradicts the Critic `decisions` that were just computed, inflating the measured effect of the Critic.",
+      "recommendation": "Match positionally instead of by identity, e.g. have apply_critic return kept indices (or compute `removed_indices` and filter with enumerate):\n```python\nfor i, (suggestion, finding) in enumerate(zip(suggestions, old_output[\"findings\"])):\n    if i not in removed_indices:\n        output_findings.append(finding)\n```\nand assert len(suggestions) == len(old_output[\"findings\"]) up front so the strict zip cannot abort the run mid-way.",
+      "source": "ai_needs_context",
+      "evidence": [
+        "                    if (suggestion.file_path, suggestion.line, suggestion.title) in keys:"
+      ],
+      "failure_scenario": "A baseline case contains two identical-identity suggestions on the same line (duplicate generations). apply_critic removes one; because `keys` is a set the surviving suggestion re-adds both findings to the replay candidate, so the Critic ablation reports a finding as retained although the Critic removed it, and the produced candidate JSON no longer agrees with the recorded removal decisions."
+    }
+  ],
+  "stage_results": [],
+  "metrics": {
+    "raw_signal_count": 42,
+    "main_review_prompt_signal_count": 0,
+    "independent_suggestion_count": 0,
+    "evidence_rejected_suggestion_count": 0,
+    "critic_request_count": 1,
+    "critic_confirmed_count": 0,
+    "critic_dismissed_count": 1,
+    "critic_uncertain_count": 1,
+    "critic_unverified_count": 0,
+    "context_token_count": 16299,
+    "signal_verification_request_count": 0,
+    "telemetry_only_signal_count": 42,
+    "confirmed_signal_count": 0,
+    "dismissed_signal_count": 0,
+    "unresolved_signal_count": 0,
+    "unverified_signal_count": 0
+  },
+  "experiment_protocol": {
+    "target_commit": "e3f0aee4e6fb26740776065a61148d8811f597b3",
+    "requested_model": "deepseek-v4-flash",
+    "stream": true,
+    "max_output_tokens": 32768,
+    "timeout_seconds": 120,
+    "total_timeout_seconds": 300,
+    "include_context_pack": false,
+    "remote_fetch": false,
+    "critic": true,
+    "note": "Single frozen PR pilot, independently checked conclusions below; not benchmark quality proof."
+  }
+}
