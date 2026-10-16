@@ -78,7 +78,8 @@ def reload_rules(user_rules_path: str | None = None) -> None:
 
 
 def scan_signals(
-    files: list[ChangedFile] | None, *, include_cross_file: bool = True
+    files: list[ChangedFile] | None, *, include_cross_file: bool = True,
+    include_linters: bool = True,
 ) -> SignalScan:
     """Run the rule scans and report both findings and what could not be scanned.
 
@@ -125,6 +126,20 @@ def scan_signals(
             findings.extend(analyze_cross_file_impact(files, warnings))
         except Exception as exc:
             _warn(warnings, f"Cross-file signal collection failed: {type(exc).__name__}: {exc}")
+
+    if include_linters and files:
+        # Deterministic checks cost nothing and never guess, so they run alongside
+        # the pattern rules and their findings enter the same pipeline. A file that
+        # could not be checked is warned about rather than assumed clean.
+        from src.analyzer.deterministic_tools import run_linters
+
+        lint = run_linters(files)
+        findings.extend(lint.findings)
+        if lint.unavailable_reason:
+            _warn(warnings, f"Deterministic checks unavailable: {lint.unavailable_reason}")
+        # A path absent from the working tree is normal for a frozen snapshot and
+        # is not a degradation, so it is not warned about: the count travels in the
+        # scan result instead of pretending the file was checked.
 
     return SignalScan(findings=tuple(findings), warnings=tuple(warnings))
 
