@@ -59,6 +59,24 @@
 - 断言**不要**强求 fixture 给不出的形状（closure 0 节点是合法的）
 - `.env` 被 gitignore；`PRE_COMMIT_HOME` 需指向工作区（沙箱 `~/.cache` 不可写）
 
+## A 的失败记录（两次尝试，2026-10-16）
+
+**第一次**：在入口处重建 `ChangedFile.patch`（拼 `hunk.raw`）。两个生产路径测试立刻显示 `coverage_summary.hunks_total=0`——**重建的 patch 不可解析，diff 内容被删**。回退。
+
+**第二次**：改成"在渲染 hunk 的循环里按 tier-1 结果过滤"（正确位置）。仍然失败，而且 **12 个测试红了**——因为**纯"可疑"过滤会把不装得下的 diff 清成空**：没有规则命中的 PR（例如只有 `check_permission(user, resource_i)` 这种新增调用的改动）会**一条 hunk 都不剩，模型什么都看不到**。这正好与"看得更多"的目标相反。
+
+**结论（A 的正确形状，别再一次只做一半）**：
+```
+keep = 可疑 hunk（tier-1 命中）  ∪  按价值用背包填满剩余预算的 hunk
+```
+- 可疑 = **优先级提升**，不是唯一入选条件；
+- 剩余预算必须由 `src/analyzer/selection.py` 的 `select_hunks_optimal` 按价值填满，否则上下文会饿死；
+- **单位必须是 token**（`max_patch_tokens` 是 token；比行数会让门禁在错误的时候触发——这个错在本仓已犯过两次）；
+- 先写两条测试：**装得下 → 每个 hunk 都在**；**装不下 → 可疑 hunk 全在 + 背包填满 + 每条被丢弃的 hunk 都有 omission**；
+- 改完必须用真实 PR 评测（2.4 元）验证召回，**不能只看测试绿就声称有效**。
+
+**不要**在没有上述 keep-set 公式时再动这个函数。
+
 ## A 的失败记录（2026-10-16，不要在同一个坑里再摔一次）
 
 在 `build_review_context` 里按 tier-1 结果**重建 `ChangedFile.patch`**（用 `hunk.raw` 拼）后，两个生产路径测试立刻变了：过滤后 `coverage_summary.hunks_total=0`，即**重建的 patch 里没有可解析的 hunk——diff 内容被删掉了**。已回退（默认行为不变，360 通过）。
