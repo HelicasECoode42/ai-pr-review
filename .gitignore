@@ -60,3 +60,4 @@ node_modules/
 # VS Code extension artifacts
 *.vsix
 vscode-extension/vscode-extension/
+.pre-commit-home/
