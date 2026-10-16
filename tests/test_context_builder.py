@@ -147,3 +147,47 @@ def test_an_over_budget_diff_keeps_flagged_hunks_and_still_fills_the_budget() ->
     assert "value_" in ctx.text
     dropped = [o for o in ctx.omissions if o.reason == "not_selected_by_triage"]
     assert dropped, "dropped hunks must be recorded, not silently lost"
+
+
+def _over_budget_files():
+    plain = "\n".join(f"+value_{i} = compute_{i}()" for i in range(120))
+    return [
+        ChangedFile(filename="src/plain.py", status=FileStatus.MODIFIED, additions=120,
+                    patch="@@ -1,1 +1,120 @@\n" + plain),
+        ChangedFile(filename="src/other.py", status=FileStatus.MODIFIED, additions=120,
+                    patch="@@ -1,1 +1,120 @@\n" + plain),
+    ]
+
+
+def test_over_budget_context_accounts_for_every_hunk() -> None:
+    """Guardrail: replacing the over-budget policy must not break the ledger.
+
+    Whatever selection rule is used, these must hold: the context cannot silently
+    lose hunks, every changed file has a terminal coverage state, and the hunk
+    counts add up.
+    """
+    ctx = build_review_context(
+        PullRequest(repo="test/repo", number=11, title="Over budget"), _over_budget_files(), [],
+        max_patch_tokens=40,
+    )
+    summary = ctx.coverage_summary
+    assert summary.hunks_total == (
+        summary.hunks_complete + summary.hunks_partial + summary.hunks_omitted
+    )
+    assert summary.unaccounted_files == ()
+    assert {entry.path for entry in ctx.coverage} == {"src/plain.py", "src/other.py"}
+    assert ctx.truncated is True
+    assert ctx.text.strip()
+
+
+def test_over_budget_context_still_shows_the_model_something() -> None:
+    """Guardrail: a diff that does not fit must not become an empty prompt.
+
+    Filtering to flagged hunks alone did exactly that, and it is the failure this
+    replacement exists to avoid.
+    """
+    ctx = build_review_context(
+        PullRequest(repo="test/repo", number=12, title="Over budget"), _over_budget_files(), [],
+        max_patch_tokens=40,
+    )
+    assert "value_" in ctx.text
