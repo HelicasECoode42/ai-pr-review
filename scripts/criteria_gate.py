@@ -21,11 +21,13 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from src.knowledge.playbook import contract_domains, load_playbook  # noqa: E402
 from src.reviewer.criteria import domain_violation  # noqa: E402
 from src.reviewer.witness import evaluate_equivalence, expression_from_quote  # noqa: E402
 
-PLAYBOOK = REPO_ROOT / "knowledge/playbook.md"
+# The safe-division test case is synthetic and carries its domain here as a
+# fixture input. It is deliberately independent of the production playbook:
+# benchmark assumptions must not become repository-wide API contracts.
+CASE_DOMAINS = {"safe-division": {"count": "int"}}
 
 # What each checked-in case must do under the criteria. `safe-index` is provably
 # equivalent; `safe-division` differs only for an input the declared contract
@@ -52,7 +54,6 @@ def sides(diff: str) -> tuple[str | None, str | None]:
 
 def main() -> int:
     cases = json.loads(GOLD.read_text(encoding="utf-8"))
-    domains = contract_domains(load_playbook(PLAYBOOK))
     failures: list[str] = []
     checked = 0
     for case in cases:
@@ -62,6 +63,7 @@ def main() -> int:
             failures.append(f"{case_id}: could not derive an expression pair")
             continue
         result = evaluate_equivalence(base, head)
+        domains = CASE_DOMAINS.get(case_id, {})
         if result.status == "differs" and domain_violation(result.witness, domains):
             observed = "blocked_by_contract"
         else:

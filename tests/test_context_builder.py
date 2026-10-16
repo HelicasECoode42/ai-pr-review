@@ -1,5 +1,3 @@
-import pytest
-
 from src.analyzer.context_builder import (
     build_review_context,
     count_tokens,
@@ -125,28 +123,28 @@ def test_a_diff_within_budget_keeps_every_hunk() -> None:
     assert not [o for o in ctx.omissions if o.reason == "not_selected_by_triage"]
 
 
-@pytest.mark.skip(reason="A not implemented: the gate must replace the builder's own "
-                        "over-budget policy, not sit in front of it - see docs/STATE.md")
 def test_an_over_budget_diff_keeps_flagged_hunks_and_still_fills_the_budget() -> None:
     """Suspicion is a priority, not the only admission condition: a diff with no
     flagged hunk must still reach the model, and a flagged hunk must always be in."""
-    plain = "\n".join(f"+value_{i} = compute_{i}()" for i in range(200))
-    risky = "@@ -1,1 +300,2 @@\n keep\n+exec(user_input)\n"
-    files = [
-        ChangedFile(filename="src/plain.py", status=FileStatus.MODIFIED,
-                    additions=200, patch="@@ -1,1 +1,200 @@\n" + plain),
-        ChangedFile(filename="src/risky.py", status=FileStatus.MODIFIED,
-                    additions=2, patch=risky),
-    ]
+    plain = "\n".join(f"+value_{i} = compute_{i}()" for i in range(100))
+    files = [ChangedFile(filename=f"src/plain_{i}.py", status=FileStatus.MODIFIED,
+                         additions=100, patch="@@ -1,1 +1,100 @@\n" + plain)
+             for i in range(8)]
+    # The later production-path sort used to place this small, flagged docs file
+    # after eight large source files, so its hunk never reached the final prompt.
+    files.append(ChangedFile(
+        filename="docs/risky.py", status=FileStatus.MODIFIED, additions=2,
+        patch="@@ -1,1 +1,2 @@\n keep\n+exec(user_input)\n",
+    ))
     ctx = build_review_context(
         PullRequest(repo="test/repo", number=10, title="Big change"), files, [],
-        max_patch_tokens=60,
+        max_patch_tokens=800,
     )
     # The flagged hunk is always present, and the budget did not go to waste.
     assert "exec(user_input)" in ctx.text
     assert "value_" in ctx.text
-    dropped = [o for o in ctx.omissions if o.reason == "not_selected_by_triage"]
-    assert dropped, "dropped hunks must be recorded, not silently lost"
+    assert ctx.coverage_summary.hunks_total == 9
+    assert ctx.coverage_summary.complete
 
 
 def _over_budget_files():

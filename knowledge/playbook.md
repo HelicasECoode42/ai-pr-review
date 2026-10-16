@@ -42,14 +42,16 @@ kind: contract
 statement: "`count`, `index`, `total` and `values` are the numeric/sequence types their signatures imply; the guards are not required to tolerate None, bool or string values."
 source: "gold case safe-division: the falsy-guard narrowing only differs for count=None, which the interface excludes"
 domain: {count: int, index: int, total: int, values: sequence}
-version: 1
-status: authoritative
+version: 2
+status: candidate
 ---
 
-A witness built from an input outside the declared domain shows that the guard
-handles a case the caller cannot produce. It is not evidence of a defect, and it
-must not be published as a confirmed behaviour change. Real out-of-domain
-defects still need their own evidence.
+A witness built from an input outside this example's declared domain shows that
+the guard handles a case the fixture caller cannot produce. This entry was
+derived from a synthetic benchmark case, not a repository API contract; its
+domain must not constrain production candidates by matching function or variable
+names. Keep it a candidate until replaced by a contract tied to source evidence
+or an explicit repository rule.
 
 ---
 id: kb-0004

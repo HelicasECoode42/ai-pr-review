@@ -21,6 +21,10 @@ from src.utils.config import Settings
 
 logger = logging.getLogger(__name__)
 
+_SYMBOL_SCOPE_MAX_FILES = 12
+_SYMBOL_SCOPE_MAX_FILE_BYTES = 100_000
+_SYMBOL_SCOPE_MAX_TOTAL_BYTES = 400_000
+
 
 def _usage_records(provider: object) -> list[dict]:
     """Return a provider's usage records, or nothing when it exposes none."""
@@ -68,18 +72,180 @@ class ReviewApplication:
             reasoning_effort=effort,
         )
 
-    def _recall_playbook(self, files: list[ChangedFile], defaults: dict):
-        """Scope-matched playbook entries, or nothing when the store is absent."""
+    @staticmethod
+    def _changed_symbols_by_path(
+        files: list[ChangedFile], snapshot, *, relevant_paths: set[str]
+    ) -> tuple[dict[str, set[str]], bool]:
+        """Index only frozen changed files and return symbols containing changed lines.
+
+        Missing snapshot text, unsupported syntax and parse failures remain absent
+        from the map. ``recall`` treats that absence as unknown, never as a match.
+        """
+        if snapshot is None:
+            return {}, False
+        from src.analyzer.diff_parser import parse_file_hunks
+        from src.analyzer.review_plan import SourceIndexCache
+
+        index = SourceIndexCache(max_entries=max(1, len(files) * 2))
+        symbols_by_path: dict[str, set[str]] = {}
+        limited = len(relevant_paths) > _SYMBOL_SCOPE_MAX_FILES
+        total_bytes = 0
+        budget_exhausted = False
+        relevant_files = [file for file in files if file.filename in relevant_paths]
+        bounded_files = relevant_files[:_SYMBOL_SCOPE_MAX_FILES]
+        for file_index, file in enumerate(bounded_files):
+            hunks = parse_file_hunks(file)
+            if not hunks:
+                continue
+            has_added = any(hunk.added_lines for hunk in hunks)
+            has_removed = any(
+                raw.startswith("-") and not raw.startswith("---")
+                for hunk in hunks for raw in hunk.raw.splitlines()[1:]
+            )
+            sides = []
+            if has_added:
+                sides.append(("head", file.filename))
+            if has_removed:
+                sides.append(("base", file.previous_filename or file.filename))
+            file_symbols: set[str] = set()
+            file_complete = bool(sides)
+            for side, path in sides:
+                try:
+                    text = snapshot.read(path, side)
+                except Exception as exc:
+                    logger.warning("Could not read frozen %s source %s: %s", side, path, exc)
+                    file_complete = False
+                    continue
+                if text is None:
+                    file_complete = False
+                    continue
+                source_bytes = len(text.encode("utf-8"))
+                if total_bytes + source_bytes > _SYMBOL_SCOPE_MAX_TOTAL_BYTES:
+                    limited = True
+                    file_complete = False
+                    budget_exhausted = True
+                    break
+                total_bytes += source_bytes
+                if source_bytes > _SYMBOL_SCOPE_MAX_FILE_BYTES:
+                    limited = True
+                    file_complete = False
+                    continue
+                parsed = index.parse(path, text, side)
+                if (parsed.parser == "unavailable"
+                        or {"parse_failed", "parse_errors"} & set(parsed.limitations)):
+                    file_complete = False
+                    continue
+                changed_lines: set[int] = set()
+                for hunk in hunks:
+                    if side == "head":
+                        changed_lines.update(line.line for line in hunk.added_lines)
+                    else:
+                        old_line = hunk.old_start
+                        for raw in hunk.raw.splitlines()[1:]:
+                            if raw.startswith("-"):
+                                changed_lines.add(old_line)
+                                old_line += 1
+                            elif raw.startswith(" "):
+                                old_line += 1
+                file_symbols.update(
+                    symbol.name for symbol in parsed.symbols
+                    if any(symbol.start <= line <= symbol.end for line in changed_lines)
+                )
+            if file_complete:
+                # Keep the result keyed by the current changed path even for a
+                # deletion read from the old filename, so recall tests the same
+                # path that its scope matched.
+                symbols_by_path[file.filename] = file_symbols
+            if budget_exhausted:
+                break
+            if total_bytes >= _SYMBOL_SCOPE_MAX_TOTAL_BYTES:
+                limited = limited or file_index + 1 < len(relevant_files)
+                break
+        return symbols_by_path, limited
+
+    def _recall_playbook(self, files: list[ChangedFile], defaults: dict, *, repo: str):
+        """Return scope-matched entries and explicit limits on symbol resolution."""
         path = Path(self.settings.playbook_path or DEFAULT_PLAYBOOK)
         try:
             entries = load_playbook(path)
         except Exception as exc:  # a broken playbook must not break a review
             logger.warning("Playbook at %s could not be loaded: %s", path, exc)
-            return []
+            return [], [], []
         paths = [file.filename for file in files]
         languages = sorted({language_of(path) for path in paths})
-        return recall(entries, repo=defaults.get("repo") or "", paths=paths,
-                      languages=languages, k=self.settings.playbook_recall_k)
+        snapshot = defaults.get("repository_snapshot")
+        symbol_scoped = [
+            entry for entry in entries
+            if entry.status == "authoritative"
+            and (symbols := [str(value) for value in (entry.scope.get("symbols") or ())])
+            and "*" not in symbols
+            and entry.scope.get("repo") in (None, "*", repo)
+            and any(
+                (not entry.scope.get("languages")
+                 or language_of(path) in entry.scope.get("languages", []))
+                and (not entry.scope.get("paths") or any(
+                    Path(path).match(pattern) for pattern in entry.scope.get("paths", [])
+                ))
+                for path in paths
+            )
+        ]
+        relevant_symbol_paths = {
+            path for entry in symbol_scoped for path in paths
+            if (not entry.scope.get("languages")
+                or language_of(path) in entry.scope.get("languages", []))
+            and (not entry.scope.get("paths") or any(
+                Path(path).match(pattern) for pattern in entry.scope.get("paths", [])
+            ))
+        }
+        symbols_by_path, symbol_index_limited = (
+            self._changed_symbols_by_path(
+                files, snapshot, relevant_paths=relevant_symbol_paths
+            ) if symbol_scoped else ({}, False)
+        )
+        recalled = recall(entries, repo=repo, paths=paths,
+                          languages=languages, symbols_by_path=symbols_by_path,
+                          k=self.settings.playbook_recall_k)
+        warnings = []
+        recalled_ids = {entry.id for entry in recalled}
+        unresolved_symbol_scoped = [
+            entry.id for entry in symbol_scoped
+            if entry.id not in recalled_ids and any(
+                   path not in symbols_by_path for path in relevant_symbol_paths
+                   if (not entry.scope.get("languages")
+                       or language_of(path) in entry.scope.get("languages", []))
+                   and (not entry.scope.get("paths") or any(
+                       Path(path).match(pattern) for pattern in entry.scope.get("paths", [])
+                   )))
+        ]
+        if unresolved_symbol_scoped and (
+            snapshot is None or relevant_symbol_paths - set(symbols_by_path)
+        ):
+            warnings.append(
+                "Symbol-scoped playbook entries were not recalled because changed symbols "
+                "could not be resolved from every relevant frozen file: "
+                + ", ".join(sorted(unresolved_symbol_scoped))
+            )
+        if symbol_index_limited:
+            warnings.append(
+                "Symbol-scoped playbook resolution reached its changed-source file or size "
+                "budget; unindexed paths remain unknown and cannot widen recall."
+            )
+        unavailable_contract_domain_ids = [
+            entry.id for entry in recalled
+            if entry.kind == "contract" and (
+                entry.scope.get("symbols") or entry.scope.get("paths")
+                or entry.scope.get("languages")
+            ) and entry.domain
+        ]
+        if unavailable_contract_domain_ids:
+            warnings.append(
+                "Scoped contract entries with declared domains were recalled but withheld "
+                "from the run-wide prompt and witness constraints: their values are not "
+                "verified repository API facts, and candidate-specific contract binding is "
+                "unavailable: "
+                + ", ".join(unavailable_contract_domain_ids)
+            )
+        return recalled, warnings, unavailable_contract_domain_ids
 
     def review(
         self, pr: PullRequest, files: list[ChangedFile], findings: list[RiskFinding], **options
@@ -140,11 +306,23 @@ class ReviewApplication:
             # Knowledge layer (P3): recall scope-matched playbook entries and offer
             # them as guidance. Entries never override the criteria, and the ids
             # used are recorded so a report says which knowledge was in play.
-            recalled = self._recall_playbook(files, defaults)
+            recalled, knowledge_warnings, unavailable_contract_domain_ids = self._recall_playbook(
+                files, defaults, repo=pr.repo
+            )
+            prompt_entries = [
+                entry for entry in recalled
+                if entry.id not in unavailable_contract_domain_ids
+            ]
+            if prompt_entries and "prompt_addendum" not in defaults:
+                defaults["prompt_addendum"] = render(prompt_entries)
             if recalled and "contract_domains" not in defaults:
-                defaults["contract_domains"] = contract_domains(recalled)
-            if recalled and "prompt_addendum" not in defaults:
-                defaults["prompt_addendum"] = render(recalled)
+                try:
+                    defaults["contract_domains"] = contract_domains(recalled)
+                except ValueError as exc:
+                    defaults["contract_domains"] = {}
+                    knowledge_warnings.append(
+                        f"Conflicting global playbook contract domains were disabled: {exc}"
+                    )
             report = self.engine(
                 pr=pr, files=files, findings=findings, provider=provider, **defaults
             )
@@ -160,13 +338,18 @@ class ReviewApplication:
                     records.extend(_usage_records(critic))
                 if records:
                     metrics.update(summarize_usage(records))
-                if recalled:
-                    metrics["experience_ids"] = ",".join(entry.id for entry in recalled)
-                    metrics["experience_count"] = len(recalled)
+                metrics["experience_ids"] = ",".join(entry.id for entry in recalled)
+                metrics["experience_count"] = len(recalled)
+                if unavailable_contract_domain_ids:
+                    metrics["contract_scope_unavailable_count"] = len(
+                        unavailable_contract_domain_ids
+                    )
                 metrics["publish_min_confidence"] = s.publish_min_confidence
                 # Which verification rules produced this report, so a change in
                 # behaviour can be attributed to a criteria change (ADR-006).
                 from src.reviewer.grounded_review import CRITERIA_VERSION
 
                 metrics["criteria_version"] = CRITERIA_VERSION
+            if knowledge_warnings:
+                report.analysis_warnings.extend(knowledge_warnings)
             return report

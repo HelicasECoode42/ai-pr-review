@@ -35,6 +35,7 @@ _LANGUAGE_BY_SUFFIX = {
     ".ts": "typescript", ".tsx": "typescript",
     ".js": "javascript", ".jsx": "javascript",
     ".go": "go", ".rs": "rust", ".java": "java", ".rb": "ruby", ".md": "markdown",
+    ".kt": "kotlin",
 }
 
 
@@ -139,29 +140,55 @@ def load_playbook(path: Path | str = DEFAULT_PLAYBOOK) -> list[PlaybookEntry]:
     return load_text(location.read_text(encoding="utf-8"), origin=str(location))
 
 
-def _matches(entry: PlaybookEntry, *, repo: str, paths: list[str], languages: list[str]) -> bool:
+def _matches(
+    entry: PlaybookEntry,
+    *,
+    repo: str,
+    paths: list[str],
+    languages: list[str],
+    symbols_by_path: dict[str, set[str]] | None,
+) -> bool:
     scope = entry.scope
     scoped_repo = scope.get("repo")
     if scoped_repo not in (None, "*") and scoped_repo != repo:
         return False
     scope_languages = scope.get("languages")
-    if scope_languages and not set(scope_languages) & set(languages):
-        return False
     scope_paths = scope.get("paths")
-    if not scope_paths:
+    matching_paths = [
+        path for path in paths
+        if (not scope_paths or any(Path(path).match(pattern) for pattern in scope_paths))
+        and (not scope_languages or language_of(path) in scope_languages)
+    ]
+    # Some callers only know the aggregate language set and do not pass paths.
+    # Keep that legacy scope mode; with paths present, check each file directly.
+    if ((scope_paths or scope_languages) and not matching_paths
+            and (paths or not scope_languages or not set(scope_languages) & set(languages))):
+        return False
+    scoped_symbols = [str(symbol) for symbol in (scope.get("symbols") or ())]
+    if not scoped_symbols or "*" in scoped_symbols:
         return True
+    # Missing AST data is unknown, not a wildcard. Match the symbol and the
+    # path/language on the same changed file so a mixed-language PR cannot join
+    # unrelated scope facts from different files.
+    if symbols_by_path is None:
+        return False
+    scoped_paths = matching_paths or paths
     return any(
-        any(Path(path).match(pattern) for path in paths) for pattern in scope_paths
+        path in symbols_by_path and bool(set(scoped_symbols) & symbols_by_path[path])
+        for path in scoped_paths
     )
 
 
 def recall(entries: list[PlaybookEntry], *, repo: str = "", paths: list[str] | None = None,
-           languages: list[str] | None = None, k: int = 5) -> list[PlaybookEntry]:
+           languages: list[str] | None = None, symbols_by_path: dict[str, set[str]] | None = None,
+           k: int = 5) -> list[PlaybookEntry]:
     """Scope-filtered top-k. Only authoritative entries are offered to the model."""
     paths = paths or []
     languages = languages or []
     usable = [e for e in entries if e.status == "authoritative"]
-    matched = [e for e in usable if _matches(e, repo=repo, paths=paths, languages=languages)]
+    matched = [e for e in usable if _matches(
+        e, repo=repo, paths=paths, languages=languages, symbols_by_path=symbols_by_path
+    )]
     matched.sort(key=lambda e: (len(e.scope), len(e.statement)), reverse=True)
     return matched[:k]
 
@@ -180,11 +207,26 @@ def expired_by_symbols(entries: list[PlaybookEntry], symbol_exists) -> list[Play
 
 
 def contract_domains(entries: list[PlaybookEntry]) -> dict[str, str]:
-    """Merged declared domains from authoritative contract entries."""
+    """Return only run-global contract domains without narrower path/symbol scope.
+
+    The current verifier accepts one flat name-to-domain map. Passing a scoped
+    contract through it would apply that contract to unrelated candidates in the
+    same PR. Such entries need candidate-location binding before they can become
+    mechanical domains. Conflicting global declarations fail closed.
+    """
     domains: dict[str, str] = {}
     for entry in entries:
         if entry.kind == "contract" and entry.status == "authoritative":
-            domains.update(entry.domain)
+            scope = entry.scope
+            if scope.get("symbols") or scope.get("paths") or scope.get("languages"):
+                continue
+            for name, declared in entry.domain.items():
+                previous = domains.get(name)
+                if previous is not None and previous != declared:
+                    raise PlaybookError(
+                        f"conflicting contract domain for {name!r}: {previous!r} vs {declared!r}"
+                    )
+                domains[name] = declared
     return domains
 
 

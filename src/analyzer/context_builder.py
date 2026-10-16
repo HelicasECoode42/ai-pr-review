@@ -484,6 +484,7 @@ def build_review_context(
     # filter - a diff with nothing flagged must still reach the model, which is why
     # nothing is dropped here.
     parsed_hunks = {file.filename: parse_file_hunks(file) for file in files}
+    triage_priority: dict[str, int] = {}
     if max_patch_tokens > 0 and count_tokens(
         "\n".join(file.patch or "" for file in files)
     ) > max_patch_tokens:
@@ -501,6 +502,7 @@ def build_review_context(
                 sum(h.new_count + h.old_count for h in hunks),
             )
         files = sorted(files, key=lambda file: priority.get(file.filename, (0, 0)), reverse=True)
+        triage_priority = {path: values[0] for path, values in priority.items()}
     for file in files:
         try:
             status = getattr(file, 'status', 'unknown')
@@ -536,18 +538,16 @@ def build_review_context(
     parts.extend(["", "## Patches"])
     patch_budget = max_patch_tokens
     truncated = False
-    # Production code comes before tests/docs; a large file cannot monopolize
-    # the entire patch budget. This is deterministic and independent of rule hits.
+    # Triage leads only when the over-budget pass found suspicious hunks;
+    # production path and size remain deterministic tie-breaks. A large file
+    # still cannot monopolize more than its per-file share.
     ordered_files = sorted(files, key=lambda f: (
+        -triage_priority.get(f.filename, 0),
+        prioritize_rule_files and not any(r.file_path == f.filename for r in findings),
         not f.filename.startswith(("src/", ".github/", "vscode-extension/src/")),
         -(f.additions + f.deletions), f.filename,
     ))
     per_file_budget = max(1, max_patch_tokens // min(8, max(1, len(files))))
-    if prioritize_rule_files:
-        ordered_files = sorted(
-            ordered_files,
-            key=lambda f: not any(r.file_path == f.filename for r in findings),
-        )
     skipped_files: list[tuple[str, str]] = []
     extra_omissions: list[Omission] = []
     # A file never touched by the loop stays "not_processed" and is reported as
