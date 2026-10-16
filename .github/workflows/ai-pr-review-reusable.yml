@@ -169,6 +169,19 @@ jobs:
               `- suggestions: **${suggestions.length}**, needing context: **${pending.length}**`,
               `- reviewed commit: \`${report.review_meta?.reviewed_commit || "unknown"}\``,
             ];
+            // Withheld candidates are listed, not counted away: a finding the
+            // reviewer found but could not evidence is still information the author
+            // needs, and hiding it is what made the tool look like it found nothing.
+            const pendingItems = (report.pending_suggestions || []).slice(0, 10);
+            if (pendingItems.length) {
+              lines.push("", "<details><summary>待确认候选（证据不足，未发布为行内评论）</summary>", "");
+              for (const item of pendingItems) {
+                const where = item.line ? `${item.file_path}:${item.line}` : item.file_path;
+                const why = String(item.reason || "").replace(/\s+/g, " ").slice(0, 160);
+                lines.push(`- \`${where}\` — ${item.title}${why ? `（${why}）` : ""}`);
+              }
+              lines.push("", "</details>");
+            }
             if (report.analysis_warnings?.length) {
               lines.push("", "### Warnings", ...report.analysis_warnings.slice(0, 10).map(w => `- ${w}`));
             }
