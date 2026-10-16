@@ -478,6 +478,29 @@ def build_review_context(
         "## Changed files",
     ]
 
+    # Spend the budget on what matters. The over-budget policy below clips in file
+    # order, so the selection rule is the order: files whose hunks the free rule/AST
+    # sweep flagged come first, then the largest. Suspicion is a priority, not a
+    # filter - a diff with nothing flagged must still reach the model, which is why
+    # nothing is dropped here.
+    parsed_hunks = {file.filename: parse_file_hunks(file) for file in files}
+    if max_patch_tokens > 0 and count_tokens(
+        "\n".join(file.patch or "" for file in files)
+    ) > max_patch_tokens:
+        from src.analyzer.tiered_scan import triage
+
+        flagged = {
+            (path, hunk.new_start)
+            for path, hunk, _score, _reasons in triage(files, parsed_hunks, findings).suspicious
+        }
+        priority: dict[str, tuple[int, int]] = {}
+        for file in files:
+            hunks = parsed_hunks.get(file.filename, [])
+            priority[file.filename] = (
+                sum(1 for h in hunks if (file.filename, h.new_start) in flagged),
+                sum(h.new_count + h.old_count for h in hunks),
+            )
+        files = sorted(files, key=lambda file: priority.get(file.filename, (0, 0)), reverse=True)
     for file in files:
         try:
             status = getattr(file, 'status', 'unknown')
