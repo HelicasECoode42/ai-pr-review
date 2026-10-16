@@ -153,7 +153,7 @@ sequenceDiagram
 | **一次性试用** | `uvx --from git+https://github.com/HelicasECoode42/ai-pr-review ai-pr-review OWNER/REPO PR` | 不安装 |
 | **Web Console**（演示） | `uv run uvicorn src.service.app:app --port 8000` | 离线 Demo，**非对外承诺** |
 | **容器** | `docker build -t ai-pr-review . && docker run --env-file .env ai-pr-review OWNER/REPO PR` | 隔离环境（Dockerfile 待补） |
-| **VS Code 插件** | **已冻存，暂不支持** | 代码与 `.vsix` 保留 |
+| **VS Code 插件** | **已冻结，非受支持入口** | 源码与扩展安全审计保留；不列入当前交付 |
 
 **安全**：`reviewer_ref` 决定在**你的 CI 里、用你的 secrets** 执行哪个远端版本 → **固定 tag 或 SHA**。diff 与证据摘录会发往 `OPENAI_BASE_URL`；用 `MAX_REVIEW_INPUT_TOKENS` 设上限。被审仓库内容一律视为**不可信数据**。
 
@@ -187,7 +187,9 @@ flowchart LR
 
 | 文档 | 作用 |
 |---|---|
-| [docs/HARNESS.md](docs/HARNESS.md) | **唯一规范**：15 条硬性条款、现状、架构与判据、6 阶段计划 + RSI |
+| [docs/HARNESS.md](docs/HARNESS.md) | 审查规则与安全边界（规范；不作为项目排期） |
+| [docs/PRD-review-capability-v2.md](docs/PRD-review-capability-v2.md) | V2 能力目标与非目标 |
+| [docs/review-v2-development.md](docs/review-v2-development.md) | 唯一执行计划：三阶段任务、Done 条件与实验协议 |
 | [docs/ADVANTAGES.md](docs/ADVANTAGES.md) | 我们强在哪、为什么 |
 | [docs/evaluation/identification-baseline.md](docs/evaluation/identification-baseline.md) | 错误识别基线：0.50 → 1.00 |
 | [docs/graph-planning-dataflow.md](docs/graph-planning-dataflow.md) | 预算/覆盖/缓存实测 |

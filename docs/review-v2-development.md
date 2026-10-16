@@ -1,176 +1,86 @@
-# AI PR Review V2 开发与验收手册
+# Review V2：唯一执行计划
 
-日期：2026-10-15。依据：[PRD](PRD-review-capability-v2.md) 与 [HANDOFF](../HANDOFF.md)。Python + TypeScript 保持不变；恢复方案已按最新决定收敛为文件 checkpoint 优先，SQLite/MQ/Redis/PostgreSQL 均不是第一版默认项。
+更新：2026-10-16。代码基线 HEAD `e48b00d7e7593e6912e4bc357047b7d9bf09e593`；以下本轮 A/B 修复都在未提交工作区，尚未进入 HEAD。目标顺序是：**①让现有工具可信；②做跨文件意图 Agent；③用失败案例改进知识与策略**。本文件是唯一排期与验收计划；[PRD](PRD-review-capability-v2.md)只定义目标/边界，[HANDOFF](../HANDOFF.md)只做当前快照入口。旧 D1–D5、D2 图规划和 RSI 方案只作历史材料，不构成自动执行路线。
 
-状态校正（2026-10-15，HEAD `7aee62abd2bb91567251c66536eb071ded0285b2`）：存在公共应用边界与离线图规划原型；不据此称 D2 能力验收完成。图规划没有接入生产主审查，也没有语义关系 precision/recall 或 Bug 质量增益测量。下文 D1–D5 编号和顺序是历史设计草案，不能视为用户批准的自动开发路线；先读 [HANDOFF](../HANDOFF.md) 的最新用户约束和仓库状态。
+本轮只完成阶段1的 A/B 两项：Playbook 真实 PR repo、语言/path/symbol 作用域与 scoped contract 的 fail-closed 边界；最终上下文排序保留 over-budget triage 优先级。生产代码和反例测试的工作区版本 `pytest -q` 为 **387 passed**；CI 当前离线 criteria gate、14 条合成 holdout、默认 src interface audit 均通过。criteria gate 的 safe-division domain 已改为测试 fixture 显式输入，KB-0003 降为 candidate，不再被当作生产 API 契约。没有真实 PR/模型质量验证。**阶段1仍未完成**：C（冻结 Ruff/新增行归因）、启用但未接线路径门禁、完整候选账本与发布幂等仍待做；故 #46 不可标记关闭。CI 规定的最小 Ruff 规则通过；更宽 Ruff 在 `context_builder.py` 有 14 条与 HEAD 基线相同的历史 lint 提示。
 
-## 当前进度
+## 项目目标与当前成熟度
 
-下表是此前代码快照的功能概览，不是本轮质量验收。当前未提交工作区保留原有 `--max-attempts`（默认 2），并追加 ReviewBench 单请求输出上限、run 级共享 HTTP attempt budget 和安全错误诊断；均不属于 HEAD。2026-10-15 对 provider、paired 和 reviewer engine 的 38 项定向离线测试通过，不代表生产主审查能力或 Bug 质量已验收。
+状态含义：**已接通**=生产调用链存在；**部分**=局部实现或有确定边界；**未接**=代码/测试存在但主路径无调用；**缺证据**=不能由现有实验支持质量/收益主张。
 
-| 模块 | 实际状态 | 缺口 |
-| --- | --- | --- |
-| 冻结源码读取 | Git/GitHub Snapshot、base/head 读取与审计已实现 | GitHub 检索有限；不能声称全仓库语义分析 |
-| 生产上下文 | PR diff、定义窗口、文本引用、按需只读请求已实现 | 不消费离线 ReviewUnit；初始证据只读最多 12 个 changed-file seeds，每文件最多 2 hunks；另有 patch 与 evidence 分离预算 |
-| 发现/核验 | 因果字段、原文引用、反证、待核实已实现 | 小批量确认项仍缺真实入口可达证据 |
-| 模型预算 | 生产审查有调用配置与 usage/cache hit 记录；当前未提交的 paired runner 增加 run 级请求 attempt cap 和单次输出上限 | 生产路径仍缺统一硬总预算；HTTP attempt 数不是账单调用数 |
-| 应用编排 | CLI/Web/Agent 有现有链路 | 配置重复、共享 dict、阶段耦合 |
-| 持久化运行 | 评测有完成任务 checkpoint | 生产 Web 是线程/内存队列，无持久化阶段恢复 |
-| 工程验证 | 历史记录：d9e9b16 时 160 项测试通过；2026-10-14 D1/D2 交付记录称 181 项通过 | 两次是不同历史快照，不是本轮重跑，也不是审查质量验收 |
-| 质量实验 | 历史负结果；最新 1 PR 两组均成功 | 尚无可信整体提升，未完成全量新旧对照 |
+| 目标 | 已有功能与状态 | 当前实际流程 | 目标流程与工作项 | 验收实验/产物；成本 |
+|---|---|---|---|---|
+| Agent | 部分：`src/agent/policy.py`按大小选 one-shot/two-stage；`src/analyzer/review_plan.py`与工具原型不等于模型可用的跨文件规划闭环 | 固定 diff → 规则/模型策略 → 发现与限定检索；大 PR 仍可能走 legacy two-stage | 输出可修订的意图假设、目标/约束/风险/未知项；据此生成有边来源的跨文件计划；按证据更新或放弃假设；未验证的计划不发布 | 同一组人工标注跨文件 PR，比当前路径测语义根因 D 和发布 P、遗漏/partial；先 fake provider/离线。真实模型须预批预算 |
+| 轻便 | 部分：单机 Python + GitHub/CLI/Web 入口，报告和预算指标存在；没有生产持久恢复保证 | provider/上下文/审查阶段有多个独立预算；报告中 usage 仅覆盖实际可见响应 | 只加载相关变更与按需证据；产物引用可复用；文件 checkpoint、原子保存、显式 resume；暂不引入数据库/队列 | 同输入连续执行与进程中断恢复：不混快照、不重复已完成模型阶段、产物可复用；本地故障注入，免费 |
+| 好用 | 部分：Markdown/JSON 报告与 Web/CLI 可见；partial/omission 已有一部分 | 发现、核验、发布有状态字段，但用户尚不能从一份完整账本看清所有候选去了哪里 | 每个候选显示发现→取证→核验→发布/扣下状态及原因；取消、超时、预算耗尽或能力未启用时明确报告 partial，而非“无问题” | 用合成故障逐阶段打断，检查 UI/JSON 的状态及下一步动作；免费 |
+| 便宜 | 缺证据：源码缓存、provider cache 指标和局部预算存在；“缓存率”不能代替真实省费 | 当前 patch、repository evidence、模型输出/重试等预算口径不完全相同；生产全局 cost cap 与阶段结果恢复不足 | 做相同审查范围的去重证据、稳定前缀、窄 schema、工具端截断与已完成产物复用；预算耗尽则 partial，不静默少审 | 固定 PR、模型/版本、质量目标、配置；记录真实 usage/cost、重复读取/调用、延迟、Recall 与覆盖。只有质量约束相同且 usage 下降才算省钱；先离线测量方案，再审批真实请求 |
+| 可靠 | 部分：source provenance、counter-evidence、witness/contract filters、`filter_verdicts` 有接通路径；静态门禁有 CI 配置 | witness 只检查受限表达式；证据匹配不证明真实入口可达；几个完整性/幂等模块未接生产 | 对每次执行校验固定 base/head、实际功能调用、每 hunk 覆盖/遗漏、工具失败状态、取消、重试身份/预算、发布前 head；运行失败或未覆盖就阻止“完整/无问题”结论 | 改 head、强制超时、缺工具、跳过路径、断电/重复 resume 等故障注入；报告必须保留失败状态；免费 |
+| 自进化 | 未接：playbook 有 authoritative/candidate 概念；无自动晋升主链；回归 fixtures 不是新 PR 泛化 | 当前 authoritative 条目参与检索，candidate 不能仅凭命中/文字晋升；模型反馈也不是 gold | 失败 trace → 归因 → 带来源/适用范围/反例的候选知识 → 隔离回放 → 人工 accept/reject → 版本发布/回滚；先人工晋升，不自动改生产 | 冻结 KB 与评测版本；在开发集报告覆盖、TP/FP/FN、跨文件召回；知识冻结后用独立新 repo/case 留出集；人工审批，离线/免费门禁优先 |
 
-评测数据状态也要按用途解释：`datasets/dev/split.json` 定义 9 个 dev、15 个 holdout，规则为按 repository 划分，并排除一个 head 已不可达的 PR；但原始 25 个 PR 均于 2026-10-13 历史基线/Critic 实验接触，因此 15 个 holdout 不是未见测试。仓库有 `datasets/golden/synthetic-dev.json`（4 个合成案例）；ReviewBench 金标签外部路径记录为 `/private/tmp/ai-review-reviewbench/golden/`，当前本机存在 219 个文件，但位于可能被清理的临时目录，非仓库固定资产。`paired.py` 本身没有读取 gold 标签；本轮未运行付费模型、未执行评测。
+## 三阶段交付
 
-本轮未提交的 paired 护栏把 `max_output_tokens`（默认兼容值 32768）及 `max_http_attempts` 写入 protocol；HTTP attempt cap 在进程内跨 task、arm、外层 attempt 和 response_format fallback 共享，并从两个标准 arm 的正常 checkpoint 恢复已知累计数。它不是跨并发进程或强杀窗口的绝对费用硬上限；远端计费也不能由本地发送计数精确推导。usage 完整性按 `prompt_tokens`、`completion_tokens`、`total_tokens` 三个真实整数检查，记录显式列出已知 usage 与 unknown attempt 数，部分usage仍保留原记录但不算完整，缺 usage 不记作 0。错误 taxonomy 区分连接/读写/连接池 timeout、整次 stream timeout、输出截断、预算耗尽与fatal停止；硬 deadline 仍未解决，当前 stream total timeout 只在收到事件后检查。预算耗尽或 fatal stop 会阻止后续发送，不新增自动重试；已在途请求不能撤销。41 个 provider/paired/reviewer engine 定向测试通过；未使用真实模型。
+### 1. 让现有工具可信
 
-离线 chunk 实际路径：`base/head diff + hunks → changed file nodes → 文件级 import/name-match graph → 按强边优先、token 数与连接度约束做 greedy units → 每个 hunk 按行/超长行按字符拆成 fragments`。Python AST 的属性调用只保留末尾方法名，弱名字边仅是候选；强 import 表示导入可解析，不表示存在真实运行时调用。变更文件决定规划切片，未变更 caller 可出现在 external caller 候选，但不作为 unit 成员。fragment 有 hunk/序号，尚无完整原行范围回映射与跨组核验。
+阶段1已修 A/B（仅工作区，等独立 review）；其余待办优先修行为，不扩功能面：
 
-这些离线预算与生产预算不同：planner 的 token budget 只数 diff fragments；lazy definitions/evidence 不计。生产 `build_review_context` 的 `max_patch_tokens` 约束拼接的 patch，不是完整 system/user prompt 总量；grounded 源证据又有独立 budget，且最多 12 个 changed-file seeds、每文件最多 2 hunks。超出会通过 partial/omitted 状态报告，但各预算并未形成统一总账。此前离线最小例子 `diff budget=128`，生产 context 得到 881 token 且 `truncated=False`，显示两者不能互称同一预算。
+1. **A 已修（工作区）—Playbook scope**：`src/knowledge/playbook.py` 按真实 repo、逐路径语言/path/symbol 匹配；无法解析或来源超预算时 unknown；`src/application/review.py` 只读相关 changed frozen source。scoped domain 不进入全 PR prompt 或扁平 witness domain，KB-0003 synthetic 契约改为 candidate；纯自然语言 KB-0004 guidance 仍可进入 prompt。定向 scope/资源预算/parse-error 反例通过；不证明契约绑定或真实 PR 质量。
+2. **C 待做—lint 证据身份**：`src/analyzer/deterministic_tools.py` 对当前工作树 changed-file 路径执行 Ruff 整文件诊断，未绑定审查 head SHA，也未确认诊断行属于 PR 新增/修改行；`confidence=1.0` 代表工具发现本身确定，不是“本 PR 引入缺陷概率”。读取冻结 head，并做新增行归因；锁定/记录 Ruff 版本，缺工具和超时作为 unavailable/partial，不声称通过。
+3. **B 已修（工作区）—最终上下文排序**：`src/analyzer/context_builder.py:486-505` 计算 over-budget triage 优先级，`:541-550` 最终构造 patch 时优先级置于 path/size tie-break 之前；曾被 path 排序挤掉的 flagged docs hunk 现在进入最终 context。反例同时保留普通 hunk，并确认 9 个 hunk 都有 coverage 终态；`coverage.complete` 表示账目完整，不表示所有内容完整纳入，也不等于质量提升。
+4. **开关必须有行为**：对配置已启用但运行中无调用/无产物的功能 fail-fast 或报告 `unsupported/partial`；将 `scripts/interface_audit.py` 的静态接口检查与关键功能的 runtime fake-provider seam 检查分开，避免把“名称有调用”当完成。
+5. **账本与发布只在接线后算完成**：`decision_ledger.py`、`publish.py` 有持久账本/指纹/驳回记忆实现，但当前未发现 `src/` 生产调用。接入每个发现候选（含去重、拒绝、验证失败和未处理候选）的唯一 run/candidate 身份，再接发布幂等；无法保证覆盖时明确标记 incomplete。特别不能把“每个已核验候选有 filter_verdicts”说成“所有模型候选都有持久记录”。
 
-关系标签、Bug 证据和整体质量是三个不同置信度维度。关系标签目前是强/弱分类，无校准概率、alias/type/scope binding 完整度或边级人工 gold；Grounded 字段/原文引用可验证部分出处和因果链格式，但不是独立证明；质量可信度当前受 25 PR 历史接触污染、无未见 holdout、无盲化人工完整标注限制。`confidence` 不得解释为现实正确概率。
+**Done 条件**：以上五类反例均能在离线测试触发对应拒绝/partial/账本事件；CLI/Action/Web 消费同一状态语义；旧路径与新路径差异有可复现报告；`git diff --check`、CI 后续由实施者跑并记录 SHA 与结果。此阶段不以测试数代替真实审查质量。成本：免费 deterministic/fake provider；不调用真实模型。
 
-腾讯参考为用户附件《给270万行代码开“上帝视角”：Agent 自主定位根因实践》。文章讲腾讯广告共享拓扑/知识底座、异常线索驱动的多源取证、结构化证据与经验回写。对 PR review 的可借鉴设计推断是：保留边来源/不确定性，按候选疑点请求原始代码并增量收敛；文章没有提供可比较的 PR 审查算法或精度数据，也依赖生产日志/监控等 PR 仓库场景未必存在的运行证据。
+### 2. 跨文件意图 Agent
 
-历史约 4% grounded recall 是工程试验，不是新策略有效性证明。最新小批量旧流程 0 项，新流程系统确认 1 项/待核实 2 项；人工将确认项列为未证实，不能计作 TP。详细依据见 [实验记录](evaluation/flash-small-2026-10-14.md)。
+链路是：PR 描述和 diff 提供**可疑意图**，而非规范真值 → 生成 `intent hypotheses`（目标、约束、风险、未知、证据与置信依据）→ 选择相关文件/测试/调用方形成 review plan → 有界工具读取原始证据并记录 side/SHA/path/line/边来源 → 按证据修订假设 → 对候选做分类核验 → 发布 confirmed 或明确 partial/needs-context。
 
-## 目标链路
+先做小范围关系证据：静态 import、符号、API 参数/返回契约、调用点、测试引用；每条边标 `resolved/heuristic/unresolved`，不追求“全仓完整调用图”。模型只规划下一步读取，宿主执行并限制跳数、文件数、输出量、时限和请求预算；检索结果存成同一 run 的不可变 evidence refs，按需 hydration，重复证据去重。跨文件 bug 的发布必须展示改变了什么行为、谁受影响、为何能从入口到达；仅有同名/弱边不能确认为调用关系。
 
-```mermaid
-flowchart LR
-    A[固定变更输入] --> B[定义与引用索引]
-    B --> C[预算内图分组]
-    C --> D[ReviewUnit 持久化]
-    D --> E[有界任务执行]
-    E --> F[候选去重]
-    F --> G[入口与因果核验]
-    G --> H[决策和报告]
-    H --> I[检查当前 head 后发布]
-```
+**Done 条件**：先在冻结 PR 子集建立人工根因标签；比较当前方法与意图计划，在相同候选范围/每 PR 预算下报告 N/S/D/P：N=人工 gold，S=实际进入模型上下文的 gold，D=语义上发现的 gold，P=最终发布且人工判定正确的 gold；记录 FP、未读证据、partial、重复读取、tokens/cost、请求次数、时延和失败。位置命中只作为定位 proxy，需盲化人工语义裁定。先 fake provider 验工具/流程；真实模型实验先提交预算上限和冻结协议，经批准后小批执行。成本减少只有在相同覆盖与质量下实际 usage/重复调用下降才成立。
 
-D2 静态索引和基础分组不调用模型；D3 可在静态解析仍无法判定的关系上增加最多一次受预算限制的低成本元数据分组建议。Review 执行模型消费单元并可请求补读。各模块有类型输入输出和显式依赖。第一版以本地有界执行器运行同一单元/阶段逻辑；多 worker 队列是经过恢复验收和规模证据后才增加的部署选项。
+### 3. 失败案例知识闭环
 
-## 实施顺序与阶段交付
+每个失败案例从运行 trace 归因到可复现错误（检索漏读、边错连、提示误解、核验误删、发布错路由等），提炼 candidate 条目，附真实源 case、固定 SHA/file:line、适用范围、反证/失效条件和变更版本。候选只写隔离目录/数据集，不进入 authoritative 检索；回放后在开发集通过精度红线（建议 precision ≥0.80，同时公布 recall 和样本数）并无严重回归，才人工晋升。用 independent repo/case 做留出，任何标签/提示/KB调参均不得偷看留出；晋升后可按版本回滚。
 
-### D1：应用边界和运行协议
+当前边界：2026-10-16 的 [dataset audit](evaluation/dataset-audit-2026-10-16.md) 记录 219 个 ReviewBench PR / 2623 TP 的数据规模，但 25 个已接触 PR 中的 15 个 holdout 已污染；14 个 holdout_eval fixture 是表达式判据合成样例，不是真实 PR/模型留出。`b7b-diagnostic.json` 的 5 PR/43 gold、位置 raw match 83.3% precision、11.63% published recall、18.60% identified recall 是可复算的定位指标，不是独立语义裁决；紧凑 artifact 缺少完整 model/config/retry/usage 协议。selection-recall 只测选材位置 proxy，不证明模型读到、更不证明识别；这些统计不能拼成同一个漏斗。新独立留出在 KB 冻结后再建，优先真实跨文件 PR。
 
-新增统一应用配置/Provider 工厂，逐步由 CLI、Web、Agent 使用。定义 ReviewRun、ReviewUnit、StageInput/Output、Coverage、BudgetLedger；阶段执行返回产物，不直接发布。复用现有 Snapshot 和 Provider Protocol，避免无行为接口层。保留旧调用路径与报告兼容。
+## 功能实现清单与状态（计划拆解入口）
 
-交付：有类型协议、一个公共编排入口、各入口契约测试；功能开关默认沿用原行为。不要同时修改提示词和过滤策略，以便分离重构与语义变更。
+| 功能点 | 现状 | 实施流程 | 依赖 | 可验收产物/判据 |
+|---|---|---|---|---|
+| 规则、知识 scope、lint 与冻结快照 | A 在工作区修复；C lint 归因待做 | source SHA 绑定 → 规则执行 → changed-line 归因 → scope 召回 → 报告 | 阶段1 | 冻结快照报告；scope/lint 回归反例；不可用显式状态 |
+| 预算、hunk 顺序与覆盖 | B 在工作区修复，fixture 通过 | 输入清单 → triage → 最终选择 → 每 hunk 终态 → omission | 阶段1 | 超预算 fixtures 显示 triage 风险进入最终上下文；所有 hunk 有终态 |
+| 候选/判定/发布账本 | 组件存在、生产未接 | candidate id → 每阶段事件 → verdict/过滤 → 发布或扣下原因 | 阶段1 | 一次 run 的完整 candidate ledger；重试/重复运行不重复发评论 |
+| 跨文件 Agent 计划与取证 | 部分原型、未知真实增益 | intent hypothesis → relation plan → bounded read → evidence refs → update | 阶段2 | 冻结 PR 人工语义评测；S/D/P 独立；跨文件分层结果 |
+| 可取消、限时和可恢复执行 | 部分：资源释放/阶段协议存在；生产持久恢复未实现 | run identity → stage artifact/checkpoint → cancel/timeout → 同身份 resume | 阶段1可信状态后，独立交付 | 故障注入报告；取消不发布；强杀窗口不宣称 exactly-once |
+| 知识候选、隔离回放与晋升/回滚 | 未接闭环 | 失败 trace → candidate → isolated replay → human decision → version/rollback | 阶段1 ledger + 阶段2标签集 | 知识版本与来源 case；冻结开发集/独立留出结果；可回滚记录 |
 
-### D2（历史设计/实现记录，不作为已验收能力）
+## 实验协议与费用边界
 
-在 src/analyzer 增加符号/引用索引与分组模块。Python AST 首先支持本项目；TS/JS 通过 Tree-sitter 及导入解析逐步补齐。图的每条边标注来源与确定度。索引键包括源码 hash 和解析器版本。
+- 每次对照冻结 PR base/head、代码/数据/知识库 hash、reviewer commit、提示版本、模型/参数和预算；保存完整预测与运行协议。候选汇总前由人工标根因与语义正误，评审者尽量不知道方案组别。
+- 同一 case 记录 N/S/D/P：`N` gold 总数；`S` 实际上下文选择覆盖（仅离线选材时标作 selection proxy）；`D` 盲化人工判定的语义发现；`P` 人工确认且真正发布。另记 FP/FN、去重重复项、每阶段 unknown/partial。所有比例附分子/分母/样本数。
+- 省 token 需 same coverage + same semantic quality threshold：记录实际 provider prompt/completion/cache tokens、费用、请求/重试、重复读取、耗时；缓存命中与逻辑 token 分开。缺 usage 计 `unknown`，不能填 0。避免通过减读 hunk 达到成本目标。
+- 顺序为无模型基线/静态工具 → fake provider 接线与失败注入 → 小规模真实审查（仅核预算后）→ 对照/消融 → 独立留出。知识库、提示和模型不可同时变化而不做归因。
+- 本计划本轮没有授权真实模型请求。未知模型费用、未知远端响应和已发送请求不可撤销；超过预算或取消时停止后续阶段，报告 partial。
 
-变更 hunk 映射符号，强关联优先合并，弱边为补读候选；高连接公共类型不强行连接所有组。超预算连通分量拆分，超大单函数有连续窗口和待补读边界。ReviewUnit 内容排序确定、ID 根据冻结输入和分组策略生成。每个 eligible hunk 都有归属或明确排除原因；全文件数不能被固定前 12 文件静默截断。
+## 收敛与暂缓
 
-交付：分组计划与覆盖 JSON、上下文选择、无需模型的 fixture 验收；尚不启用新策略为默认。
+| 处理 | 候选范围 | 依据与替代路径 | 现在安全删除？ |
+|---|---|---|---|
+| 保留并先做接线 | `legacy two_stage` | `src/agent/policy.py:75-79` 大 PR 自动选用；须先有新方案真实对照及回滚路径 | 否 |
+| 保留为实验工具 | `src/analyzer/selection.py`、`tiered_scan.py`、`scripts/selection_recall.py` | 当前选材证据不充分且排序接线有缺口；后续以主链可观测 selection 取代离线 proxy 再评估 | 否 |
+| 冻结，不承诺交付 | `vscode-extension/` 与其 workflow | 产品入口后续再完善；保留安全审计，编译不作为合并门禁；无需以删除代码“瘦身” | 否 |
+| 暂不删除 | `claim_check` 等独立核验原型及评测脚本 | 先核生产调用、脚本/CI/export、失败案例用途；可合并为离线工具，未完成依赖搜索前不删 | 否 |
 
-### D3：入口核验与上下文/调用预算
+**当前没有足够证据列出可立即安全删除的文件。** 本轮不删源码、脚本、测试、CI 或历史报告；代码量大通过停止重复路线文档和冻结非目标来收敛。`HANDOFF.md` 是短入口；本文件是唯一执行计划；PRD 不再平行排期。
 
-D3 的首个交付是把当前“名字相同就生成弱文件边”的索引推进到可解释的静态绑定与证据读取边界，然后才接模型发现和核验。普通静态 import 和 alias 目前没解析，是 D2 索引刻意保持浅层、避免误连的边界；确定性强的场景应在 D3 补齐。AST 中分别表示定义、调用点、import/export 节点；绑定记录模块、scope、qualified symbol、import alias 和相对导入解析。Python 首先覆盖静态可确定的普通/相对 import、`as` 别名和局部遮蔽；Python `ast` 只解析语法，不执行仓库代码（参考[官方 AST 文档](https://docs.python.org/3/library/ast.html)）。TypeScript 从普通 import/export/再导出开始，逐步采用 Compiler API symbol 或规则化绑定；[Compiler API](https://github.com/microsoft/TypeScript/wiki/Using-the-Compiler-API) 展示了 AST 节点到类型系统 Symbol 的查询方式。动态 import、反射、无法判定的运行时分派不猜目标，保留 `unresolved/weak` 并报告覆盖限制。
+## 建议 issue 草案（不代表已创建）
 
-PR 的 source-of-truth 是实际评审 diff 的两个固定 SHA。先用该 diff 定位新增/删除/修改 hunk；按需从 head 读取定义、调用方和公共契约，从 base 读取原行为、删除和重命名证据。机械且仅凭 diff 即可判断的问题可以只读 diff，但不能把所有问题默认成 diff-only；也不盲读整个仓库或读取移动的工作区 `HEAD`。每条证据保存 commit SHA、路径、行范围和内容哈希。若调用方在仓库外，应作为外部依赖/覆盖缺口记录，不能因仓库内找不到 caller 就否定问题。
+1. **Make current review path trustworthy before adding capabilities** — 修 scope contract、冻结 Ruff/changed-line 归因、上下文顺序、enabled-but-unwired fail-fast、candidate ledger 与发布幂等；每项附失败反例和可复现报告。验收以真实调用链/partial状态和离线故障测试为准，不以文件或测试数量完成。
+2. **Build a bounded cross-file intent review experiment** — 基于冻结 PR，输出非权威 intent hypotheses、关系计划、证据 refs 与修订轨迹；工具执行限额明确；以人工语义 N/S/D/P、跨文件分层 Recall、FP 和 same-quality tokens/cost/calls/latency 对照当前流程。真实模型调用须先核准预算。
+3. **Close the failure-to-knowledge loop with isolated replay** — 失败 trace 归因形成带固定源证据/反证的 candidate；禁止运行时读取 candidate；冻结开发集回放、独立留出与人工晋升/回滚。可并入 #44 的实验总计划，不重复创建评测 issue。
 
-base 也必须与实际 diff 的比较基点一致。图规划 CLI 是用户明确传入 `base` 和 `head` 的端点比较；PR 审查的比较基点由 diff 获取方式决定，常见语义是 merge-base 到 head。当前 `PullRequest.base_sha` 来自 GitHub PR 的 base 对象，不能在未经核对时假定它必定等于本次 diff 的 merge-base。D3 输入阶段须将实际生成 diff 的比较基点与 base 证据快照对齐；不一致或无法验证时，标记 base 比对不可用/partial，不声称已复原原行为。
+## 历史资料
 
-图和分组要满足以下约束：
-
-- **证据安全与可引用**：只读 immutable source objects；所有上下文引用绑定 side、SHA、文件和行范围。仓库内容作数据，不执行目标代码。
-- **覆盖与硬预算**：变更 hunk 逐一归属或明确排除；总预算覆盖分组建议调用、system/user prompt、检索上下文、输出与重试，不只预算 diff。单位超预算时拆分或显式 `partial`，不静默丢片段。
-- **边的置信度**：静态可确定的绑定保留为强边；歧义、无类型信息或外部目标留为 weak/unresolved。不得把文件级边数叫作完整调用图。
-- **语义切分可追溯**：优先把 hunk 映射到 AST 语义单元；每个 fragment 保存原文件起止行、hunk 与 fragment 序号。超长语义节点硬拆时标明边界并保留顺序，必要重叠/边界证据也扣预算。
-- **依赖闭包有限**：按相关依赖和调用链补充定义、签名、调用点等必要上下文，设置深度、文件、行和 token 上限；跨组强边列入边界核验队列，不能复制整个仓库到每个单元。
-
-建议的混合分组流程是：静态绑定可确定的关系先成组；未决的弱关系可交给最多一次低成本模型做**元数据分组建议**。输入仅含路径、状态、增删量、限定签名/导入概要，可选 PR 任务描述，不传完整源码或完整 diff。此调用计入总请求和 token/cost 预算。宿主验证输出：所有 eligible 文件/hunk 恰好覆盖一次；成员路径真实且无未知、重复项；组大小和后续完整上下文均满足硬预算；原静态强关联不被无说明地拆散，拆散时生成待核验边界证据。模型可建议合并静态单元，但不能修改 SHA、源码引用、hunk 清单或 coverage，也不能省略文件。候选无效或调用失败时回退到确定性静态组；预算不足则拆为小组/逐文件并标记 partial。缓存键至少包括 frozen snapshot、strategy/prompt version、metadata hash 和 model identity。
-
-这一模型调用目前只是接受评测的设计分支，没有成本或质量实测，不能称作省 token。外部 Open Code Review 的 group stage 是一次 LLM 元数据分组调用（文件路径、状态、增删量，不带 diff）；其代码/文档描述 10 文件上限、超 token 组回退逐文件、未分配文件补逐文件、分组失败逐文件 fallback。整个产品还包括确定性文件筛选、预算 guard、覆盖校验、dispatch 和逐组执行，因此不应概括成“全流程 all-in LLM”；本项目也没有照搬其分组实现。[Architecture](https://github.com/alibaba/open-code-review/blob/main/pages/src/content/docs/en/architecture.md#semantic-file-grouping) · [grouping.go](https://github.com/alibaba/open-code-review/blob/main/internal/agent/grouping.go)
-
-发现与核验使用 ReviewUnit，不再每次重新携带全 PR。补入口解析器、参数校验、公共契约、调用方及副作用。Bug 与结构建议使用不同核验标准；确认不要求执行测试，否定要反证。已有问题与变更加重问题分别标 scope，避免只允许新问题而过度漏报。
-
-固定阶段模板，动态信息后置，按需分页读取；同单元同阶段证据保持稳定顺序。先去重后批量核验，结构化输出避免在多个字段复述全文。统一预算同时约束请求次数、输入/输出估算、时长；actual usage 用于结算诊断。保留原始候选与被否定原因。
-
-分组策略至少对照逐文件、静态图分组、静态+一次元数据建议三条路径，固定相同 PR/标注、review model/version、质量目标和每 PR 总预算。元数据调用自身消耗计入输入、缓存输入、输出/推理 token、请求次数与成本，剩余审查预算按同一规则分配。报告 issue-level/严重问题/跨文件问题 Recall、Precision、漏报覆盖、partial 与 fallback、重复证据、cache hit/miss、总调用成本和 P50/P95 延迟。逐文件通常降低组内跨文件上下文，但会重复 prompt 并增加调用；它不是天然的成本最优或质量最优基线。只有质量不低于预先设定目标时，才能比较 token/成本是否改善。
-
-交付：已知失败行为用例、缓存/用量漏斗、同一输入的旧/新策略小批量；不按系统 confirmed 数量宣称有效。
-
-### D4：本地持久化恢复，之后按需扩展分发
-
-第一版用文件 checkpoint 保存关键阶段状态与产物引用，原子写入、单任务锁、显式 resume，执行保持单机有界；CLI/Web 可直接启动任务，不要求数据库、Redis、外部消息队列或 PostgreSQL。阶段协议和 checkpoint 由 D3 定义。优先保存昂贵且难重算的模型发现/核验产物；冻结 SHA 下可廉价重算的 Git 读取、解析索引不必逐函数持久化。checkpoint 应记录 repo/base/head、策略/审查器版本、阶段状态、输入哈希、预算、产物引用和错误，并验证恢复输入完全匹配。JSONL 可作为附加审计日志，但不能单独作为恢复保证。只有确实需要事务并发状态或文件方案不足时，才评估 SQLite；多机或队列后端也只有出现实测需要才加入。CLI 主机上的 checkpoint 可跨进程恢复；GitHub Actions runner 磁盘通常随 job 结束，跨 job 恢复需显式保存/恢复 artifact，并校验冻结快照和策略版本。避免引入没有实际替换需求的通用执行框架。
-
-首先验收 checkpoint 原子写入、单任务锁、显式 resume、崩溃后恢复、输入/策略不匹配拒绝复用、取消、已完成阶段复用、损坏/缺失产物处理和发布幂等。模型调用远端成功但本地结果未知时不得无限自动重发；产生的费用不能回滚。后续只有实际事务并发需要、持续多机任务分发，或单机存储/调度经测量成为瓶颈，才按具体问题评估 SQLite 或 broker/SQL 后端；不预设 QPS 阈值，也不假设必然扩容。队列负责分发，不证明质量或加速一次模型推理。外部适配器只有在真实部署需要时再加入。
-
-按模型容量有界并发；阶段重试、暂停、取消、未知远端调用结果和预算耗尽均有显式状态。SSE 仅订阅状态与事件；断线重连不重新启动整个审查。发布独立幂等任务，核对 PR head。
-
-交付：本地故障注入与恢复记录、手动恢复说明、直接执行模式兼容；未来若启用外部队列，再补对应后端的重复消息/worker 故障验收。未通过故障验收，不宣称 durable。
-
-### D5：外部评测、默认策略与 Draft PR 验收
-
-锁定 reviewer commit、模型配置、源码/标注 hash、预算、评测与 judge 版本。先内部回归，再开发集诊断，最后不参与调优的留出集。分别消融图分组、前缀布局、多视角、行为核验，避免一起改后无法归因。付费实验按用户预算执行，之前现有余额小批量授权不自动扩展为全量。
-
-交付：候选/判定/独立标签、分层质量与成本报告、失败记录、可复现命令、更新 Draft PR。数据支持才开启新默认；不达标保留 opt-in、报告负结果和回滚策略，不合并 main。
-
-## 测试矩阵
-
-| 层级 | 核心用例 | 验收依据 |
-| --- | --- | --- |
-| 索引/分组 | 重名、循环、高连接公共类型、跨文件调用、超大组件 | 相同输入结果确定；所有 eligible hunk 有归属；预算及跨组遗漏可见 |
-| 上下文 | 调用方在文件尾、删除/重命名、入口校验、超大函数 | 固定提交原文及范围正确；分页能补证据；不混 main/head |
-| 语义回归 | null 被入口拒绝、公有 API 合法边界、返回值契约变化 | 未证实入口不确认；公共 API 不因缺内部调用方而误删 |
-| 过度防御 | 吞异常返回成功、重复无效校验、正确边界防御 | 区分可靠性 Bug/结构建议；不机械建议删除防御 |
-| 核验策略 | 成立候选低自信、真实反证、无反证、格式错误 | 不以自信度删除；缺证据保留；原始候选可追溯 |
-| 兼容 | CLI/Web/VS Code/Action、旧 schema、各策略 | 报告兼容，失败不被当作零发现 |
-| 缓存 | 改策略、改源码/依赖、动态后缀、跨租户 | 失效正确，无数据混用；prefix hash 稳定；命中率来自 actual usage |
-| 故障注入 | 本地进程在产物/状态保存前后退出、重复 resume、取消、存储故障 | 已完成阶段复用；未完成可恢复；发布无重复；未知费用请求不自动无限重发 |
-| 多 worker 扩展（可选） | 重复消息、worker 死亡、broker/状态库重启、旧租约写回 | 仅在引入外部队列后执行；恢复、所有权与幂等边界明确 |
-| 发布/回滚 | head 更新、取消、网络超时、策略切回 | 旧 head 不发布；查询远端核对未知发布；原有效报告保留 |
-| 质量/性能 | 小中大 PR、跨文件与不同类别 | final Precision/Recall、误删、P50/P95、成本、失败与覆盖同时报告 |
-
-使用真实行为断言和可控 fake Provider；不用仅检查提示词字符串的测试冒充语义正确性。工程全量运行 .venv/bin/python -m pytest -q，扩展/现有 CI 按变更涉及范围执行。性能评测区分冷索引与热缓存、排队与模型耗时；并发比较不得混称等成本。
-
-## 必须处理的边界条件
-
-- 动态调用、反射、同名符号和解析失败：只能报告部分关系，不伪造完整调用图。初期 TS 类型解析不等价于编译器级语义分析。
-- 删除文件无 HEAD 锚点：保留 base 证据，用摘要报告或合规的左侧锚点适配；不能因发布限制抹掉问题。
-- 重命名、二进制、lockfile、生成文件、超大 diff：明确类型与处理状态；源代码有新后缀时不能静默漏掉。
-- PR head 改变、浅克隆缺对象、GitHub 限流/树截断：重新获取正确对象或 partial/blocked，不回退到 main 伪装成功。
-- 提示注入、路径穿越、密钥文件与恶意源码：仓库内容只作数据；检索只读且限制路径，不自动执行目标代码。
-- 多视角重复、跨组冲突：按根本问题去重，不仅标题；分组边界上的结构影响由全局汇总复核，不每组复制全部源码。
-- 大输出/上下文溢出：分页或拆单元，保存遗漏；摘要不能替代最终代码证据。稳定缓存与保留必要上下文有冲突时优先正确性。
-- 超时/402/预算不足：明确暂停/失败/partial，不无边界重试。当前 API 别名无法保证模型权重固定。
-- 本地进程在模型成功后、结果落盘前崩溃：持久化与发布幂等；模型结果和费用无法事务回滚，未知结果可人工恢复。
-- checkpoint 原子替换中断、文件存储故障、进程重启、版本升级：恢复真源明确；成功标记必须对应持久产物；旧版本/策略输入不被误复用。若部署 SQLite 或外部 broker/SQL，再按该后端补故障恢复验收，不将其设为本地版前提。
-
-## 下一步（待用户/主 Agent 决策，不按旧 D3 顺序自动开工）
-
-建议先选一个真实失败反例，做无模型、无付费的最小语义绑定/分组 fixture，分别测关系 precision/recall 和所有 changed hunk 覆盖；再以 fake provider 验证截断、预算耗尽、工具错误是否保留 `needs_context` 与 partial；之后以小批量人工盲标真实 PR 检查触发输入、可达路径、预期/实际和 PR 因果。只有这些结果与完整成本预估提交后，再决定是否授权一轮真实模型比较。以上是本轮建议，不是用户已批准的完整 D3 或重写架构。
-
-目标组合可表述为：确定性可绑定关系用于小范围语义 chunk；无法绑定的候选保留来源和不确定性；发现阶段围绕疑点请求原文证据；跨 chunk 契约边进入总览核查。要避免固定只取前 N 个文件导致漏掉 changed files，初轮应逐 hunk 作归属/遗漏清单，再按总预算优先检索，不保证全部内容都读完。证据包必须含 frozen side/SHA/path/line range/原文、边的生成依据和未决点；摘要只能导航，不能替代证据。稳定上下文去重与阶段缓存只有在 usage/缓存命中记录上测出后才能声称节省。
-
-## 提交规范
-
-沿用已有 Conventional Commits：feat(review)、fix(review)、docs(review) 等。个人项目按完整可验收功能提交，可以较大；本次 D1/D2 的实现、测试和开发说明归入一个 feat(review) 提交，不按文件或每个小调整拆开。
-
-提交说明记录问题、实现边界和验证结果；不把单元测试通过写成审查能力提升。不为格式单独制造零碎提交，独立紧急修复可例外。已发布历史不因本次规范擅自重写；不提交 .env、依赖目录或庞大的实验日志。开发使用 codex/ 分支，保持 Draft PR，未经用户要求不合并 main。
-
-## 历史交付记录：D1/D2 原型（2026-10-14）
-
-- src/application/review.py：公共模型配置、主审/Critic Provider 生命周期及冻结仓库 reader 所有权，CLI/Web/Agent 均接入。Critic 使用自身模型的思考配置；构造或执行失败时已创建资源也关闭。
-- src/application/protocol.py：有类型 AgentContext，拒绝未知字段/非法赋值；运行、阶段、预算与覆盖协议。现有工具注册与 transport 编排壳保留，未将 D4 队列/持久化伪装成已完成。
-- src/analyzer/review_plan.py：Python AST、TS/TSX Tree-sitter 语法定义/导入索引，import 强关系与符号匹配弱关系；明确无类型/运行时解析保证。有限的 run-scoped 源码 hash 索引缓存；未完成跨进程持久索引。
-- 分组：稳定输入生成稳定单元；循环依赖可分组，高连接公共依赖不黏合整仓库；超大 hunk/长行拆分保留全部内容和顺序；base 删除/重命名证据保留；索引预算耗尽不影响变更归属，缺失定义明确报告。弱同名关系数量有界并记录限制。
-- 新增离线 独立 CLI ai-pr-review-plan 命令：显式 base/head 解析固定提交，读取 Git 对象而非工作区。重命名在 CLI 中暂按删除/新增表示；库接口支持 previous_filename。规划仅生成产物，不调用模型、不发布评论、不自动启用新审查策略。
-
-使用方式：
-
-```sh
-ai-pr-review-plan --repo-path /path/to/repo --base origin/main --head HEAD \
-  --token-budget 6000 --output reports/review-plan.json
-```
-
-budget 目前只约束拼接后的 diff fragment tokens，定义以 EvidenceRef 保存，由 D3 计入最终上下文预算；系统指令、证据、模型输出均不在该数值内。tokenizer 估算也不等于模型实际计费。JS 和其他语言当前仍明确标注索引关系不支持，不能称全语言调用图。
-
-历史记录称当时 181 项 pytest 通过；新增模块和测试完整 Ruff 检查通过，既有修改文件 F 检查及 diff whitespace 检查通过。新增 21 项行为测试覆盖资源释放、类型约束、确定性分组、循环/重名/公共节点、长行拆分、25 文件覆盖、删除/重命名、TS 导入、缓存失效和不读未提交内容。这是 2026-10-14 工程/fixture 证据，不是 2026-10-15 当前验证，也不是关系准确率或找 Bug 能力评测。
-
-真实仓库固定范围 89943fe → 13e9a3e，在 1,000 diff tokens 预算下规划 22 个 hunk、14 个单元，最大单元 986 tokens；238 条 import 关系、970 条弱符号关系。关系数不是已证明调用路径数。此次未调用付费模型，没有新的 Precision/Recall 或 token 节省比例。
-
-历史方案曾计划由 D3 将单元接入发现与核验、D4 接文件 checkpoint；这不是当前获批的先后顺序。先依据用户最新关注的 chunk 与置信度，选择最小可验证失败修复。不要把 plan JSON 当作完成的审查报告。
+旧阶段草案与外部参考保留于 Git 历史/已有设计材料，可作背景，不作为本计划验收证据：[历史图规划说明](graph-planning-dataflow.md)、[历史分组边界研究](grouping-boundaries-and-options.md)、[腾讯参考实验记录](evaluation/flash-small-2026-10-14.md)、[数据与 KB 评测审计](evaluation/dataset-audit-2026-10-16.md)。旧路线中的队列、SQLite、RSI 自动晋升、完整调用图、VS Code 支持均不是当前交付承诺。
