@@ -202,7 +202,9 @@ class TestRunnerRuleOnly:
             result = runner.run(request)
 
             sidecar = result.agent_sidecar
+            assert sidecar["requested_mode"] == "rule_only"
             assert sidecar["strategy"] == "rule_only"
+            assert sidecar["effective_mode"] == "rule_only"
             assert isinstance(sidecar["strategy_reason"], str)
             assert len(sidecar["strategy_reason"]) > 0
             assert isinstance(sidecar["degradation_path"], list)

@@ -18,8 +18,8 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from src.analyzer.git_loader import load_frozen_plan_inputs  # noqa: E402
 from src.analyzer.risk_rules import scan_signals  # noqa: E402
+from src.application.review import ReviewApplication  # noqa: E402
 from src.models import PullRequest  # noqa: E402
-from src.reviewer.engine import review_with_ai  # noqa: E402
 from src.reviewer.provider import OpenAICompatibleProvider  # noqa: E402
 from src.utils.config import get_settings  # noqa: E402
 
@@ -42,26 +42,18 @@ def main(argv=None) -> int:
 
     providers: list = []
 
-    def provider_factory():
-        provider = OpenAICompatibleProvider(
-            api_key=settings.openai_api_key, model=settings.review_model,
-            base_url=settings.openai_base_url, timeout=settings.request_timeout_seconds,
-            stream=True, total_timeout=300, max_output_tokens=32768, reasoning_effort="low",
-        )
+    def provider_factory(**provider_config):
+        provider = OpenAICompatibleProvider(**provider_config)
         providers.append(provider)
         return provider
 
     started = time.perf_counter()
-    report = review_with_ai(
-        pr, files, list(scan.findings), provider_factory(), settings.max_suggestions,
-        min_confidence=settings.min_comment_confidence,
-        max_suggestions_per_file=settings.max_suggestions_per_file,
+    application = ReviewApplication(settings, provider_factory=provider_factory)
+    report = application.review(
+        pr, files, list(scan.findings),
         language="en", follow_changes=True, repository_snapshot=snapshot,
-        repository_evidence_tokens=settings.repository_evidence_tokens,
-        verify_rule_signals=settings.verify_rule_signals,
         analyzer_warnings=list(scan.warnings),
         unit_review_max_units=args.units, unit_review_workers=args.workers,
-        unit_provider_factory=provider_factory,
     )
     elapsed = time.perf_counter() - started
 

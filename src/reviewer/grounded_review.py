@@ -466,6 +466,7 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
     witness_blocked = 0
     discovery_calls = 0
     payload = None
+    deferred_candidate_payload = None
     discovery_trace = []
     available_sources = {f"diff:{file.filename}" for file in files}
     if getattr(pr, "title", ""):
@@ -520,6 +521,16 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
                 requests = response.get("context_requests") or []
                 if not isinstance(requests, list):
                     raise ValueError("context_requests must be a list")
+                if requests and "suggestions" in response:
+                    # Some discovery responses contain provisional candidates
+                    # alongside tool requests. Keep them only as unverified
+                    # fallback material in case a later, budgeted round cannot run.
+                    try:
+                        deferred_candidate_payload = parse_model_payload(
+                            json.dumps(response, ensure_ascii=False)
+                        )
+                    except ValueError:
+                        deferred_candidate_payload = None
                 if "intent_hypotheses" in response:
                     hypotheses, errors = _intent_hypotheses(
                         response.get("intent_hypotheses"), available_sources
@@ -562,6 +573,29 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
                     "\nYour previous answer could not be parsed. Return only the JSON "
                     "object described above, with no prose before or after it."
                 )
+            except ProviderError as exc:
+                if deferred_candidate_payload is None:
+                    raise
+                payload = deferred_candidate_payload
+                if intent_plan is None:
+                    intent_plan = {
+                        "schema_version": 1, "status": "partial", "hypotheses": [],
+                        "hypothesis_history": [], "tasks": [], "assessments": [],
+                        "errors": [], "error_counts": {},
+                    }
+                _record_intent_error(intent_plan, f"discovery_stopped:{exc.kind}")
+                intent_plan["status"] = "partial"
+                discovery_trace.append({
+                    "round": round_index,
+                    "context_request_count": 0,
+                    "stopped_before_response": exc.kind,
+                    "retained_provisional_candidates": len(
+                        deferred_candidate_payload.suggestions
+                    ),
+                })
+                response = {}
+                requests = []
+                break
         discovery_trace.append({"round": round_index,
                                 "context_request_count": len(requests),
                                 "response_format_notice": response.get("response_format_notice"),

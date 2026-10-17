@@ -25,8 +25,8 @@
 #     reviewer_ref: v0.1.0        # or a full 40-character commit SHA
 #
 # The reviewer also uses the caller's own OPENAI_API_KEY and uploads the diff and
-# evidence excerpts to the configured OPENAI_BASE_URL. Set max_input_tokens to cap
-# what one pull request can spend.
+# evidence excerpts to the configured OPENAI_BASE_URL. The cumulative request
+# guard is a conservative UTF-8 byte upper bound, not a billing-token count.
 name: AI PR Review (reusable)
 
 on:
@@ -52,9 +52,17 @@ on:
         type: boolean
         default: false
       max_input_tokens:
-        description: "Optional cap on model input tokens (patch context + evidence)"
+        description: "Legacy diagnostic cap for rendered review context"
         required: false
         type: number
+      max_input_token_upper_bound:
+        description: "Hard cumulative upper bound in UTF-8 bytes for full model inputs across all stages"
+        required: false
+        type: number
+      strategy_policy_store_dir:
+        description: "Optional persisted policy directory in the caller workspace; empty uses the baseline"
+        required: false
+        type: string
       max_suggestions:
         description: "Maximum number of suggestions to emit"
         required: false
@@ -114,6 +122,8 @@ jobs:
           REVIEW_MODEL: ${{ secrets.REVIEW_MODEL }}
           CRITIC_MODEL: ${{ secrets.CRITIC_MODEL }}
           MAX_REVIEW_INPUT_TOKENS: ${{ inputs.max_input_tokens }}
+          MAX_INPUT_TOKEN_UPPER_BOUND: ${{ inputs.max_input_token_upper_bound }}
+          STRATEGY_POLICY_STORE_DIR: ${{ inputs.strategy_policy_store_dir }}
           INPUT_LANGUAGE: ${{ inputs.language }}
           INPUT_MAX_SUGGESTIONS: ${{ inputs.max_suggestions }}
           INPUT_REVIEWER_REF: ${{ inputs.reviewer_ref }}
@@ -131,14 +141,6 @@ jobs:
           # comment and the optional inline comments.
           uvx --from "git+https://github.com/HelicasECoode42/ai-pr-review@${INPUT_REVIEWER_REF}" \
             ai-pr-review "${TARGET_REPO}" "${PR_NUMBER}" "${args[@]}"
-
-      - name: Upload review report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: pr-review
-          path: reports/pr-review.json
-          if-no-files-found: warn
 
       - name: Post summary comment
         if: always()
@@ -186,9 +188,11 @@ jobs:
               lines.push("", "### Warnings", ...report.analysis_warnings.slice(0, 10).map(w => `- ${w}`));
             }
             const body = lines.join("\n");
+            const authenticatedUser = (await github.rest.users.getAuthenticated()).data.login;
             const existing = (await github.paginate(github.rest.issues.listComments, {
               owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber,
-            })).find(c => (c.body || "").includes("<!-- ai-pr-review-bot -->"));
+            })).find(c => c.user?.login === authenticatedUser
+              && (c.body || "").includes("<!-- ai-pr-review-bot -->"));
             if (existing) {
               await github.rest.issues.updateComment({
                 owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body,
@@ -213,40 +217,164 @@ jobs:
             const path = "reports/pr-review.json";
             if (!fs.existsSync(path)) return;
             const report = JSON.parse(fs.readFileSync(path, "utf8"));
-            // The reviewer stamps the threshold so this file cannot drift from
-            // the Python settings.
             const minConfidence = typeof report.metrics?.publish_min_confidence === "number"
               ? report.metrics.publish_min_confidence
               : 0.80;
             const commitId = report.pr?.head_sha;
             const prNumber = context.payload.pull_request?.number || Number(process.env.PR_NUMBER);
-            if (!commitId) {
-              core.warning("No head_sha in the report; cannot anchor inline comments.");
+            const criteriaVersion = report.metrics?.criteria_version;
+            const expectedRepo = `${context.repo.owner}/${context.repo.repo}`;
+            let fingerprints = {};
+            try { fingerprints = JSON.parse(report.metrics?.publish_fingerprints || "{}"); }
+            catch (_) { fingerprints = {}; }
+            if (!commitId || !criteriaVersion || !prNumber || !fingerprints
+                || report.pr?.repo?.toLowerCase() !== expectedRepo.toLowerCase()
+                || Number(report.pr?.number) !== Number(prNumber)
+                || report.pr?.head_sha !== commitId) {
+              core.warning("Missing or mismatched frozen publication identity/fingerprints.");
+              fs.writeFileSync("reports/publication.json", JSON.stringify({
+                schema_version: 1, status: "unavailable", candidates: [],
+                reason: "missing_or_mismatched_publication_identity",
+              }, null, 2) + "\n");
               return;
             }
-            const candidates = (report.suggestions || [])
-              .filter(s => s.confidence >= minConfidence && s.line != null);
+            const candidates = report.suggestions || [];
             const MAX_INLINE = 10;
-            const inline = candidates.slice(0, MAX_INLINE);
-            if (candidates.length > inline.length) {
+            let current;
+            try {
+              current = await github.rest.pulls.get({
+                owner: context.repo.owner, repo: context.repo.repo, pull_number: prNumber,
+              });
+            } catch (error) {
+              fs.writeFileSync("reports/publication.json", JSON.stringify({
+                schema_version: 1, status: "unknown", reason: "could_not_read_current_head",
+              }, null, 2) + "\n");
+              core.warning(`Cannot verify current PR head; no inline comments sent: ${error.message}`);
+              return;
+            }
+            if (current.data.head?.sha !== commitId) {
+              fs.writeFileSync("reports/publication.json", JSON.stringify({
+                schema_version: 1, status: "stale_head", ...{
+                  owner: context.repo.owner, repo: context.repo.repo, pr: prNumber,
+                  head: commitId, criteria: criteriaVersion,
+                }, candidates: candidates.map((_, index) => ({
+                  candidate_id: index, status: "not_attempted_stale_head",
+                })),
+              }, null, 2) + "\n");
+              core.warning("PR head changed after review; no inline comments were sent.");
+              return;
+            }
+            const eligible = [];
+            const outcomes = candidates.map((s, index) => {
+              if (s.confidence < minConfidence || s.line == null) {
+                return { candidate_id: index, status: "below_publish_threshold" };
+              }
+              if (!/^[0-9a-f]{24}$/.test(fingerprints[String(index)] || "")) {
+                return { candidate_id: index, status: "unavailable_fingerprint" };
+              }
+              if (eligible.length >= MAX_INLINE) {
+                return { candidate_id: index, status: "not_attempted_limit" };
+              }
+              eligible.push(index);
+              return null;
+            });
+            if (eligible.length < candidates.length) {
               core.warning(
-                `Publishing the first ${MAX_INLINE} of ${candidates.length} suggestions; ` +
-                `${candidates.length - inline.length} were not posted.`
+                `Only ${eligible.length} eligible inline candidates will be attempted; ` +
+                `${candidates.length - eligible.length} were excluded by threshold, identity, or limit.`
               );
             }
-            let posted = 0;
-            let failed = 0;
-            for (const s of inline) {
+            const markerPrefix = "<!-- ai-pr-review-fingerprint:v1:";
+            let allComments;
+            let authLogin;
+            try {
+              allComments = await github.paginate(github.rest.pulls.listReviewComments, {
+                owner: context.repo.owner, repo: context.repo.repo,
+                pull_number: prNumber, per_page: 100,
+              });
+              authLogin = (await github.rest.users.getAuthenticated()).data.login;
+            } catch (error) {
+              fs.writeFileSync("reports/publication.json", JSON.stringify({
+                schema_version: 1, status: "unknown", owner: context.repo.owner,
+                repo: context.repo.repo, pr: prNumber, head: commitId,
+                criteria: criteriaVersion, reason: "could_not_read_publication_state",
+                candidates: candidates.map((_, index) => ({
+                  candidate_id: index, status: "unknown_existing_state_unavailable",
+                })),
+              }, null, 2) + "\n");
+              core.warning(`Cannot read existing comment state; no inline comments sent: ${error.message}`);
+              return;
+            }
+            const markerPattern = /<!-- ai-pr-review-fingerprint:v1:([0-9a-f]{24}) -->/;
+            const existingByFingerprint = new Map();
+            for (const comment of allComments) {
+              const match = String(comment.body || "").match(markerPattern);
+              if (match && comment.user?.login === authLogin) {
+                existingByFingerprint.set(match[1], comment);
+              }
+            }
+            const pullAuthor = context.payload.pull_request?.user?.login ||
+              current.data.user?.login;
+            const byCommentId = new Map(allComments.map(comment => [comment.id, comment]));
+            const authorDismissals = new Set();
+            for (const reply of allComments) {
+              if (reply.in_reply_to_id == null || reply.user?.login !== pullAuthor) continue;
+              if (!/^\s*\/ai-review\s+dismiss\s*$/i.test(String(reply.body || ""))) continue;
+              const parent = byCommentId.get(reply.in_reply_to_id);
+              const match = parent?.user?.login === authLogin
+                ? String(parent.body || "").match(markerPattern) : null;
+              if (match) authorDismissals.add(match[1]);
+            }
+            const seen = new Set();
+            for (const index of eligible) {
+              const s = candidates[index];
+              const id = fingerprints[String(index)];
+              if (seen.has(id)) {
+                outcomes[index] = { candidate_id: index, fingerprint: id,
+                  status: "duplicate_in_report" };
+                continue;
+              }
+              seen.add(id);
+              if (authorDismissals.has(id)) {
+                outcomes[index] = { candidate_id: index, fingerprint: id,
+                  status: "dismissed_by_pr_author" };
+                continue;
+              }
+              if (existingByFingerprint.has(id)) {
+                outcomes[index] = { candidate_id: index, fingerprint: id,
+                  status: "already_published" };
+                continue;
+              }
+              const body = `**${s.severity}** (${Math.round(s.confidence * 100)}%): ${s.title}\n\n${s.reason}\n\n> ${s.recommendation}`;
               try {
                 await github.rest.pulls.createReviewComment({
                   owner: context.repo.owner, repo: context.repo.repo, pull_number: prNumber,
                   commit_id: commitId, path: s.file_path, line: s.line, side: "RIGHT",
-                  body: `**${s.severity}** (${Math.round(s.confidence * 100)}%): ${s.title}\n\n${s.reason}\n\n> ${s.recommendation}`,
+                  body: `${body}\n\n${markerPrefix}${id} -->`,
                 });
-                posted++;
+                outcomes[index] = { candidate_id: index, fingerprint: id,
+                  status: "published" };
               } catch (error) {
-                core.warning(`  ✗ ${s.file_path}:${s.line} — ${error.message}`);
-                failed++;
+                core.warning(`Inline comment outcome unknown for ${s.file_path}:${s.line}: ${error.message}`);
+                outcomes[index] = { candidate_id: index, fingerprint: id,
+                  status: "unknown_after_api_error" };
               }
             }
-            core.info(`Inline review published: ${posted} posted, ${failed} failed, ${inline.length} attempted.`);
+            fs.writeFileSync("reports/publication.json", JSON.stringify({
+              schema_version: 1, owner: context.repo.owner, repo: context.repo.repo,
+              pr: prNumber, head: commitId, criteria: criteriaVersion,
+              status: outcomes.some(item => item?.status === "unknown_after_api_error")
+                ? "partial" : "complete",
+              candidates: outcomes,
+            }, null, 2) + "\n");
+            core.info(`Inline review publication states recorded for ${outcomes.length} candidates.`);
+
+      - name: Upload review artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-review
+          path: |
+            reports/pr-review.json
+            reports/publication.json
+          if-no-files-found: warn

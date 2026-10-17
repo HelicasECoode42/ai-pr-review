@@ -1,18 +1,24 @@
 # 状态一页纸（给新会话/压缩后接手用）
 
 > 只读这一页就能接着干。规范在 [`HARNESS.md`](HARNESS.md)，本页只放**当前事实与下一步**。
-> 当前状态更新：2026-10-18。代码基线 `216d6316d6c259533a01ae93ec81856c53905c38`；跨文件意图取证实现和本状态更新仍在工作区，独立案例报告由并行工作保留。下方原有数字与路线是历史记录，若与本状态块冲突，以本块和 [`HANDOFF.md`](../HANDOFF.md)、[唯一执行计划](review-v2-development.md)为准。
+> 当前状态更新：2026-10-18。HEAD `5025c559bb67aebf7214ef87c5e987a3f96c2c35`；Harness预算/发布、策略生命周期与路由调整仍在共享工作区并有并行工作。下方原有数字与路线是历史记录，若与本状态块冲突，以本块和 [`HANDOFF.md`](../HANDOFF.md)、[唯一执行计划](review-v2-development.md)为准。
 
 ## 当前验证与边界（2026-10-18）
 
+- 本轮工作区：CLI/API/Web默认 `auto`，显式 `off` 在SSE也进入legacy并返回requested/effective/reason；CLI `--two-stage`对Agent路由生效。策略选择按大小阈值，是规则路由而非LLM语义分类。Agent sidecar记录请求模式、实际策略和原因。
+- Application把主审、Critic、unit provider纳入同一 `ReviewRequestBudget`：完整system/user输入以UTF-8字节保守上界计数、HTTP attempt与总deadline共用；`scripts/run_real_review.py`也改用该入口。数字不是精确token或费用。预算拒绝时已返回的候选保留pending/partial。
+- reusable workflow会按冻结报告head校验并以bot作者身份验证review comment marker；同一PR workflow串行，按候选写publication artifact。PR作者显式回复对应评论可dismiss当前指纹；读API失败或创建结果不明记录unknown。该机制不承诺跨workflow/跨host exactly-once，`decision_ledger.py`仍不是生产运行账本。
+- Active策略默认baseline；可选store路径经版本哈希与固定prompt模板校验后加载，workflow仅透传调用方工作区路径，不在runner间持久化。fixture生命周期已覆盖 `promote_candidate→ReviewApplication实际prompt→rollback→baseline prompt`；这不是自动自主晋升或真实模型效果。
 - 阶段2本地工作区已接通一条意图取证切片：同一次 grounded discovery 生成假设与 bound read/search，host 在固定快照执行，真实证据 refs 进入 verifier；假设评估只作注释，不覆盖 finding 的 quote/chain/witness 判据。未知/未绑定任务不读源码；重复请求复用、无新增证据后强制停止、budget-final requests 标记未执行。单机 fixture 流程可测，真实模型质量/召回/成本节省尚无结论。
-- `.venv/bin/python -m pytest -q`：**420 passed**，1 条 Starlette/httpx deprecation warning。关键 Ruff 规则、criteria/holdout/interface 离线 gates、6 个改动 Python 文件完整 Ruff 相对基线无新增诊断，以及 `git diff --check` 均通过。
+- 稳定工作区 `.venv/bin/python -m pytest -q`：**443 passed**，1 条 Starlette/httpx deprecation warning。关键 Ruff 规则、criteria/holdout/interface 离线 gates、`git diff --check` 均通过。23 个改动/新 Python 文件的新增行/新文件Ruff扫描为0条新诊断。
 
 - 阶段2只由 fake-provider 与本地 fixture 验证；没有真实模型质量、召回、token 或成本收益结论。C 的单次 snapshot 硬 I/O 上限和 unit checkpoint 跨进程/强杀恢复仍待办；有效 JSON 产物恢复不代表 exactly-once。
-- `.venv/bin/ruff check --select E9,F63,F7,F82`、criteria/holdout/interface 三个离线 gate、`git diff --check` 通过。四个改动代码/测试文件的完整 Ruff 结果与 b84 基线对照无新增诊断；interface audit 仍打印 7 个未使用参数报告项，门禁通过不代表这些参数已修复。
+- `.venv/bin/ruff check --select E9,F63,F7,F82`、criteria/holdout/interface 三个离线 gate、`git diff --check` 通过。interface audit 仍报告 6 个accepted-but-unused参数；其门禁只要求没有未消费flag或调用/定义不匹配。
 - C 已在 HEAD：隔离 Ruff 接入单 PR frozen base/head snapshot；Agent、CLI、Web detail 复用 snapshot，overview 显示 `not_run`。新增行匹配只是未确认 candidate，不是语义 TP。无真实 PR/model/cost 结果。
+- 当前工作区的Harness改造还包括共享输入/HTTP尝试/总时间预算、带partial候选保留、工作流发布指纹/可信marker/dismissal及 requested/effective mode追踪；它们已通过本地mock与测试，但GitHub Actions真实写评论、跨host恰好一次、模型费用和语义质量均未验证。
+- 运行时策略默认baseline；显式可信store路径才加载哈希匹配的固定模板，reusable workflow只透传调用方工作区目录，不持久化。fixture完成promote→ReviewApplication prompt→rollback验证，不表示自主晋升或生产自进化。
 - unit checkpoint 当前工作区改动以有匹配身份、校验通过的 JSON 结果产物恢复真实 findings；旧 metadata-only 记录不能标成成功恢复。当前模型结果若无法落盘仍保留在本次 partial 报告中，之后重跑可能重复请求。单进程中断恢复已有 fake-provider 测试；跨进程并发和强杀窗口不承诺 exactly-once，unit review 默认关闭。
-- snapshot 返回内容的读取/处理预算不是硬 I/O 限制：单次 `snapshot.read()` 仍可能先完整返回再检查大小；严格响应体上限/取消待办。阶段1的 fail-fast、候选持久账本与发布幂等仍未完成。
+- snapshot 返回内容的读取/处理预算不是硬 I/O 限制：单次 `snapshot.read()` 仍可能先完整返回再检查大小；严格响应体上限/取消待办。候选持久决策账本仍未接生产；workflow评论指纹只保证当前单PR串行运行中的有限去重，不提供跨host exactly-once。
 
 ## 目标（已按实测重写）
 

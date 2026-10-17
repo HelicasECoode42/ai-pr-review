@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,6 +12,8 @@ class Settings(BaseSettings):
     openai_base_url: str = "https://api.openai.com/v1"
     review_model: str = "gpt-4.1-mini"
     request_timeout_seconds: float = 45.0
+    model_connect_timeout_seconds: float = 10.0
+    model_read_timeout_seconds: float = 180.0
     max_suggestions: int = 20
     max_suggestions_per_file: int = 5
     min_comment_confidence: float = 0.65
@@ -18,9 +21,21 @@ class Settings(BaseSettings):
     enable_critic: bool = False
     enable_repository_review: bool = True
     repository_evidence_tokens: int = 6000
-    # Optional run-level cap on model input tokens (patch context + evidence).
-    # None means measured and reported, but not enforced.
+    # Complete system+user request input, conservatively estimated in UTF-8
+    # bytes. This is a request guard, not a tokenizer or billing-token count.
+    max_input_token_upper_bound: int | None = Field(
+        default=200_000,
+        gt=0,
+        validation_alias=AliasChoices(
+            "MAX_INPUT_TOKEN_UPPER_BOUND", "max_input_token_upper_bound",
+        ),
+    )
+    max_review_http_attempts: int = Field(default=16, ge=1)
+    max_review_timeout_seconds: float = Field(default=300.0, gt=0)
+    model_output_token_limit: int = Field(default=32768, ge=1)
+    # Legacy context diagnostic cap retained for callers using the old setting.
     max_review_input_tokens: int | None = None
+    strategy_policy_store_dir: str | None = None
     # Per-unit review (P4). OFF by default: measured on a 251-file PR it covered
     # 9/146 units (6%) for 558,691 tokens (~4.5 CNY) - less coverage than the
     # truncation path for tens of times the cost. Enable only when full coverage
@@ -52,6 +67,7 @@ class Settings(BaseSettings):
         env_prefix="",
         extra="ignore",
         env_ignore_empty=True,
+        populate_by_name=True,
     )
 
 

@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import time
+
 import httpx
 import pytest
 import respx
 
-from src.reviewer.provider import OpenAICompatibleProvider, ProviderError
+from src.reviewer.provider import (
+    OpenAICompatibleProvider,
+    ProviderError,
+    ReviewRequestBudget,
+)
 
 
 @respx.mock
@@ -143,6 +149,53 @@ def test_provider_preserves_safe_http_error_detail() -> None:
 
     assert exc_info.value.status_code == 400
     assert route.call_count == 1
+
+
+@respx.mock
+def test_complete_prompt_budget_denies_before_network_send() -> None:
+    route = respx.post("https://provider.test/v1/chat/completions").mock(
+        return_value=httpx.Response(200, json={"choices": []})
+    )
+    budget = ReviewRequestBudget(100, max_http_attempts=2, total_timeout_seconds=5)
+    with OpenAICompatibleProvider(
+        "key", "model", "https://provider.test/v1", request_budget=budget
+    ) as provider, pytest.raises(ProviderError) as exc_info:
+        provider.complete_json("system", "user")
+
+    assert exc_info.value.kind == "input_budget_exhausted"
+    assert route.call_count == provider.http_attempts == budget.http_attempts == 0
+    assert budget.snapshot()["request_input_estimated_method"].startswith("json-utf8")
+
+
+@respx.mock
+def test_fallback_retry_uses_same_attempt_budget_and_never_sends_over_cap() -> None:
+    route = respx.post("https://provider.test/v1/chat/completions")
+    route.mock(return_value=httpx.Response(
+        400, json={"error": {"message": "response_format is not supported"}}
+    ))
+    budget = ReviewRequestBudget(10_000, max_http_attempts=1, total_timeout_seconds=5)
+    with OpenAICompatibleProvider(
+        "key", "model", "https://provider.test/v1", request_budget=budget
+    ) as provider, pytest.raises(ProviderError) as exc_info:
+        provider.complete_json("system", "user")
+
+    assert exc_info.value.kind == "http_attempt_budget_exhausted"
+    assert route.call_count == provider.http_attempts == budget.http_attempts == 1
+    assert budget.snapshot()["request_budget_stop_reason"] == "http_attempt_budget_exhausted"
+
+
+def test_shared_deadline_closes_slow_request_without_waiting_for_next_stream_chunk():
+    from unittest.mock import Mock, patch
+
+    budget = ReviewRequestBudget(10_000, max_http_attempts=2, total_timeout_seconds=5)
+    provider = OpenAICompatibleProvider(
+        "key", "model", "https://provider.test/v1", request_budget=budget
+    )
+    closer = Mock()
+    with patch.object(provider._client, "close", closer), provider._request_deadline(0.02):
+        time.sleep(0.06)
+    closer.assert_called_once()
+    provider.close()
 
 
 @respx.mock

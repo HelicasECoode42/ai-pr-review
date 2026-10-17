@@ -215,7 +215,7 @@ def test_application_scopes_playbook_by_the_actual_pr_repo(tmp_path):
 
     seen.clear()
     application.review(PullRequest(repo="other/repo", number=1, title="t"), [file], [])
-    assert "prompt_addendum" not in seen
+    assert seen.get("prompt_addendum", "") == ""
 
 
 def test_scoped_contract_domain_is_neither_global_nor_prompted(tmp_path):

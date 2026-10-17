@@ -6,8 +6,8 @@ sequence through the registry, records every step in ReviewAgentState,
 and returns a ReviewAgentResult containing the final report, markdown,
 JSON, and an agent sidecar for trace inspection.
 
-Round 1 supports: rule_only, one_shot_ai (and explicit two_stage).
-Auto-selection always picks one_shot_ai for now.
+Supported strategies: rule_only, one_shot_ai, and two_stage. Auto mode uses
+deterministic size thresholds; it is not a semantic intent classifier.
 """
 
 from __future__ import annotations
@@ -329,7 +329,9 @@ class ReviewAgentRunner:
 
         # ── Build agent sidecar ─────────────────────────────
         agent_sidecar: dict[str, Any] = {
+            "requested_mode": request.agent_mode,
             "strategy": state.strategy,
+            "effective_mode": state.strategy,
             "strategy_reason": state.strategy_reason,
             "degradation_path": state.degradation_path,
             "warnings": state.warnings,

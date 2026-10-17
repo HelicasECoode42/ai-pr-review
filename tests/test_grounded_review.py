@@ -128,6 +128,49 @@ def test_intent_plan_executes_frozen_cross_file_task_and_verification_cites_it(r
     assert len(report.suggestions) == 1
 
 
+def test_discovery_budget_stop_keeps_same_round_candidates_pending(repo):
+    from src.reviewer.provider import ReviewRequestBudget
+
+    root, base, head = repo
+    snapshot = GitSnapshot(root, base, head)
+    files = parse_diff(git(root, "diff", base, head))
+    pr = PullRequest(repo="fixture/repo", number=1, title="Return contract",
+                     base_sha=base, head_sha=head)
+    context = build_review_context(
+        pr, files, include_context_pack=False, allow_remote_file_fetch=False
+    )
+    budget = ReviewRequestBudget(1_000_000, max_http_attempts=1, total_timeout_seconds=30)
+
+    class CappedProvider:
+        calls = 0
+
+        def complete_json(self, system, prompt):
+            budget.reserve(system, prompt)
+            self.calls += 1
+            if self.calls == 1:
+                return json.dumps({
+                    **candidate(),
+                    "intent_hypotheses": planned_hypotheses(),
+                    "context_requests": intent_search_request(),
+                })
+            raise AssertionError("the shared request budget must deny before another send")
+
+    provider = CappedProvider()
+    result = review_grounded(
+        pr, files, provider, snapshot, context, discovery_rounds=3, verify_rounds=2
+    )
+
+    assert provider.calls == 1
+    assert budget.snapshot()["request_http_attempts"] == 1
+    assert len(result.candidates) == 1
+    assert result.candidates[0]["status"] == "needs_context"
+    assert result.pending
+    assert result.bundle["intent_plan"]["status"] == "partial"
+    assert "discovery_stopped:http_attempt_budget_exhausted" in result.bundle[
+        "intent_plan"
+    ]["errors"]
+
+
 def test_pr_description_is_only_a_hypothesis_and_cannot_confirm_a_candidate(repo):
     def needs_context_with_refutation(system, prompt):
         refs = task_evidence_refs(prompt)

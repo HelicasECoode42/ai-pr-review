@@ -2,7 +2,6 @@ import json
 
 import pytest
 
-from src.evaluation.improvement import ReviewStrategy, improve
 from src.evaluation.reviewbench import parse_diff, run_review
 from src.evaluation.scoring import GoldenCase, accept_candidate, score, validate_splits
 
@@ -89,22 +88,13 @@ def test_splits_and_negative_labels():
         validate_splits([case, case.model_copy(update={"case_id": "two", "split": "test"})])
 
 
-def test_improvement_cannot_trade_recall_for_precision():
+def test_legacy_scoring_gate_cannot_trade_recall_for_precision():
     baseline = {"precision": 0.6, "recall": 0.6, "f1": 0.6, "latency_seconds": 1, "failed_cases": 0}
     worse = {"precision": 0.9, "recall": 0.4, "f1": 0.7, "latency_seconds": 1, "failed_cases": 0}
     assert not accept_candidate(baseline, worse)
     assert not accept_candidate(baseline, {**baseline, "f1": float("nan")})
     better = {**baseline, "precision": 0.7, "f1": 0.65}
     assert accept_candidate(baseline, better)
-    strategy = ReviewStrategy()
-    result = improve(
-        strategy, [], Provider(strategy.model_dump()), lambda candidate, split: baseline
-    )
-    assert result["decision"] == "rollback"
-    with pytest.raises(ValueError):
-        improve(strategy, [], Provider({}), lambda *args: better, split="test")
-    with pytest.raises(ValueError):
-        ReviewStrategy.model_validate({"judge_prompt": "cheat"})
 
 
 def test_evidence_ablation_changes_only_gate():

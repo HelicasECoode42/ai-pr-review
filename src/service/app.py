@@ -45,7 +45,7 @@ class AnalyzeRequest(BaseModel):
     pr_number: int
     language: str | None = None  # auto-detect if not set
     use_ai: bool = True
-    agent_mode: str = "off"     # "off" (legacy), "auto", "rule_only", "one_shot_ai", "two_stage"
+    agent_mode: str = "auto"   # "off" (legacy), "auto", "rule_only", "one_shot_ai", "two_stage"
 
 
 class AnalyzeResponse(BaseModel):
@@ -79,15 +79,25 @@ def analyze_stream(req: AnalyzeRequest) -> StreamingResponse:
 
     def run_review() -> None:
         try:
+            if req.agent_mode == "off":
+                # Keep explicit legacy requests consistent across streaming and
+                # non-streaming endpoints; SSE carries one completion frame.
+                result = analyze(req)
+                emit("complete", {
+                    "report": result.report,
+                    "markdown": result.markdown,
+                    "agent": result.agent,
+                    "duration_seconds": round(time.monotonic() - started_at, 2),
+                })
+                return
+
             runner = ReviewAgentRunner(settings, progress_sink=emit)
             result = runner.run(ReviewAgentRequest(
                 repo=req.repo,
                 pr_number=req.pr_number,
                 language=req.language,
                 use_ai=req.use_ai,
-                # Streaming is an Agent endpoint; preserve explicit modes while
-                # mapping the legacy default to the normal automatic strategy.
-                agent_mode=req.agent_mode if req.agent_mode != "off" else "auto",
+                agent_mode=req.agent_mode,
             ))
             emit("complete", {
                 "report": result.json_report,
@@ -149,7 +159,7 @@ def get_config() -> dict:
         "github_token_configured": bool(settings.github_token),
         "openai_api_key_configured": bool(settings.openai_api_key),
         "demo_available": _DEMO_FILE.exists(),
-        "default_agent_mode": "rule_only",
+        "default_agent_mode": "auto",
     }
 
 
@@ -309,6 +319,11 @@ def analyze(req: AnalyzeRequest) -> AnalyzeResponse | dict:
         report=_json_safe_model(report),
         markdown=md,
         duration_seconds=round(elapsed, 2),
+        agent={
+            "requested_mode": "off",
+            "effective_mode": "legacy",
+            "strategy_reason": "Explicit legacy compatibility mode",
+        },
     )
 
 

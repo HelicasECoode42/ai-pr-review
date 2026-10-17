@@ -103,7 +103,7 @@ def analyze(
     use_ai: bool = typer.Option(True, "--ai/--no-ai", help="Call AI model for review."),
     two_stage: bool = typer.Option(
         False, "--two-stage",
-        help="Use two-stage review: triage then deep-dive on hotspots.",
+        help="Force two-stage Agent review; with --agent-mode off, use legacy two-stage.",
     ),
     review_mode: str = typer.Option(
         "full_pr", "--review-mode",
@@ -172,12 +172,15 @@ def analyze(
 
         lang_value = language.value if language else None
         runner = ReviewAgentRunner(settings)
+        # Preserve the legacy flag while making it effective on the default
+        # Agent route. Explicit --agent-mode off remains the legacy escape hatch.
+        effective_agent_mode = "two_stage" if two_stage else agent_mode
         result = runner.run(ReviewAgentRequest(
             repo=repo,
             pr_number=pr_number,
             language=lang_value,
             use_ai=use_ai,
-            agent_mode=agent_mode,
+            agent_mode=effective_agent_mode,
             review_mode=review_mode,
             reviewer_version=reviewer_version,
             execution_status=execution_status,
@@ -419,6 +422,13 @@ def analyze(
                         repository_snapshot=snapshot,
                         analyzer_warnings=analyzer_warnings,
                     )
+
+        if agent_mode == "off":
+            report.metrics.update({
+                "requested_mode": "off",
+                "effective_mode": "legacy_two_stage" if two_stage else "legacy",
+                "strategy_reason": "Explicit legacy compatibility mode",
+            })
 
         # ── FixTracking: compare against previous review ─────────
         try:

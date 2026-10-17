@@ -32,6 +32,33 @@ def comment_fingerprint(file_path: str, line: int | None, body: str) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:_FINGERPRINT_LENGTH]
 
 
+def review_comment_body(suggestion) -> str:
+    """Render the stable human portion used by the reusable workflow."""
+    severity = getattr(suggestion, "severity", "unknown")
+    severity = getattr(severity, "value", severity)
+    confidence = round(float(getattr(suggestion, "confidence", 0)) * 100)
+    return (
+        f"**{severity}** ({confidence}%): {getattr(suggestion, 'title', '')}\n\n"
+        f"{getattr(suggestion, 'reason', '')}\n\n"
+        f"> {getattr(suggestion, 'recommendation', '')}"
+    )
+
+
+def review_publication_fingerprint(
+    *, repo: str, pr_number: int, head_sha: str, criteria_version: str,
+    file_path: str, line: int | None, body: str,
+) -> str:
+    """Identify one comment within its exact repo/PR/head/criteria scope."""
+    identity = {
+        "repo": repo.casefold(), "pr": pr_number, "head": head_sha,
+        "criteria": criteria_version, "path": file_path, "line": line,
+        "body": normalize_comment(body),
+    }
+    encoded = json.dumps(identity, sort_keys=True, separators=(",", ":"),
+                         ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()[:24]
+
+
 def duplicates(new_fingerprints: list[str], existing: set[str]) -> list[bool]:
     """True where a comment has already been posted."""
     return [fingerprint in existing for fingerprint in new_fingerprints]

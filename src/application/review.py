@@ -16,6 +16,7 @@ from src.knowledge.playbook import (
     render,
 )
 from src.models import ChangedFile, PullRequest, ReviewReport, RiskFinding
+from src.reviewer.provider import ReviewRequestBudget
 from src.reviewer.usage import summarize_usage
 from src.utils.config import Settings
 
@@ -52,7 +53,7 @@ class ReviewApplication:
         self.provider_factory: Callable = provider_factory
         self.engine: Callable = engine
 
-    def _provider(self, model: str):
+    def _provider(self, model: str, request_budget: ReviewRequestBudget):
         s = self.settings
         effort = s.review_reasoning_effort
         if (
@@ -66,10 +67,13 @@ class ReviewApplication:
             model=model,
             base_url=s.openai_base_url,
             timeout=s.request_timeout_seconds,
+            connect_timeout=s.model_connect_timeout_seconds,
+            read_timeout=s.model_read_timeout_seconds,
             stream=s.enable_repository_review,
-            total_timeout=300 if s.enable_repository_review else None,
-            max_output_tokens=32768 if s.enable_repository_review else None,
+            total_timeout=s.max_review_timeout_seconds if s.enable_repository_review else None,
+            max_output_tokens=s.model_output_token_limit,
             reasoning_effort=effort,
+            request_budget=request_budget,
         )
 
     @staticmethod
@@ -163,7 +167,9 @@ class ReviewApplication:
                 break
         return symbols_by_path, limited
 
-    def _recall_playbook(self, files: list[ChangedFile], defaults: dict, *, repo: str):
+    def _recall_playbook(
+        self, files: list[ChangedFile], defaults: dict, *, repo: str, k: int | None = None
+    ):
         """Return scope-matched entries and explicit limits on symbol resolution."""
         path = Path(self.settings.playbook_path or DEFAULT_PLAYBOOK)
         try:
@@ -204,7 +210,7 @@ class ReviewApplication:
         )
         recalled = recall(entries, repo=repo, paths=paths,
                           languages=languages, symbols_by_path=symbols_by_path,
-                          k=self.settings.playbook_recall_k)
+                          k=self.settings.playbook_recall_k if k is None else k)
         warnings = []
         recalled_ids = {entry.id for entry in recalled}
         unresolved_symbol_scoped = [
@@ -252,11 +258,16 @@ class ReviewApplication:
     ) -> ReviewReport:
         s = self.settings
         with ExitStack() as resources:
-            provider = self._provider(s.review_model)
+            request_budget = ReviewRequestBudget(
+                s.max_input_token_upper_bound,
+                s.max_review_http_attempts,
+                s.max_review_timeout_seconds,
+            )
+            provider = self._provider(s.review_model, request_budget)
             resources.callback(provider.close)
             critic = provider
             if s.enable_critic and s.critic_model and s.critic_model != s.review_model:
-                critic = self._provider(s.critic_model)
+                critic = self._provider(s.critic_model, request_budget)
                 resources.callback(critic.close)
             defaults = {
                 "max_suggestions": s.max_suggestions,
@@ -301,20 +312,31 @@ class ReviewApplication:
                     str(Path(s.unit_checkpoint_dir) / f"units-{pr.head_sha[:12]}.jsonl"),
                 )
             defaults.setdefault(
-                "unit_provider_factory", lambda: self._provider(s.review_model)
+                "unit_provider_factory",
+                lambda: self._provider(s.review_model, request_budget),
             )
+            from src.application.strategy_policy import load_active_policy
+
+            loaded_policy = load_active_policy(s.strategy_policy_store_dir)
             # Knowledge layer (P3): recall scope-matched playbook entries and offer
             # them as guidance. Entries never override the criteria, and the ids
             # used are recorded so a report says which knowledge was in play.
             recalled, knowledge_warnings, unavailable_contract_domain_ids = self._recall_playbook(
-                files, defaults, repo=pr.repo
+                files, defaults, repo=pr.repo,
+                k=loaded_policy.policy.playbook_recall_k,
             )
             prompt_entries = [
                 entry for entry in recalled
                 if entry.id not in unavailable_contract_domain_ids
             ]
-            if prompt_entries and "prompt_addendum" not in defaults:
-                defaults["prompt_addendum"] = render(prompt_entries)
+            addendum_parts = [str(defaults.get("prompt_addendum") or "").strip()]
+            if loaded_policy.policy.prompt_addendum:
+                addendum_parts.append(loaded_policy.policy.prompt_addendum)
+            if prompt_entries:
+                addendum_parts.append(render(prompt_entries))
+            defaults["prompt_addendum"] = "\n\n".join(
+                part for part in addendum_parts if part
+            )
             if recalled and "contract_domains" not in defaults:
                 try:
                     defaults["contract_domains"] = contract_domains(recalled)
@@ -340,6 +362,9 @@ class ReviewApplication:
                     metrics.update(summarize_usage(records))
                 metrics["experience_ids"] = ",".join(entry.id for entry in recalled)
                 metrics["experience_count"] = len(recalled)
+                metrics.update(request_budget.snapshot())
+                metrics["strategy_policy_id"] = loaded_policy.policy_id
+                metrics["strategy_policy_status"] = loaded_policy.status
                 if unavailable_contract_domain_ids:
                     metrics["contract_scope_unavailable_count"] = len(
                         unavailable_contract_domain_ids
@@ -350,6 +375,31 @@ class ReviewApplication:
                 from src.reviewer.grounded_review import CRITERIA_VERSION
 
                 metrics["criteria_version"] = CRITERIA_VERSION
+                if pr.repo and pr.number and pr.head_sha:
+                    import json
+
+                    from src.reviewer.publish import (
+                        review_comment_body,
+                        review_publication_fingerprint,
+                    )
+
+                    fingerprints = {
+                        str(index): review_publication_fingerprint(
+                            repo=pr.repo,
+                            pr_number=pr.number,
+                            head_sha=pr.head_sha,
+                            criteria_version=CRITERIA_VERSION,
+                            file_path=suggestion.file_path,
+                            line=suggestion.line,
+                            body=review_comment_body(suggestion),
+                        )
+                        for index, suggestion in enumerate(report.suggestions)
+                    }
+                    metrics["publish_fingerprints"] = json.dumps(
+                        fingerprints, sort_keys=True, separators=(",", ":")
+                    )
+                else:
+                    metrics["publish_fingerprint_status"] = "unavailable_missing_identity"
             if knowledge_warnings:
                 report.analysis_warnings.extend(knowledge_warnings)
             return report

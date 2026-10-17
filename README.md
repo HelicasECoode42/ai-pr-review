@@ -96,7 +96,8 @@ jobs:
       reviewer_ref: "<tag 或 40 位 SHA>"   # 建议固定版本
       language: auto
       post_inline: false                    # 默认只发一条可更新的 summary
-      max_input_tokens: 6000
+      max_input_token_upper_bound: 200000 # UTF-8 bytes, cumulative across model calls
+      strategy_policy_store_dir: ""        # 可选：调用方工作区内已持久化的策略目录；留空使用 baseline
     secrets:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}   # 用你自己的 key
 ```
@@ -136,7 +137,10 @@ sequenceDiagram
 | `ENABLE_CRITIC` | `true` | 对抗复核（第二个模型再跑一遍） |
 | `PUBLISH_MIN_CONFIDENCE` | `0.80` | 行内评论阈值（盖章进报告，workflow 读取） |
 | `REPOSITORY_EVIDENCE_TOKENS` | `6000` | 证据包预算 |
-| `MAX_REVIEW_INPUT_TOKENS` | 空 | 整次运行输入上限（控成本） |
+| `MAX_INPUT_TOKEN_UPPER_BOUND` | `200000` | 所有模型阶段累计完整输入的 UTF-8 字节保守上界；发送前硬拦截，不是分词器结果或账单 token |
+| `MAX_REVIEW_INPUT_TOKENS` | 空 | 旧版渲染上下文诊断上限，不限制网络请求 |
+| `MAX_REVIEW_HTTP_ATTEMPTS` | `16` | 单次 PR 审查所有 provider 共用的 HTTP 尝试上限 |
+| `MAX_REVIEW_TIMEOUT_SECONDS` | `300` | 单次 PR 审查所有 provider 共用的总时限 |
 | `UNIT_REVIEW_MAX_UNITS` | `12` | 大 PR 分片上限（0 = 关闭） |
 | `UNIT_REVIEW_WORKERS` | `4` | 单元并发（硬上限 8） |
 | `PLAYBOOK_PATH` | `knowledge/playbook.md` | 知识层 |
@@ -155,7 +159,7 @@ sequenceDiagram
 | **容器** | `docker build -t ai-pr-review . && docker run --env-file .env ai-pr-review OWNER/REPO PR` | 隔离环境（Dockerfile 待补） |
 | **VS Code 插件** | **已冻结，非受支持入口** | 源码与扩展安全审计保留；不列入当前交付 |
 
-**安全**：`reviewer_ref` 决定在**你的 CI 里、用你的 secrets** 执行哪个远端版本 → **固定 tag 或 SHA**。diff 与证据摘录会发往 `OPENAI_BASE_URL`；用 `MAX_REVIEW_INPUT_TOKENS` 设上限。被审仓库内容一律视为**不可信数据**。
+**安全**：`reviewer_ref` 决定在**你的 CI 里、用你的 secrets** 执行哪个远端版本 → **固定 tag 或 SHA**。diff 与证据摘录会发往 `OPENAI_BASE_URL`；用 `MAX_INPUT_TOKEN_UPPER_BOUND` 设置累计请求输入上界。该上界按 UTF-8 字节计算，不是精确 token 数或账单值。`strategy_policy_store_dir` 默认留空且不会搜索当前目录；只有传入目录中的已接受、哈希匹配且符合固定模板白名单的策略才会生效。reusable runner 不会跨运行保存该目录，调用方必须自行提供可信持久化存储；哈希用于完整性校验，不是数字签名。被审仓库内容一律视为**不可信数据**。
 
 ---
 
@@ -177,11 +181,11 @@ flowchart LR
 ## 已知边界（不藏）
 
 - 没有 `run_tests` 沙箱（`witness_eval` 只覆盖纯表达式）
-- 没有行内去重与驳回记忆（可能重复提出已驳回的问题）
+- 行内评论通过可信 bot 标记按当前 head 与判据版本去重；PR 作者可用 `/ai-review dismiss` 驳回本版本候选，API 状态未知会留在发布账本中
 - 没有采纳回路（不知道评论是否被处理）
 - 真实评测集缺失（gold 集 4 例；历史 25 个 PR 已被接触过，不能当"未见测试"）
 - RSI 循环未实现（机械门禁已就绪）
-- legacy 一次性路径**保留为成对评测的对照组**，不作为用户可见模式
+- `auto` 是 CLI/API/Web 默认路由；显式 `off` 保留旧路径兼容与对照用途，不是默认入口
 
 ## 文档
 
