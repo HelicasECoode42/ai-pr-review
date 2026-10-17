@@ -1,8 +1,8 @@
 # Review V2：唯一执行计划
 
-更新：2026-10-17。代码基线 HEAD `cfca0b4232ab5bc13236b97ca74967e8ba53f927`；A/B 已在 HEAD，C 核心接线和测试当前仍在未提交工作区。目标顺序是：**①让现有工具可信；②做跨文件意图 Agent；③用失败案例改进知识与策略**。本文件是唯一排期与验收计划；[PRD](PRD-review-capability-v2.md)只定义目标/边界，[HANDOFF](../HANDOFF.md)只做当前快照入口。旧 D1–D5、D2 图规划和 RSI 方案只作历史材料，不构成自动执行路线。
+更新：2026-10-18。代码基线 HEAD `b84fd93321d72de7d487cef0e059d8b44825d88d`；A/B/C 已在 HEAD，unit checkpoint 结果恢复和本状态更新尚在工作区。目标顺序是：**①让现有工具可信；②做跨文件意图 Agent；③用失败案例改进知识与策略**。本文件是唯一排期与验收计划；[PRD](PRD-review-capability-v2.md)只定义目标/边界，[HANDOFF](../HANDOFF.md)只做当前快照入口。旧 D1–D5、D2 图规划和 RSI 方案只作历史材料，不构成自动执行路线。
 
-本轮前 A/B 已完成并进入 HEAD：Playbook 真实 PR repo、语言/path/symbol 作用域与 scoped contract 的 fail-closed 边界；最终上下文排序保留 over-budget triage 优先级。2026-10-17 本轮 C 在工作区接通冻结 base/head snapshot Ruff scan、新增行候选归因、明确 unavailable/partial 与同一 snapshot 复用；CI 小 Ruff、离线 criteria gate、14 条合成 holdout、默认 src interface audit 均通过。使用仓库 `.venv/bin/python -m pytest -q` 为 **396 passed**；此前 Anaconda Python 缺 TS grammar 的失败已由同一 `.venv` 下 cfca0b4 临时基线和当前分支各自通过该用例证实为环境差异。`criteria_gate.py` 的 safe-division domain 由测试 fixture 显式输入，KB-0003 仍为 candidate。没有真实 PR/模型质量验证。**阶段1仍未完成**：snapshot 底层单次读取硬 I/O 上限、unit checkpoint 结果无损恢复、启用但未接线路径门禁、完整候选账本与发布幂等仍待做；#46 不可标记关闭。
+本轮前 A/B 已完成并进入 HEAD：Playbook 真实 PR repo、语言/path/symbol 作用域与 scoped contract 的 fail-closed 边界；最终上下文排序保留 over-budget triage 优先级。C 已于 `b84fd93` 接通冻结 base/head snapshot Ruff scan、新增行候选归因、明确 unavailable/partial 与同一 snapshot 复用。2026-10-18 unit checkpoint 恢复实现和测试尚在工作区：只接受身份匹配、hash 与 schema 校验通过的 JSON 结果产物；metadata-only 记录不会伪装成成功恢复。仓库 `.venv/bin/python -m pytest -q` 为 **405 passed**；Ruff 关键错误规则、criteria/holdout/interface 离线 gate、完整 Ruff 相对 b84 基线无新增诊断、`git diff --check` 均通过。此前 Anaconda Python 缺 TS grammar 的失败已由同一 `.venv` 下 cfca0b4 临时基线和当前分支各自通过该用例证实为环境差异。`criteria_gate.py` 的 safe-division domain 由测试 fixture 显式输入，KB-0003 仍为 candidate。没有真实 PR/模型质量验证。**阶段1仍未完成**：snapshot 底层单次读取硬 I/O 上限、启用但未接线路径门禁、完整候选账本与发布幂等仍待做；unit 跨进程并发/强杀恢复不承诺 exactly-once，#46 不可标记关闭。
 
 ### 2026-10-17：确定性 Ruff 接线的完成边界
 
@@ -10,6 +10,12 @@
 - Ruff 只读取冻结 base/head 的 Python 内容，不回退到当前工作目录；固定隔离参数，不执行 PR 代码。进程 stdout/stderr 共用硬输出上限，超限或 deadline 到期会终止并清理子进程。新增行匹配只产生低置信度 `lint-candidate-*`，不等于语义 Bug 或 confirmed finding。
 - 内容读取目前限制读取尝试/返回文本量和后续处理量；`Snapshot.read()` 可能先完整返回一次响应再做大小检查，因此这些值不是硬网络响应上限。严格单次响应截断与可取消读取单独跟进。POSIX 管道实现已验证；Windows 走明确 unavailable 分支，但未实机验证。
 - 仓库 `.venv/bin/python -m pytest -q`: 396 passed。仓库 `.venv/bin/ruff check --select E9,F63,F7,F82 src tests`、criteria/holdout/interface 三个离线门禁和 `git diff --check` 通过。无模型请求、真实 PR 质量或成本结论。
+
+### 2026-10-18：unit checkpoint 恢复结果的边界
+
+- 每个 unit 的完整审查结果以受限 schema 的 JSON 产物原子落盘；metadata 仅引用产物名/hash 和执行身份。恢复前匹配 repo/PR/base/head、切片内容、策略/模型/提示/知识版本，并校验产物 hash/schema/大小；不匹配、缺件或损坏时重新执行该 unit，不报告 resumed-success。
+- 本次恢复报告保留历史发现和证据。历史 discovery/verification 调用数单独记录；本轮 request metrics 只统计本轮 provider 调用，避免显示成新花费。双轮 fake-provider 生产 engine 测试验证第二轮 provider 调用为 0、发现一致、历史调用可追溯。
+- 当前模型结果若 checkpoint 写入失败，留在本次报告并标为 partial；之后的 run 可能重复调用。unit review 默认关闭。恢复只对已完整落盘且通过身份校验的产物有效；多进程并发写和强杀窗口的确切计费/执行次数未知，不承诺 exactly-once。未调用真实模型。
 
 ## 项目目标与当前成熟度
 
@@ -60,7 +66,7 @@
 | 预算、hunk 顺序与覆盖 | B 已进 HEAD，fixture 通过 | 输入清单 → triage → 最终选择 → 每 hunk 终态 → omission | 阶段1 | 超预算 fixtures 显示 triage 风险进入最终上下文；所有 hunk 有终态 |
 | 候选/判定/发布账本 | 组件存在、生产未接 | candidate id → 每阶段事件 → verdict/过滤 → 发布或扣下原因 | 阶段1 | 一次 run 的完整 candidate ledger；重试/重复运行不重复发评论 |
 | 跨文件 Agent 计划与取证 | 部分原型、未知真实增益 | intent hypothesis → relation plan → bounded read → evidence refs → update | 阶段2 | 冻结 PR 人工语义评测；S/D/P 独立；跨文件分层结果 |
-| 可取消、限时和可恢复执行 | 部分：资源释放/阶段协议存在；生产持久恢复未实现 | run identity → stage artifact/checkpoint → cancel/timeout → 同身份 resume | 阶段1可信状态后，独立交付 | 故障注入报告；取消不发布；强杀窗口不宣称 exactly-once |
+| 可取消、限时和可恢复执行 | 部分：unit JSON 产物恢复已接入且默认关闭；快照硬 I/O、跨进程并发与强杀窗口仍未知 | run identity → 原子结果 artifact + metadata hash → schema/identity 校验 → resume 或显式重跑/partial | 阶段1可信状态后，独立交付 | 已有 fake-provider 双轮与损坏/缺件/身份变更测试；继续做故障注入；取消不发布；强杀窗口不宣称 exactly-once |
 | 知识候选、隔离回放与晋升/回滚 | 未接闭环 | 失败 trace → candidate → isolated replay → human decision → version/rollback | 阶段1 ledger + 阶段2标签集 | 知识版本与来源 case；冻结开发集/独立留出结果；可回滚记录 |
 
 ## 实验协议与费用边界

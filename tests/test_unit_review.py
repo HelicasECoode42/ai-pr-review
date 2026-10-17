@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import pytest
 
 from src.analyzer.review_plan import build_review_plan
@@ -13,6 +15,7 @@ from src.reviewer.unit_review import (
     build_unit_context,
     merge_grounded_results,
     review_by_units,
+    run_units_for_review,
     unit_files,
 )
 
@@ -184,7 +187,9 @@ def test_worker_count_is_validated_and_capped():
     assert summary.counts()["units_reviewed"] == len(plan.units)
 
 
-def _unit_review_report(tmp_path, *, units_enabled: int):
+def _unit_review_report(
+    tmp_path, *, units_enabled: int, checkpoint_path=None, repo_ready=False, call_counter=None
+):
     """Drive the engine's unit path with a scripted provider over a small repo.
 
     Three files with independent changes keep the diff small; the context budget
@@ -198,12 +203,16 @@ def _unit_review_report(tmp_path, *, units_enabled: int):
     from src.models import PullRequest
     from src.reviewer.engine import review_with_ai
 
+    tmp_path.mkdir(parents=True, exist_ok=True)
+
     def run(*args):
         return subprocess.check_output(["git", "-C", str(tmp_path), *args], text=True).strip()
 
-    run("init")
-    run("config", "user.email", "f@e.invalid")
-    run("config", "user.name", "F")
+    if not repo_ready:
+        run("init")
+        run("config", "user.email", "f@e.invalid")
+        run("config", "user.name", "F")
+
     def body(index: int, name: str) -> str:
         """Renaming the accumulator changes every line, so the patch really is
         larger than the context budget and the prompt gets truncated."""
@@ -212,20 +221,22 @@ def _unit_review_report(tmp_path, *, units_enabled: int):
         lines += [f"    return {name}"]
         return "\n".join(lines) + "\n"
 
-    for index in range(3):
-        (tmp_path / f"m{index}.py").write_text(body(index, "total"))
-    run("add", ".")
-    run("commit", "-m", "base")
-    base = run("rev-parse", "HEAD")
-    for index in range(3):
-        (tmp_path / f"m{index}.py").write_text(body(index, "accumulated"))
-    run("add", ".")
-    run("commit", "-m", "head")
+    if not repo_ready:
+        for index in range(3):
+            (tmp_path / f"m{index}.py").write_text(body(index, "total"))
+        run("add", ".")
+        run("commit", "-m", "base")
+        for index in range(3):
+            (tmp_path / f"m{index}.py").write_text(body(index, "accumulated"))
+        run("add", ".")
+        run("commit", "-m", "head")
+    base = run("rev-parse", "HEAD^")
     head = run("rev-parse", "HEAD")
 
     class Scripted:
         """Answers every unit with a candidate anchored in that unit's file."""
 
+        _model = "scripted-test-model"
         usage_records: list = []
 
         def __init__(self):
@@ -236,6 +247,8 @@ def _unit_review_report(tmp_path, *, units_enabled: int):
             import re as _re
 
             self.calls += 1
+            if call_counter is not None:
+                call_counter.append(system)
             path = _re.search(r"### (\S+\.py)", prompt)
             name = path.group(1) if path else "m0.py"
             if "candidate_id" in system:  # the verification schema lives in the system prompt
@@ -272,6 +285,7 @@ def _unit_review_report(tmp_path, *, units_enabled: int):
         pr, files, [], provider, 20, min_confidence=.65, repository_snapshot=snapshot,
         follow_changes=True, review_context=context,
         unit_review_max_units=units_enabled, unit_review_workers=1,
+        unit_checkpoint_path=str(checkpoint_path) if checkpoint_path is not None else None,
         unit_provider_factory=Scripted,
     )
     return report, provider
@@ -285,7 +299,44 @@ def test_unit_review_reviews_every_unit_when_the_prompt_is_truncated(tmp_path):
     assert report.metrics["units_reviewed"] == 8
     assert report.metrics["units_skipped_by_budget"] == 1
     assert report.metrics["units_failed"] == 0
-    assert len(report.suggestions) >= 1
+
+
+def test_unit_checkpoint_write_failure_keeps_report_and_marks_it_partial(tmp_path):
+    checkpoint_path = tmp_path / "metadata-is-a-directory"
+    checkpoint_path.mkdir()
+    report, _ = _unit_review_report(tmp_path / "repo", units_enabled=8,
+                                    checkpoint_path=checkpoint_path)
+    assert report.metrics["unit_checkpoint_failed"] == 8
+    assert report.execution_status == "degraded"
+    assert report.report_confidence == "partial"
+    assert report.suggestions or report.pending_suggestions
+    assert any("checkpoint persistence failed" in w for w in report.analysis_warnings)
+
+
+def test_engine_resume_uses_restored_result_without_fake_provider_calls(tmp_path):
+    checkpoint = tmp_path / "units.jsonl"
+    call_counter: list[str] = []
+    repo = tmp_path / "repo"
+    first, _ = _unit_review_report(
+        repo, units_enabled=8, checkpoint_path=checkpoint, call_counter=call_counter
+    )
+    expected = [s.model_dump(mode="json") for s in first.suggestions]
+    first_discovery_calls = first.metrics["discovery_request_count"]
+    first_verification_calls = first.metrics["behavior_verification_request_count"]
+    assert call_counter
+
+    call_counter.clear()
+    second, _ = _unit_review_report(
+        repo, units_enabled=8, checkpoint_path=checkpoint, repo_ready=True,
+        call_counter=call_counter,
+    )
+    assert call_counter == []
+    assert second.metrics["units_resumed"] == 8
+    assert [s.model_dump(mode="json") for s in second.suggestions] == expected
+    assert second.metrics["discovery_request_count"] == 0
+    assert second.metrics["behavior_verification_request_count"] == 0
+    assert second.metrics["discovery_calls_restored"] == first_discovery_calls > 0
+    assert second.metrics["verification_calls_restored"] == first_verification_calls > 0
 
 
 def test_unit_review_is_off_by_default(tmp_path):
@@ -370,14 +421,169 @@ def test_a_run_can_be_resumed_from_its_checkpoint(tmp_path):
     plan, files = plan_with_two_units()
     checkpoint = tmp_path / "units.jsonl"
 
-    first = review_by_units(plan, files, lambda c, f: grounded(), checkpoint_path=checkpoint)
-    assert all(o.status == "reviewed" for o in first.outcomes)
     calls: list[str] = []
+    identity = {"repo": "owner/repo", "number": 7, "base_sha": plan.base,
+                "head_sha": plan.head, "review_config_hash": "test"}
+    # First write a result using the same identity required for resume.
+    first = review_by_units(
+        plan, files, lambda c, f: grounded(suggestions=[suggestion(f[0].filename, 1)]),
+        checkpoint_path=checkpoint, checkpoint_identity=identity,
+    )
+    assert all(o.status == "reviewed" for o in first.outcomes)
+    calls.clear()
     second = review_by_units(plan, files, lambda c, f: calls.append("x") or grounded(),
-                             checkpoint_path=checkpoint)
+                             checkpoint_path=checkpoint, checkpoint_identity=identity)
     # Nothing was re-run: every unit was already terminal in the checkpoint.
     assert calls == []
     assert [o.status for o in second.outcomes] == ["resumed"] * len(plan.units)
+
+
+def test_resumed_unit_results_are_restored_into_the_production_merge(tmp_path):
+    plan, files = plan_with_two_units()
+    snapshot = _Mem({"src/a.py": "def foo(x):\n    return x\n", "src/b.py": "value = 2\n"})
+    checkpoint = tmp_path / "units.jsonl"
+
+    def review(ctx, unit_files_):
+        path = unit_files_[0].filename
+        return grounded(
+            summary=f"reviewed {path}",
+            suggestions=[suggestion(path, 1, f"finding in {path}")],
+            candidates=[{"candidate_id": 0, "suggestion": {"file_path": path}}],
+        )
+
+    first, _ = run_units_for_review(
+        review, snapshot, files, token_budget=1000, max_units=8, checkpoint_path=checkpoint,
+        checkpoint_identity={"repo": "owner/repo", "number": 7},
+    )
+    expected_suggestions = [s.model_dump(mode="json") for s in first.suggestions]
+    expected_candidates = first.candidates
+
+    def must_not_call(ctx, unit_files_):
+        raise AssertionError("completed units should be restored without provider calls")
+
+    resumed, details = run_units_for_review(
+        must_not_call, snapshot, files, token_budget=1000, max_units=8,
+        checkpoint_path=checkpoint, checkpoint_identity={"repo": "owner/repo", "number": 7},
+    )
+    assert details["units_resumed"] == len(plan.units)
+    assert [s.model_dump(mode="json") for s in resumed.suggestions] == expected_suggestions
+    assert resumed.candidates == expected_candidates
+
+
+def test_checkpoint_identity_change_reexecutes_unit_instead_of_reusing_result(tmp_path):
+    plan, files = plan_with_two_units()
+    snapshot = _Mem({"src/a.py": "def foo(x):\n    return x\n", "src/b.py": "value = 2\n"})
+    checkpoint = tmp_path / "units.jsonl"
+    calls: list[str] = []
+
+    def review(ctx, unit_files_):
+        path = unit_files_[0].filename
+        calls.append(path)
+        return grounded(suggestions=[suggestion(path, 1, f"model result {len(calls)}")])
+
+    run_units_for_review(
+        review, snapshot, files, token_budget=1000, max_units=1, checkpoint_path=checkpoint,
+        checkpoint_identity={"repo": "owner/repo", "number": 7, "model": "model-a"},
+    )
+    calls.clear()
+    result, details = run_units_for_review(
+        review, snapshot, files, token_budget=1000, max_units=1, checkpoint_path=checkpoint,
+        checkpoint_identity={"repo": "owner/repo", "number": 7, "model": "model-b"},
+    )
+    assert len(calls) == 1
+    assert details["units_resumed"] == 0
+    assert details["unit_checkpoint_issues"]
+    assert result.suggestions[0].title == "model result 1"
+
+
+@pytest.mark.parametrize("mutation", ["missing", "truncated", "schema"])
+def test_invalid_checkpoint_artifact_reexecutes_unit(tmp_path, mutation):
+    plan, files = plan_with_two_units()
+    snapshot = _Mem({"src/a.py": "def foo(x):\n    return x\n", "src/b.py": "value = 2\n"})
+    checkpoint = tmp_path / "units.jsonl"
+    identity = {"repo": "owner/repo", "number": 7, "model": "model-a"}
+    calls: list[str] = []
+
+    def review(ctx, unit_files_):
+        calls.append(unit_files_[0].filename)
+        return grounded(suggestions=[suggestion(unit_files_[0].filename, 1)])
+
+    run_units_for_review(
+        review, snapshot, files, token_budget=1000, max_units=1, checkpoint_path=checkpoint,
+        checkpoint_identity=identity,
+    )
+    record = json.loads(checkpoint.read_text(encoding="utf-8").splitlines()[-1])
+    artifact = checkpoint.with_name(checkpoint.name + ".results") / record["artifact"]
+    if mutation == "missing":
+        artifact.unlink()
+    elif mutation == "truncated":
+        artifact.write_bytes(b'{"schema_version":1')
+    else:
+        payload = json.loads(artifact.read_text(encoding="utf-8"))
+        payload["schema_version"] = 99
+        data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        artifact.write_bytes(data)
+        record["artifact_sha256"] = hashlib.sha256(data).hexdigest()
+        checkpoint.write_text(json.dumps(record) + "\n", encoding="utf-8")
+
+    calls.clear()
+    result, details = run_units_for_review(
+        review, snapshot, files, token_budget=1000, max_units=1, checkpoint_path=checkpoint,
+        checkpoint_identity=identity,
+    )
+    assert len(calls) == 1
+    assert details["units_resumed"] == 0
+    assert details["unit_checkpoint_issues"]
+    assert result.suggestions
+
+
+def test_checkpoint_write_failure_keeps_current_findings_and_marks_partial(tmp_path):
+    plan, files = plan_with_two_units()
+    snapshot = _Mem({"src/a.py": "def foo(x):\n    return x\n", "src/b.py": "value = 2\n"})
+    # A directory cannot be opened as the append-only metadata file; artifact
+    # storage still succeeds, and this run must preserve its in-memory result.
+    checkpoint = tmp_path / "not-a-file"
+    checkpoint.mkdir()
+    result, details = run_units_for_review(
+        lambda ctx, unit_files_: grounded(
+            suggestions=[suggestion(unit_files_[0].filename, 1)]
+        ),
+        snapshot, files, token_budget=1000, max_units=1, checkpoint_path=checkpoint,
+        checkpoint_identity={"repo": "owner/repo", "number": 7, "model": "model-a"},
+    )
+    assert details["unit_checkpoint_failed"] == 1
+    assert result.suggestions
+    assert f"checkpoint_write_failed:{plan.units[0].unit_id}" in details[
+        "unit_checkpoint_issues"
+    ]
+
+
+def test_orphan_artifact_without_metadata_is_never_treated_as_resumed(tmp_path):
+    plan, files = plan_with_two_units()
+    snapshot = _Mem({"src/a.py": "def foo(x):\n    return x\n", "src/b.py": "value = 2\n"})
+    checkpoint = tmp_path / "units.jsonl"
+    identity = {"repo": "owner/repo", "number": 7, "model": "model-a"}
+    calls: list[str] = []
+
+    def review(ctx, unit_files_):
+        calls.append(unit_files_[0].filename)
+        return grounded(suggestions=[suggestion(unit_files_[0].filename, 1)])
+
+    run_units_for_review(
+        review, snapshot, files, token_budget=1000, max_units=1, checkpoint_path=checkpoint,
+        checkpoint_identity=identity,
+    )
+    # Simulate a process dying after the result artifact is durable but before
+    # metadata references it.
+    checkpoint.write_text("", encoding="utf-8")
+    calls.clear()
+    result, details = run_units_for_review(
+        review, snapshot, files, token_budget=1000, max_units=1, checkpoint_path=checkpoint,
+        checkpoint_identity=identity,
+    )
+    assert len(calls) == 1
+    assert details["units_resumed"] == 0
+    assert result.suggestions
 
 
 def test_cancellation_stops_the_run_and_marks_the_rest(tmp_path):

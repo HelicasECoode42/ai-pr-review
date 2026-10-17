@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import re
 
@@ -426,7 +428,12 @@ def review_with_ai(
             pr, files, include_context_pack=not follow_changes, allow_remote_file_fetch=not follow_changes
         )
         if follow_changes and not two_stage and (repository_snapshot is not None or (pr.head_sha and pr.base_sha)):
-            from src.reviewer.grounded_review import review_grounded, build_grounded_report
+            from src.reviewer.grounded_review import (
+                DISCOVERY_SYSTEM,
+                VERIFY_SYSTEM,
+                build_grounded_report,
+                review_grounded,
+            )
             def run_one_unit(unit_ctx, unit_files, snapshot):
                 unit_provider = unit_provider_factory() if unit_provider_factory else provider
                 try:
@@ -454,6 +461,68 @@ def review_with_ai(
                 if unit_review_max_units and ctx.truncated and len(files) > 2:
                     from src.reviewer.unit_review import run_units_for_review
 
+                    checkpoint_identity = None
+                    model_name = getattr(provider, "model", None) or getattr(
+                        provider, "_model", None
+                    )
+                    if pr.repo and pr.number > 0 and snapshot.base and snapshot.head and model_name:
+                        from src.reviewer.criteria import CRITERIA_VERSION
+
+                        provider_client = getattr(provider, "_client", None)
+                        endpoint = str(getattr(provider_client, "base_url", ""))
+                        checkpoint_identity = {
+                            "repo": pr.repo,
+                            "pr_number": pr.number,
+                            "base_sha": snapshot.base,
+                            "head_sha": snapshot.head,
+                            "reviewer_version": reviewer_version,
+                            "strategy": "grounded-unit-v1:one-discovery-one-verification",
+                            "model": str(model_name),
+                            "provider_type": (
+                                f"{type(provider).__module__}.{type(provider).__qualname__}"
+                            ),
+                            "provider_config_hash": hashlib.sha256(
+                                json.dumps(
+                                    {
+                                        "endpoint": endpoint,
+                                        "reasoning_effort": getattr(
+                                            provider, "_reasoning_effort", None
+                                        ),
+                                        "max_output_tokens": getattr(
+                                            provider, "_max_output_tokens", None
+                                        ),
+                                        "stream": getattr(provider, "_stream", None),
+                                    },
+                                    sort_keys=True,
+                                    separators=(",", ":"),
+                                ).encode("utf-8")
+                            ).hexdigest(),
+                            "prompt_hash": hashlib.sha256((
+                                DISCOVERY_SYSTEM + VERIFY_SYSTEM + prompt_addendum
+                                + build_user_prompt("<unit-context>", max_suggestions, language,
+                                                    cross_file_evidence=True)
+                            ).encode("utf-8")).hexdigest(),
+                            "knowledge_hash": hashlib.sha256(
+                                json.dumps(
+                                    {
+                                        "prompt_addendum": prompt_addendum,
+                                        "contract_domains": contract_domains or {},
+                                    },
+                                    sort_keys=True,
+                                    separators=(",", ":"),
+                                    ensure_ascii=False,
+                                ).encode("utf-8")
+                            ).hexdigest(),
+                            "criteria_version": CRITERIA_VERSION,
+                            "evidence_tokens": min(
+                                repository_evidence_tokens, unit_evidence_tokens
+                            ),
+                            "verify_behavior": verify_behavior,
+                            "language": language,
+                            "max_suggestions": max_suggestions,
+                            "max_suggestions_per_file": max_suggestions_per_file,
+                        }
+
                     merged, unit_details = run_units_for_review(
                         lambda unit_ctx, unit_files: run_one_unit(unit_ctx, unit_files, snapshot),
                         snapshot, files,
@@ -461,15 +530,27 @@ def review_with_ai(
                         max_units=unit_review_max_units, max_workers=unit_review_workers,
                         cost_ceiling_tokens=unit_review_cost_ceiling_tokens,
                         checkpoint_path=unit_checkpoint_path,
+                        checkpoint_identity=checkpoint_identity,
                         max_attempts=unit_max_attempts,
                     )
                     if merged is not None and unit_details.get("units_reviewed"):
                         merged.bundle["unit_details"] = unit_details
+                        checkpoint_failed = bool(unit_details.get("unit_checkpoint_failed"))
+                        if checkpoint_failed:
+                            warnings.append(
+                                "Unit findings are included, but checkpoint persistence failed; "
+                                "a later resume may repeat model work."
+                            )
+                        unit_degradation_reason = (
+                            "unit_checkpoint_failed" if checkpoint_failed else degradation_reason
+                        )
                         return build_grounded_report(
                             pr, files, findings, merged, ctx, reviewer_version=reviewer_version,
-                            execution_status=execution_status, review_meta=review_meta,
-                            pr_syntax_ok=pr_syntax_ok, report_confidence=report_confidence,
-                            degradation_reason=degradation_reason,
+                            execution_status="degraded" if checkpoint_failed else execution_status,
+                            report_confidence="partial" if checkpoint_failed else report_confidence,
+                            degradation_reason=unit_degradation_reason,
+                            review_meta=review_meta,
+                            pr_syntax_ok=pr_syntax_ok,
                             max_input_tokens=max_input_tokens,
                             analyzer_warnings=warnings,
                         )

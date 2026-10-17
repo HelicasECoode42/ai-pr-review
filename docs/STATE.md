@@ -1,14 +1,15 @@
 # 状态一页纸（给新会话/压缩后接手用）
 
 > 只读这一页就能接着干。规范在 [`HARNESS.md`](HARNESS.md)，本页只放**当前事实与下一步**。
-> 当前状态更新：2026-10-17。HEAD `cfca0b4232ab5bc13236b97ca74967e8ba53f927`；C 源码/测试和计划状态仍是未提交工作区改动。下方原有数字与路线是历史记录，若与本状态块冲突，以本块和 [`HANDOFF.md`](../HANDOFF.md)、[唯一执行计划](review-v2-development.md)为准。
+> 当前状态更新：2026-10-18。HEAD `b84fd93321d72de7d487cef0e059d8b44825d88d`；unit checkpoint 结果恢复改动和本状态更新尚未提交。下方原有数字与路线是历史记录，若与本状态块冲突，以本块和 [`HANDOFF.md`](../HANDOFF.md)、[唯一执行计划](review-v2-development.md)为准。
 
-## 当前验证与边界（2026-10-17）
+## 当前验证与边界（2026-10-18）
 
-- 仓库解释器 `/Users/wangyufan/Desktop/code/ai-pr-review/ai-pr-review/.venv/bin/python -m pytest -q`：**396 passed**。此前 Anaconda Python 的单个 TypeScript 用例失败是因为该解释器缺少 `tree_sitter_typescript`；在 cfca0b4 临时源码树和当前工作区使用相同仓库 `.venv` 均通过该用例。
-- 仓库 `.venv/bin/ruff check --select E9,F63,F7,F82 src tests`、`criteria_gate.py`、`interface_audit.py`、14 条 synthetic `holdout_eval.py` 与 `git diff --check` 通过。interface audit 仍打印 7 个未使用参数报告项；门禁通过不代表这些参数已修复。
-- C 在工作区把隔离 Ruff 接到单 PR frozen base/head snapshot 扫描；Agent、CLI、Web detail 复用 snapshot，overview 显示 `not_run`。Ruff 新增行匹配只是未确认 candidate，不是语义 TP。无真实 PR/model/cost 结果。
-- snapshot 返回内容的读取/处理预算不是硬 I/O 限制：单次 `snapshot.read()` 仍可能先完整返回再检查大小；严格响应体上限/取消待办。另有 unit checkpoint 只恢复 metadata、可能遗漏已完成 findings 的问题待独立修复；不得宣称无损恢复或 exactly-once。阶段1的 fail-fast、候选持久账本与发布幂等仍未完成。
+- 仓库解释器 `/Users/wangyufan/Desktop/code/ai-pr-review/ai-pr-review/.venv/bin/python -m pytest -q`：**405 passed**，1 条 Starlette/httpx deprecation warning。此前 Anaconda Python 的单个 TypeScript 用例失败是因为该解释器缺少 `tree_sitter_typescript`；在 cfca0b4 临时源码树和当前分支使用相同仓库 `.venv` 均通过该用例。
+- `.venv/bin/ruff check --select E9,F63,F7,F82`、criteria/holdout/interface 三个离线 gate、`git diff --check` 通过。四个改动代码/测试文件的完整 Ruff 结果与 b84 基线对照无新增诊断；interface audit 仍打印 7 个未使用参数报告项，门禁通过不代表这些参数已修复。
+- C 已在 HEAD：隔离 Ruff 接入单 PR frozen base/head snapshot；Agent、CLI、Web detail 复用 snapshot，overview 显示 `not_run`。新增行匹配只是未确认 candidate，不是语义 TP。无真实 PR/model/cost 结果。
+- unit checkpoint 当前工作区改动以有匹配身份、校验通过的 JSON 结果产物恢复真实 findings；旧 metadata-only 记录不能标成成功恢复。当前模型结果若无法落盘仍保留在本次 partial 报告中，之后重跑可能重复请求。单进程中断恢复已有 fake-provider 测试；跨进程并发和强杀窗口不承诺 exactly-once，unit review 默认关闭。
+- snapshot 返回内容的读取/处理预算不是硬 I/O 限制：单次 `snapshot.read()` 仍可能先完整返回再检查大小；严格响应体上限/取消待办。阶段1的 fail-fast、候选持久账本与发布幂等仍未完成。
 
 ## 目标（已按实测重写）
 

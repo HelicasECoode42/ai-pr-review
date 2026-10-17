@@ -489,9 +489,24 @@ def build_grounded_report(pr, files, findings, result, context, *, reviewer_vers
     unit_details = result.bundle.get("unit_details")
     if isinstance(unit_details, dict):
         for key in ("units_planned", "units_reviewed", "units_failed", "units_skipped_by_budget",
-                    "unit_review", "units_resumed", "units_cancelled", "unit_attempts"):
+                    "unit_review", "units_resumed", "units_cancelled", "unit_attempts",
+                    "unit_checkpoint_failed", "discovery_calls_restored",
+                    "verification_calls_restored"):
             if isinstance(unit_details.get(key), int):
                 run_metrics[key] = unit_details[key]
+        # GroundedResult counters remain cumulative audit data after restoring
+        # checkpoints; request_count is specifically the work done this run.
+        for key in ("discovery_calls_this_run", "verification_calls_this_run"):
+            if isinstance(unit_details.get(key), int):
+                metric_key = key.removesuffix("_this_run")
+                request_key = (
+                    "discovery_request_count" if metric_key == "discovery_calls"
+                    else "behavior_verification_request_count"
+                )
+                run_metrics[request_key] = unit_details[key]
+        issues = unit_details.get("unit_checkpoint_issues")
+        if isinstance(issues, list):
+            run_metrics["unit_checkpoint_issue_count"] = len(issues)
     # What the reader must know about a truncated prompt: how much of the change
     # never reached the model at all.
     if result.unit_coverage:
