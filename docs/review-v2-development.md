@@ -1,8 +1,8 @@
 # Review V2：唯一执行计划
 
-更新：2026-10-18。代码基线 HEAD `b84fd93321d72de7d487cef0e059d8b44825d88d`；A/B/C 已在 HEAD，unit checkpoint 结果恢复和本状态更新尚在工作区。目标顺序是：**①让现有工具可信；②做跨文件意图 Agent；③用失败案例改进知识与策略**。本文件是唯一排期与验收计划；[PRD](PRD-review-capability-v2.md)只定义目标/边界，[HANDOFF](../HANDOFF.md)只做当前快照入口。旧 D1–D5、D2 图规划和 RSI 方案只作历史材料，不构成自动执行路线。
+更新：2026-10-18。代码基线 HEAD `216d6316d6c259533a01ae93ec81856c53905c38`；A/B/C 与 unit JSON 结果恢复已在 HEAD；阶段2意图取证窄切片及测试在工作区。目标顺序是：**①让现有工具可信；②做跨文件意图 Agent；③用失败案例改进知识与策略**。本文件是唯一排期与验收计划；[PRD](PRD-review-capability-v2.md)只定义目标/边界，[HANDOFF](../HANDOFF.md)只做当前快照入口。旧 D1–D5、D2 图规划和 RSI 方案只作历史材料，不构成自动执行路线。
 
-本轮前 A/B 已完成并进入 HEAD：Playbook 真实 PR repo、语言/path/symbol 作用域与 scoped contract 的 fail-closed 边界；最终上下文排序保留 over-budget triage 优先级。C 已于 `b84fd93` 接通冻结 base/head snapshot Ruff scan、新增行候选归因、明确 unavailable/partial 与同一 snapshot 复用。2026-10-18 unit checkpoint 恢复实现和测试尚在工作区：只接受身份匹配、hash 与 schema 校验通过的 JSON 结果产物；metadata-only 记录不会伪装成成功恢复。仓库 `.venv/bin/python -m pytest -q` 为 **405 passed**；Ruff 关键错误规则、criteria/holdout/interface 离线 gate、完整 Ruff 相对 b84 基线无新增诊断、`git diff --check` 均通过。此前 Anaconda Python 缺 TS grammar 的失败已由同一 `.venv` 下 cfca0b4 临时基线和当前分支各自通过该用例证实为环境差异。`criteria_gate.py` 的 safe-division domain 由测试 fixture 显式输入，KB-0003 仍为 candidate。没有真实 PR/模型质量验证。**阶段1仍未完成**：snapshot 底层单次读取硬 I/O 上限、启用但未接线路径门禁、完整候选账本与发布幂等仍待做；unit 跨进程并发/强杀恢复不承诺 exactly-once，#46 不可标记关闭。
+本轮前 A/B 已完成并进入 HEAD：Playbook 真实 PR repo、语言/path/symbol 作用域与 scoped contract 的 fail-closed 边界；最终上下文排序保留 over-budget triage 优先级。C 已于 `b84fd93` 接通冻结 base/head snapshot Ruff scan、新增行候选归因、明确 unavailable/partial 与同一 snapshot 复用。Unit checkpoint 只从身份匹配、hash 与 schema 校验通过的 JSON 结果产物恢复；metadata-only 不会伪装成功。阶段2窄切片现已在 grounded review 同一 discovery 阶段接入假设与有界 read/search 任务，host 执行冻结 snapshot 取证并将证据交给现有 verifier；fake-provider 测试验证任务绑定、证据来源、去重和停止边界。`.venv/bin/python -m pytest -q` 为 **420 passed**，有 1 条 Starlette/httpx deprecation warning；关键 Ruff 规则、criteria/holdout/interface 离线 gate、6 个改动 Python 文件完整 Ruff 相对代码基线无新增诊断、`git diff --check` 均通过。`criteria_gate.py` 的 safe-division domain 由测试 fixture 显式输入，KB-0003 仍为 candidate。没有真实 PR/模型质量或 token/cost 收益验证。**阶段1仍未完成**：snapshot 底层单次读取硬 I/O 上限、启用但未接线路径门禁、完整候选账本与发布幂等仍待做；unit 跨进程并发/强杀恢复不承诺 exactly-once，#46 不可标记关闭。
 
 ### 2026-10-17：确定性 Ruff 接线的完成边界
 
@@ -48,6 +48,8 @@
 
 链路是：PR 描述和 diff 提供**可疑意图**，而非规范真值 → 生成 `intent hypotheses`（目标、约束、风险、未知、证据与置信依据）→ 选择相关文件/测试/调用方形成 review plan → 有界工具读取原始证据并记录 side/SHA/path/line/边来源 → 按证据修订假设 → 对候选做分类核验 → 发布 confirmed 或明确 partial/needs-context。
 
+**2026-10-18 本地接线进展**：当前先交付 grounded review 的小范围垂直切片，不声称完整自主 planner。Discovery 同一模型阶段可给出有 id 的假设和 read/search 任务；host 只对已知 id 执行冻结 snapshot 查询，计划、规范化查询、执行状态和 refs 写入审计。验证阶段只接受同一假设任务实际取得、且仍展示在 prompt 中的 refs；PR 描述可作为假设来源，不能作为代码证据；assessment 不能单独确认/撤销 finding。未知/无绑定任务不执行；旧的无计划 verifier 请求保留为 candidate-scoped 兼容并显式标记。重复取证复用同一 snapshot 查询结果；无新证据和预算终点由 host 阻止后续调用并记 partial。定向 fake-provider tests 已覆盖 caller/callee、描述反证、错误 id、去重、无新证据、终点请求、checkpoint roundtrip 和多单元合并；真实模型效果、质量、延迟及 token/cost 收益仍未知。
+
 先做小范围关系证据：静态 import、符号、API 参数/返回契约、调用点、测试引用；每条边标 `resolved/heuristic/unresolved`，不追求“全仓完整调用图”。模型只规划下一步读取，宿主执行并限制跳数、文件数、输出量、时限和请求预算；检索结果存成同一 run 的不可变 evidence refs，按需 hydration，重复证据去重。跨文件 bug 的发布必须展示改变了什么行为、谁受影响、为何能从入口到达；仅有同名/弱边不能确认为调用关系。
 
 **Done 条件**：先在冻结 PR 子集建立人工根因标签；比较当前方法与意图计划，在相同候选范围/每 PR 预算下报告 N/S/D/P：N=人工 gold，S=实际进入模型上下文的 gold，D=语义上发现的 gold，P=最终发布且人工判定正确的 gold；记录 FP、未读证据、partial、重复读取、tokens/cost、请求次数、时延和失败。位置命中只作为定位 proxy，需盲化人工语义裁定。先 fake provider 验工具/流程；真实模型实验先提交预算上限和冻结协议，经批准后小批执行。成本减少只有在相同覆盖与质量下实际 usage/重复调用下降才成立。
@@ -65,7 +67,7 @@
 | 规则、知识 scope、lint 与冻结快照 | A/B 已进 HEAD；C 核心已在工作区，底层硬 I/O 上限待做 | 单 PR 共用 snapshot → 规则/隔离 Ruff → changed-line 候选归因 → scope 召回 → 状态报告 | 阶段1 | 冻结快照报告；scope/lint 回归反例；不可用显式状态；底层响应截断另验 |
 | 预算、hunk 顺序与覆盖 | B 已进 HEAD，fixture 通过 | 输入清单 → triage → 最终选择 → 每 hunk 终态 → omission | 阶段1 | 超预算 fixtures 显示 triage 风险进入最终上下文；所有 hunk 有终态 |
 | 候选/判定/发布账本 | 组件存在、生产未接 | candidate id → 每阶段事件 → verdict/过滤 → 发布或扣下原因 | 阶段1 | 一次 run 的完整 candidate ledger；重试/重复运行不重复发评论 |
-| 跨文件 Agent 计划与取证 | 部分原型、未知真实增益 | intent hypothesis → relation plan → bounded read → evidence refs → update | 阶段2 | 冻结 PR 人工语义评测；S/D/P 独立；跨文件分层结果 |
+| 跨文件 Agent 计划与取证 | grounded 窄切片已接线，真实增益未知 | intent hypothesis → bound read/search → frozen snapshot evidence refs → verifier assessment → finding 仍走原判据 | 阶段2 | 冻结 PR 人工语义评测；S/D/P 独立；跨文件分层结果；同质量成本对照 |
 | 可取消、限时和可恢复执行 | 部分：unit JSON 产物恢复已接入且默认关闭；快照硬 I/O、跨进程并发与强杀窗口仍未知 | run identity → 原子结果 artifact + metadata hash → schema/identity 校验 → resume 或显式重跑/partial | 阶段1可信状态后，独立交付 | 已有 fake-provider 双轮与损坏/缺件/身份变更测试；继续做故障注入；取消不发布；强杀窗口不宣称 exactly-once |
 | 知识候选、隔离回放与晋升/回滚 | 未接闭环 | 失败 trace → candidate → isolated replay → human decision → version/rollback | 阶段1 ledger + 阶段2标签集 | 知识版本与来源 case；冻结开发集/独立留出结果；可回滚记录 |
 

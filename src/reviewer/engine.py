@@ -476,7 +476,10 @@ def review_with_ai(
                             "base_sha": snapshot.base,
                             "head_sha": snapshot.head,
                             "reviewer_version": reviewer_version,
-                            "strategy": "grounded-unit-v1:one-discovery-one-verification",
+                            "strategy": (
+                                "grounded-unit-v2:intent-plan-v1:"
+                                "one-discovery-one-verification"
+                            ),
                             "model": str(model_name),
                             "provider_type": (
                                 f"{type(provider).__module__}.{type(provider).__qualname__}"

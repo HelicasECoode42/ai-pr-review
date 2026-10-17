@@ -1,6 +1,6 @@
 # AI PR Review：当前交接
 
-快照日期：2026-10-17。当前本地 HEAD 为 `cfca0b4232ab5bc13236b97ca74967e8ba53f927`，分支 `codex/evaluation-driven-review`；本轮 C 的源码、测试和下述计划状态更新仍未提交，工作区变更须保留。线上状态未在本轮复核；提交或推送前重新核对远端和 PR #45。
+快照日期：2026-10-18。代码基线为 `216d6316d6c259533a01ae93ec81856c53905c38`，分支 `codex/evaluation-driven-review`；跨文件意图取证实现和状态更新仍在工作区，独立案例报告由并行工作保留。没有真实模型调用；本轮不得推送。
 
 ## 先读
 
@@ -17,14 +17,15 @@
 - C 的核心接线在本轮工作区实现：Ruff 仅在单 PR scan 中通过共用的 base/head snapshot 运行，overview 不启动 Ruff；新增行结果作为未语义确认的 lint candidate，并带工具/快照/失败状态。子进程有输出与超时硬边界；source read 有数量、返回文本和处理预算，但底层 `snapshot.read()` 仍可能先完整取回单次响应再检查大小，不能称硬 I/O 上限。平台管道限制和本地源码门禁已测，Windows 未验证。
 - `src/reviewer/decision_ledger.py` 和 `src/reviewer/publish.py` 实现了账本/指纹/驳回记忆组件，但本轮源码检索未找到 `src/` 生产调用。不要声称已具备生产级完整候选账本或发布去重闭环。
 - Grounded 发现/证据/核验中的静态边或一跳搜索是有界线索，不是完整调用图或可达性证明。受限 witness 只能处理有限表达式输入域。
+- 阶段2窄切片已接入 `grounded_review`：假设与 bound read/search 在同一次 discovery 请求内传递，真实任务经冻结 snapshot 执行、带 evidence refs 进入既有 verification；任务/假设状态不直接改变 finding verdict。未绑定/未知 hypothesis 不执行；同查询复用、无新证据强制停止、任务溢出聚合、evicted refs 不计入 assessment。旧无计划的 verifier 请求只保留 candidate-scoped 兼容状态。70 个 grounded/unit 定向测试通过；真实模型效果、语义 precision/recall 与 token 节省均未测。
 
 ## 评测主张边界
 
 - 219 个 ReviewBench PR / 2623 个 TP 是数据规模，不是模型效果；25 PR 已接触过，后切出的 15 PR holdout 不能作未见留出。14 个 `holdout_eval.py` case 是合成表达式判据 fixture。
 - `reports/real-run/b7b-diagnostic.json` 可复算 5 PR/43 gold 的 raw file+line match：5/6 published match=83.3% 位置 precision，5/43=11.63% published recall，8/43=18.60% identified recall。它不是人工语义裁决，产物也不足以复原完整模型/配置/重试/费用协议。
 - 选材 coverage、fixture 通过、位置匹配与人工判断的真实 Bug 发现必须分别报告，不能拼成同一个漏斗，也不能从这些数字推出“完整可审计”或“瓶颈已移到识别”。
-- 费用未知记 unknown；真实模型实验先核对预算和冻结协议。本轮未授权模型调用。
-- 2026-10-17 验证：使用仓库 `.venv/bin/python -m pytest -q` 得 **396 passed**；仓库 `.venv/bin/ruff check --select E9,F63,F7,F82 src tests`、`criteria_gate.py`、`interface_audit.py`、14 条 synthetic `holdout_eval.py` 和 `git diff --check` 均通过。此前 `/opt/anaconda3/bin/python` 全量结果的单个 TS 用例失败是该解释器缺少 `tree_sitter_typescript`；同一 `.venv` 下 `cfca0b4` 临时基线和当前分支的该用例均通过。无真实 PR/模型效果验证。C 的硬 I/O 上限和 unit checkpoint 结果恢复仍待办，详见[唯一执行计划](docs/review-v2-development.md)。
+- 费用未知记 unknown；真实模型实验先核对预算和冻结协议。本轮未执行模型调用。
+- 2026-10-18 验证：使用仓库 `.venv/bin/python -m pytest -q` 得 **420 passed**；关键 Ruff 规则、`criteria_gate.py`、`interface_audit.py`、14 条 synthetic `holdout_eval.py` 和 `git diff --check` 均通过。6 个改动 Python 文件的完整 Ruff 诊断与代码基线相比无新增规则/消息。阶段2为 fake-provider/fixture 验证；无真实 PR 或模型质量、成本收益结论。C 的单次 snapshot 硬 I/O 上限和 unit checkpoint 跨进程/强杀恢复仍待办，详见[唯一执行计划](docs/review-v2-development.md)。
 
 ## 决策方向
 

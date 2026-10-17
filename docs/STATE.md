@@ -1,11 +1,14 @@
 # 状态一页纸（给新会话/压缩后接手用）
 
 > 只读这一页就能接着干。规范在 [`HARNESS.md`](HARNESS.md)，本页只放**当前事实与下一步**。
-> 当前状态更新：2026-10-18。HEAD `b84fd93321d72de7d487cef0e059d8b44825d88d`；unit checkpoint 结果恢复改动和本状态更新尚未提交。下方原有数字与路线是历史记录，若与本状态块冲突，以本块和 [`HANDOFF.md`](../HANDOFF.md)、[唯一执行计划](review-v2-development.md)为准。
+> 当前状态更新：2026-10-18。代码基线 `216d6316d6c259533a01ae93ec81856c53905c38`；跨文件意图取证实现和本状态更新仍在工作区，独立案例报告由并行工作保留。下方原有数字与路线是历史记录，若与本状态块冲突，以本块和 [`HANDOFF.md`](../HANDOFF.md)、[唯一执行计划](review-v2-development.md)为准。
 
 ## 当前验证与边界（2026-10-18）
 
-- 仓库解释器 `/Users/wangyufan/Desktop/code/ai-pr-review/ai-pr-review/.venv/bin/python -m pytest -q`：**405 passed**，1 条 Starlette/httpx deprecation warning。此前 Anaconda Python 的单个 TypeScript 用例失败是因为该解释器缺少 `tree_sitter_typescript`；在 cfca0b4 临时源码树和当前分支使用相同仓库 `.venv` 均通过该用例。
+- 阶段2本地工作区已接通一条意图取证切片：同一次 grounded discovery 生成假设与 bound read/search，host 在固定快照执行，真实证据 refs 进入 verifier；假设评估只作注释，不覆盖 finding 的 quote/chain/witness 判据。未知/未绑定任务不读源码；重复请求复用、无新增证据后强制停止、budget-final requests 标记未执行。单机 fixture 流程可测，真实模型质量/召回/成本节省尚无结论。
+- `.venv/bin/python -m pytest -q`：**420 passed**，1 条 Starlette/httpx deprecation warning。关键 Ruff 规则、criteria/holdout/interface 离线 gates、6 个改动 Python 文件完整 Ruff 相对基线无新增诊断，以及 `git diff --check` 均通过。
+
+- 阶段2只由 fake-provider 与本地 fixture 验证；没有真实模型质量、召回、token 或成本收益结论。C 的单次 snapshot 硬 I/O 上限和 unit checkpoint 跨进程/强杀恢复仍待办；有效 JSON 产物恢复不代表 exactly-once。
 - `.venv/bin/ruff check --select E9,F63,F7,F82`、criteria/holdout/interface 三个离线 gate、`git diff --check` 通过。四个改动代码/测试文件的完整 Ruff 结果与 b84 基线对照无新增诊断；interface audit 仍打印 7 个未使用参数报告项，门禁通过不代表这些参数已修复。
 - C 已在 HEAD：隔离 Ruff 接入单 PR frozen base/head snapshot；Agent、CLI、Web detail 复用 snapshot，overview 显示 `not_run`。新增行匹配只是未确认 candidate，不是语义 TP。无真实 PR/model/cost 结果。
 - unit checkpoint 当前工作区改动以有匹配身份、校验通过的 JSON 结果产物恢复真实 findings；旧 metadata-only 记录不能标成成功恢复。当前模型结果若无法落盘仍保留在本次 partial 报告中，之后重跑可能重复请求。单进程中断恢复已有 fake-provider 测试；跨进程并发和强杀窗口不承诺 exactly-once，unit review 默认关闭。

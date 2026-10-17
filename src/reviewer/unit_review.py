@@ -530,9 +530,12 @@ def _dedupe(items: list, key) -> list:
 def _merge_bundles(bundles: list[dict]) -> dict:
     """Concatenate list-valued audit fields, sum counters, keep caps as-is."""
     merged: dict = {}
+    intent_plans = []
     for bundle in bundles:
         for key, value in bundle.items():
-            if isinstance(value, list):
+            if key == "intent_plan" and isinstance(value, dict):
+                intent_plans.append(value)
+            elif isinstance(value, list):
                 merged.setdefault(key, [])
                 merged[key].extend(value)
             elif isinstance(value, bool):
@@ -541,6 +544,14 @@ def _merge_bundles(bundles: list[dict]) -> dict:
                 merged[key] = merged.get(key, 0) + value
             else:
                 merged.setdefault(key, value)
+    if intent_plans:
+        merged["intent_plan"] = (
+            intent_plans[0] if len(intent_plans) == 1 else {
+                "schema_version": 1,
+                "status": "aggregate",
+                "plans": intent_plans,
+            }
+        )
     return merged
 
 

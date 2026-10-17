@@ -11,6 +11,7 @@ from src.analyzer.repository_context import EvidenceBundle, GitSnapshot, safe_so
 from src.evaluation.reviewbench import parse_diff
 from src.models import PullRequest
 from src.reviewer.engine import review_with_ai
+from src.reviewer.grounded_review import review_grounded
 
 
 def git(root, *args):
@@ -38,7 +39,10 @@ class Provider:
         self.calls = []
     def complete_json(self, system, prompt):
         self.calls.append((system, prompt))
-        return json.dumps(next(self.responses))
+        response = next(self.responses)
+        if callable(response):
+            response = response(system, prompt)
+        return json.dumps(response)
 
 
 def candidate(confidence=.4):
@@ -60,17 +64,167 @@ def verdict(**updates):
     return {"items": [{**item, **updates}]}
 
 
-def run(repo, responses):
+def run(repo, responses, *, description=""):
     root, base, head = repo
     snapshot = GitSnapshot(root, base, head)
     files = parse_diff(git(root, "diff", base, head))
-    pr = PullRequest(repo="fixture/repo", number=1, title="Return contract", base_sha=base, head_sha=head)
+    pr = PullRequest(repo="fixture/repo", number=1, title="Return contract", body=description,
+                     base_sha=base, head_sha=head)
     context = build_review_context(pr, files, include_context_pack=False, allow_remote_file_fetch=False)
     provider = Provider(responses)
     report = review_with_ai(pr, files, [], provider, 20, min_confidence=.65,
                             repository_snapshot=snapshot, follow_changes=True,
                             review_context=context)
     return report, provider
+
+
+def planned_hypotheses():
+    return [{
+        "id": "H1",
+        "goal": "Preserve the return contract used by callers",
+        "constraints": ["Changed HEAD callers must accept the new shape"],
+        "risk_hypotheses": ["An unchanged caller may still unpack the former tuple"],
+        "unknowns": ["Whether all callers were migrated"],
+        "source_refs": ["diff:users.py"],
+    }]
+
+
+def intent_search_request():
+    return [{
+        "hypothesis_id": "H1", "purpose": "Check the unchanged caller contract",
+        "tool": "search", "symbol": "get_profile", "side": "head",
+    }]
+
+
+def task_evidence_refs(prompt, hypothesis_id="H1"):
+    marker = "## Intent hypotheses (untrusted, evidence-linked annotations only)\n"
+    plan, _ = json.JSONDecoder().raw_decode(prompt.split(marker, 1)[1].lstrip())
+    return [ref for task in plan["tasks"] if task["hypothesis_id"] == hypothesis_id
+            for ref in task["evidence_refs"]]
+
+
+def test_intent_plan_executes_frozen_cross_file_task_and_verification_cites_it(repo):
+    def assess(system, prompt):
+        refs = task_evidence_refs(prompt)
+        return {**verdict(), "intent_assessments": [{
+            "hypothesis_id": "H1", "status": "supported",
+            "evidence_refs": refs, "rationale": "The unchanged caller still unpacks two values",
+            "unknowns": [],
+        }]}
+
+    report, provider = run(repo, [
+        {"intent_hypotheses": planned_hypotheses(), "context_requests": intent_search_request()},
+        {**candidate(), "intent_hypotheses": planned_hypotheses()},
+        assess,
+    ])
+
+    intent = report.repository_context["intent_plan"]
+    assert intent["status"] == "assessed"
+    assert intent["tasks"][0]["hypothesis_id"] == "H1"
+    assert intent["tasks"][0]["status"] == "executed_with_evidence"
+    assert intent["tasks"][0]["evidence_refs"]
+    assert "name, age = get_profile()" in provider.calls[-1][1]
+    assert intent["assessments"][0]["evidence_refs"] == intent["tasks"][0]["evidence_refs"]
+    assert len(report.suggestions) == 1
+
+
+def test_pr_description_is_only_a_hypothesis_and_cannot_confirm_a_candidate(repo):
+    def needs_context_with_refutation(system, prompt):
+        refs = task_evidence_refs(prompt)
+        item = {**verdict()["items"][0], "decision": "needs_context", "evidence": []}
+        return {"items": [item], "intent_assessments": [{
+            "hypothesis_id": "H1", "status": "refuted",
+            "evidence_refs": refs, "rationale": "The unchanged caller still unpacks the old shape",
+            "unknowns": [],
+        }]}
+
+    report, provider = run(repo, [
+        {"intent_hypotheses": [dict(planned_hypotheses()[0],
+            source_refs=["pr:description"],
+            goal="The description claims every caller now handles a mapping")],
+         "context_requests": intent_search_request()},
+        {**candidate(), "intent_hypotheses": [dict(planned_hypotheses()[0],
+            source_refs=["pr:description"],
+            goal="The description claims every caller now handles a mapping")]},
+        needs_context_with_refutation,
+    ], description="All callers have been migrated to the mapping return shape.")
+
+    intent = report.repository_context["intent_plan"]
+    assert "All callers have been migrated" in provider.calls[0][1]
+    assert intent["assessments"][0]["status"] == "refuted"
+    assert intent["assessments"][0]["evidence_refs"]
+    assert report.suggestions == []
+    assert report.pending_suggestions
+
+
+def test_hypothesis_cannot_borrow_another_hypothesis_task_evidence(repo):
+    hypotheses = [*planned_hypotheses(), {
+        "id": "H2", "goal": "Check the base-side caller",
+        "constraints": [], "risk_hypotheses": [], "unknowns": [],
+        "source_refs": ["diff:users.py"],
+    }]
+    requests = [intent_search_request()[0], {
+        "hypothesis_id": "H2", "purpose": "Compare the base caller",
+        "tool": "read", "path": "caller.py", "line": 3, "side": "base",
+    }]
+
+    def borrow_other_hypothesis_evidence(system, prompt):
+        marker = "## Intent hypotheses (untrusted, evidence-linked annotations only)\n"
+        plan = json.loads(prompt.split(marker, 1)[1])
+        refs = [ref for task in plan["tasks"] if task["hypothesis_id"] == "H2"
+                for ref in task["evidence_refs"]]
+        return {**verdict(), "intent_assessments": [{
+            "hypothesis_id": "H1", "status": "supported", "evidence_refs": refs,
+            "rationale": "Only cites the other hypothesis's evidence", "unknowns": [],
+        }]}
+
+    report, _ = run(repo, [
+        {"intent_hypotheses": hypotheses, "context_requests": requests},
+        {**candidate(), "intent_hypotheses": hypotheses},
+        borrow_other_hypothesis_evidence,
+    ])
+
+    assessment = report.repository_context["intent_plan"]["assessments"][0]
+    assert assessment["hypothesis_id"] == "H1"
+    assert assessment["status"] == "unknown"
+    assert assessment["evidence_refs"] == []
+    assert report.suggestions
+
+
+def test_verification_request_for_unknown_hypothesis_is_not_executed(repo):
+    request = {"hypothesis_id": "H1", "purpose": "Find caller",
+               "tool": "search", "symbol": "get_profile", "side": "head"}
+
+    unknown_request = {
+            "hypothesis_id": "H2", "purpose": "Not in the plan",
+            "tool": "search", "symbol": "render", "side": "head",
+    }
+
+    def verify_with_unknown_request(system, prompt):
+        return {"context_requests": [unknown_request]}
+
+    def final_verdict(system, prompt):
+        refs = task_evidence_refs(prompt)
+        return {**verdict(), "context_requests": [unknown_request], "intent_assessments": [{
+            "hypothesis_id": "H1", "status": "supported", "evidence_refs": refs,
+            "rationale": "The caller source supports this hypothesis", "unknowns": [],
+        }]}
+
+    report, _ = run(repo, [
+        {"intent_hypotheses": planned_hypotheses(), "context_requests": [request]},
+        {**candidate(), "intent_hypotheses": planned_hypotheses()},
+        verify_with_unknown_request,
+        final_verdict,
+    ])
+
+    verification_searches = [
+        entry["normalized_query"]["symbol"] for entry in report.repository_context["requests"]
+        if entry.get("normalized_query", {}).get("tool") == "search"
+    ]
+    assert verification_searches == ["get_profile"]
+    assert [task["status"] for task in report.repository_context["intent_plan"]["tasks"][-2:]] == [
+        "unknown_hypothesis_id", "not_executed_no_new_evidence",
+    ]
 
 
 def test_follows_unchanged_caller_and_verifies_low_confidence_candidate(repo):
@@ -101,12 +255,169 @@ def test_dismissal_requires_counter_evidence(repo):
 
 
 def test_model_can_request_frozen_caller_before_verification(repo):
-    response = {**candidate(), "context_requests": [{"tool": "search", "symbol": "render", "side": "head"}]}
-    report, provider = run(repo, [response, candidate(), verdict()])
+    request = {"hypothesis_id": "H1", "purpose": "Find caller", "tool": "search",
+               "symbol": "render", "side": "head"}
+    report, provider = run(repo, [
+        {"intent_hypotheses": planned_hypotheses(), "context_requests": [request]},
+        {**candidate(), "intent_hypotheses": planned_hypotheses()}, verdict(),
+    ])
     assert len(provider.calls) == 3
     assert report.repository_context["requests"][0]["executed"]
     assert report.metrics["discovery_request_count"] == 2
     assert report.suggestions
+
+
+def test_unbound_legacy_context_request_does_not_touch_snapshot(repo):
+    report, provider = run(repo, [
+        {**candidate(), "context_requests": [
+            {"tool": "search", "symbol": "render", "side": "head"}
+        ]},
+        candidate(), verdict(),
+    ])
+
+    assert len(provider.calls) == 3
+    assert report.repository_context["intent_plan"]["tasks"][0]["status"] == "unbound_task"
+    assert report.repository_context["requests"] == []
+    assert len(report.suggestions) == 1
+
+
+def test_legacy_verification_request_without_plan_is_scoped_to_candidate(repo):
+    report, _ = run(repo, [candidate(), {
+        "context_requests": [{"tool": "search", "symbol": "get_profile", "side": "head"}]
+    }, verdict()])
+
+    legacy = [entry for entry in report.repository_context["requests"]
+              if entry.get("scope") == "legacy_candidate_verification"]
+    assert len(legacy) == 1
+    assert report.repository_context["intent_plan"]["status"] == "not_reported"
+
+
+def test_explicit_unknown_verification_hypothesis_is_rejected_without_a_plan(repo):
+    report, _ = run(repo, [candidate(), {
+        "context_requests": [{
+            "hypothesis_id": "H2", "purpose": "unknown", "tool": "search",
+            "symbol": "render", "side": "head",
+        }]
+    }, verdict()])
+
+    assert report.repository_context["requests"] == []
+    assert report.repository_context["intent_plan"]["status"] == "partial"
+    assert report.repository_context["intent_plan"]["tasks"][0]["status"] == (
+        "unknown_hypothesis_id"
+    )
+
+
+def test_task_for_unknown_hypothesis_is_not_executed(repo):
+    request = {"hypothesis_id": "H2", "purpose": "Find caller", "tool": "search",
+               "symbol": "render", "side": "head"}
+    report, _ = run(repo, [
+        {"intent_hypotheses": planned_hypotheses(), "context_requests": [request]},
+        {**candidate(), "intent_hypotheses": planned_hypotheses()}, verdict(),
+    ])
+
+    assert report.repository_context["intent_plan"]["tasks"][0]["status"] == "unknown_hypothesis_id"
+    assert report.repository_context["requests"] == []
+
+
+def test_duplicate_snapshot_search_executes_once_and_reuses_evidence(repo):
+    root, base, head = repo
+
+    class CountingSnapshot(GitSnapshot):
+        def __init__(self, *args):
+            super().__init__(*args)
+            self.search_calls = 0
+
+        def search(self, symbol, side="head", limit=6):
+            self.search_calls += 1
+            return super().search(symbol, side, limit)
+
+    bundle = EvidenceBundle(CountingSnapshot(root, base, head))
+    request = {"hypothesis_id": "H1", "purpose": "Find caller", "tool": "search",
+               "symbol": "get_profile", "side": "head"}
+    outcomes = bundle.execute([request, request])
+
+    assert bundle.snapshot.search_calls == 1
+    assert outcomes[0]["status"] == outcomes[1]["status"] == "executed_with_evidence"
+    assert outcomes[1]["reused"] is True
+    assert outcomes[0]["evidence_refs"] == outcomes[1]["evidence_refs"]
+
+
+def test_requested_evidence_is_protected_from_later_budget_pressure(repo):
+    root, base, head = repo
+    bundle = EvidenceBundle(GitSnapshot(root, base, head), budget=6000)
+    first_ref = bundle.add("caller.py", 3, kind="changed_definition")
+    outcome = bundle.execute([{
+        "hypothesis_id": "H1", "purpose": "Keep the caller evidence available",
+        "tool": "read", "path": "caller.py", "line": 3, "side": "head",
+    }])[0]
+    bundle.budget = bundle.tokens + 1
+    bundle.add("users.py", 2, kind="requested_definition")
+
+    assert outcome["evidence_refs"] == [first_ref]
+    assert any(item["evidence_ref"] == first_ref for item in bundle.excerpts)
+    assert next(item for item in bundle.excerpts if item["evidence_ref"] == first_ref)["kind"] == (
+        "requested_definition"
+    )
+    assert any(item["reason"] == "evidence_budget_exhausted" for item in bundle.omitted)
+
+
+def test_empty_context_result_forces_final_discovery_without_repeating_search(repo):
+    request = {"hypothesis_id": "H1", "purpose": "Find a missing caller",
+               "tool": "search", "symbol": "absent_symbol", "side": "head"}
+    report, provider = run(repo, [
+        {"intent_hypotheses": planned_hypotheses(), "context_requests": [request]},
+        {"intent_hypotheses": planned_hypotheses(), "context_requests": [request]},
+        {**candidate(), "intent_hypotheses": planned_hypotheses()}, verdict(),
+    ])
+
+    assert len(provider.calls) == 4
+    assert "added no new evidence" in provider.calls[1][1]
+    assert report.repository_context["intent_plan"]["tasks"][0]["status"] == "executed_no_evidence"
+    assert report.repository_context["intent_plan"]["tasks"][1]["status"] == (
+        "not_executed_no_new_evidence"
+    )
+    assert len(report.repository_context["requests"]) == 1
+    assert len(report.repository_context["discovery_trace"]) == 3
+
+
+def test_intent_request_overflow_is_aggregated_without_unbounded_plan_growth(repo):
+    requests = [{"hypothesis_id": "H2", "purpose": "invalid", "tool": "search",
+                 "symbol": "render", "side": "head"} for _ in range(100)]
+    report, _ = run(repo, [
+        {"intent_hypotheses": planned_hypotheses(), "context_requests": requests},
+        {**candidate(), "intent_hypotheses": planned_hypotheses()}, verdict(),
+    ])
+
+    plan = report.repository_context["intent_plan"]
+    assert len(plan["tasks"]) == 4
+    assert plan["request_overflow_count"] == 96
+    assert plan["errors"][:2] == ["request_limit_exceeded", "unknown_hypothesis_id"]
+    assert report.repository_context["requests"] == []
+
+
+def test_final_discovery_round_records_requests_without_executing_them(repo):
+    root, base, head = repo
+    snapshot = GitSnapshot(root, base, head)
+    files = parse_diff(git(root, "diff", base, head))
+    pr = PullRequest(repo="fixture/repo", number=1, title="Return contract",
+                     base_sha=base, head_sha=head)
+    context = build_review_context(
+        pr, files, include_context_pack=False, allow_remote_file_fetch=False
+    )
+    request = {**intent_search_request()[0], "symbol": "get_profile"}
+    provider = Provider([
+        {"intent_hypotheses": planned_hypotheses(), "context_requests": [request]},
+        {**candidate(), "intent_hypotheses": planned_hypotheses(), "context_requests": [request]},
+        verdict(),
+    ])
+
+    result = review_grounded(pr, files, provider, snapshot, context, discovery_rounds=2)
+
+    assert result.bundle["intent_plan"]["status"] == "partial"
+    assert [task["status"] for task in result.bundle["intent_plan"]["tasks"]] == [
+        "executed_with_evidence", "not_executed_no_new_evidence",
+    ]
+    assert len(result.bundle["requests"]) == 1
 
 
 def test_missing_causal_chain_is_pending_not_confirmed(repo):

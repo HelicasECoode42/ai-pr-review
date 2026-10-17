@@ -117,6 +117,38 @@ def test_merge_dedupes_findings_and_offsets_candidate_ids():
     assert merged.bundle["tokens"] == 20
 
 
+def test_merge_preserves_each_unit_intent_plan():
+    first = grounded()
+    first.bundle["intent_plan"] = {"status": "assessed", "hypotheses": [{"id": "H1"}]}
+    second = grounded()
+    second.bundle["intent_plan"] = {"status": "partial", "hypotheses": [{"id": "H2"}]}
+
+    merged = merge_grounded_results([first, second])
+
+    assert merged.bundle["intent_plan"]["status"] == "aggregate"
+    plan_ids = [plan["hypotheses"][0]["id"] for plan in merged.bundle["intent_plan"]["plans"]]
+    assert plan_ids == ["H1", "H2"]
+
+
+def test_unit_checkpoint_round_trip_preserves_intent_plan():
+    from src.reviewer.unit_review import _decode_result, _encode_result
+
+    result = grounded()
+    result.bundle["intent_plan"] = {
+        "schema_version": 1,
+        "status": "assessed",
+        "hypotheses": [{"id": "H1", "goal": "preserve caller contract"}],
+        "tasks": [{"hypothesis_id": "H1", "status": "executed_with_evidence",
+                   "evidence_refs": ["a" * 64]}],
+        "assessments": [{"hypothesis_id": "H1", "status": "supported",
+                         "evidence_refs": ["a" * 64]}],
+    }
+
+    restored = _decode_result(_encode_result(result))
+
+    assert restored.bundle["intent_plan"] == result.bundle["intent_plan"]
+
+
 def test_merge_with_no_results_is_an_explicit_failure_not_an_empty_success():
     merged = merge_grounded_results([], summary_note="nothing reviewed")
     assert merged.verification_failed is True

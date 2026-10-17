@@ -228,6 +228,7 @@ class EvidenceBundle:
     omitted: list[dict] = field(default_factory=list)
     evicted: list[dict] = field(default_factory=list)
     tokens: int = 0
+    _request_cache: dict[tuple, dict] = field(default_factory=dict, repr=False)
 
     @property
     def budget_report(self) -> BudgetReport:
@@ -268,13 +269,20 @@ class EvidenceBundle:
         text = self.snapshot.read(path, side)
         if not text:
             self.omitted.append({"path": path, "side": side, "reason": "source_unavailable"})
-            return
+            return None
         if not 1 <= int(line) <= len(text.splitlines()):
             self.omitted.append({"path": path, "side": side, "reason": "line_out_of_range"})
-            return
+            return None
         start, end, symbol, extent = function_window(path, text, int(line))
-        if any(e["path"] == path and e["side"] == side and e["start_line"] <= int(line) <= e["end_line"] for e in self.excerpts):
-            return
+        existing = next((e for e in self.excerpts
+                         if e["path"] == path and e["side"] == side
+                         and e["start_line"] <= int(line) <= e["end_line"]), None)
+        if existing:
+            if kind.startswith(("requested", "candidate")):
+                # A caller/task citing this excerpt must keep the exact rendered
+                # source available through verification, even under later pressure.
+                existing["kind"] = kind
+            return existing["evidence_ref"]
         lines = text.splitlines()
         # Large definitions keep a window around the requested line, with explicit clipping.
         clipped = end - start > 150
@@ -284,6 +292,12 @@ class EvidenceBundle:
         entry = {"path": path, "side": side, "commit": getattr(self.snapshot, side),
                  "start_line": start, "end_line": end, "kind": kind, "symbol": symbol,
                  "extent": extent, "truncated": clipped or (extent == "source_window" and (start > 1 or end < len(lines))), "code": numbered}
+        entry["evidence_ref"] = hashlib.sha256(json.dumps(
+            {"base": self.snapshot.base, "head": self.snapshot.head, "side": side,
+             "path": path, "start_line": start, "end_line": end,
+             "code_sha256": hashlib.sha256(numbered.encode()).hexdigest()},
+            sort_keys=True, separators=(",", ":"),
+        ).encode()).hexdigest()
         cost = count_tokens(json.dumps(entry, ensure_ascii=False))
         if kind.startswith(("requested", "candidate")) and cost <= self.budget:
             while self.tokens + cost > self.budget and self.excerpts:
@@ -297,8 +311,9 @@ class EvidenceBundle:
                 self.evicted.append({k: v for k, v in disposable.items() if k != "code"})
         if self.tokens + cost > self.budget:
             self.omitted.append({"path": path, "side": side, "reason": "evidence_budget_exhausted"})
-            return
+            return None
         self.excerpts.append(entry); self.tokens += cost
+        return entry["evidence_ref"]
 
     def follow(self, files):
         original_budget = self.budget
@@ -330,11 +345,19 @@ class EvidenceBundle:
         self.budget = original_budget
 
     def execute(self, requests):
+        """Run bounded read/search requests and reuse results for identical frozen queries."""
+        outcomes = []
         for request in requests[:6]:
             if not isinstance(request, dict):
-                self.requests.append({"request": request, "executed": False, "error": "invalid_request"})
+                entry = {"request": request, "executed": False,
+                         "status": "invalid_request", "error": "invalid_request"}
+                self.requests.append(entry)
+                outcomes.append(entry)
                 continue
-            entry = {"request": request, "executed": False}
+            entry = {"request": request, "executed": False, "status": "invalid_request"}
+            for field_name in ("hypothesis_id", "purpose"):
+                if field_name in request:
+                    entry[field_name] = request[field_name]
             try:
                 if "tool" not in request and isinstance(request.get("path"), str):
                     request = {**request, "tool": "read"}
@@ -348,18 +371,94 @@ class EvidenceBundle:
                         previous = [e for e in self.excerpts if e["path"] == request["path"] and e["side"] == side]
                         line = max((e["end_line"] for e in previous), default=0) + 1
                         entry["continuation_line"] = line
-                    self.add(request["path"], max(1, int(line)), side, "requested_definition")
-                    entry["executed"] = True
+                    if isinstance(line, bool):
+                        raise ValueError("Invalid source line")
+                    line = max(1, int(line))
+                    path = request["path"]
+                    if not safe_source_path(path):
+                        raise ValueError("Unsafe source path")
+                    key = (self.snapshot.base, self.snapshot.head, "read", side, path, line)
+                    entry["normalized_query"] = {"tool": "read", "path": path,
+                                                  "side": side, "line": line}
+                    cached = self._request_cache.get(key)
+                    current_refs = {item["evidence_ref"] for item in self.excerpts}
+                    cached_refs = set(cached.get("evidence_refs", [])) if cached else set()
+                    can_reuse = cached is not None and (
+                        cached.get("status") != "executed_with_evidence"
+                        or (cached_refs and cached_refs.issubset(current_refs))
+                    )
+                    if can_reuse:
+                        cached = dict(cached)
+                        entry.update(cached)
+                        entry.update(executed=False, reused=True)
+                    else:
+                        omitted_before = len(self.omitted)
+                        evidence_ref = self.add(path, line, side, "requested_definition")
+                        entry.update(executed=True, reused=False,
+                                     status=("executed_with_evidence" if evidence_ref
+                                             else "no_evidence"),
+                                     evidence_refs=[evidence_ref] if evidence_ref else [])
+                        if not evidence_ref and len(self.omitted) > omitted_before:
+                            entry["omission_reason"] = self.omitted[-1]["reason"]
+                        self._request_cache[key] = {
+                            k: entry[k] for k in ("status", "evidence_refs", "omission_reason")
+                            if k in entry
+                        }
                 elif request.get("tool") == "search":
-                    hits = self.snapshot.search(request["symbol"], side, limit=4)
-                    entry.update(executed=True, hits=[{"path": p, "line": n} for p, n in hits])
-                    for path, line in hits:
-                        self.add(path, line, side, "requested_symbol_reference")
+                    raw_symbol = request["symbol"]
+                    if not isinstance(raw_symbol, str):
+                        raise ValueError("Invalid search symbol")
+                    symbol = raw_symbol.strip()
+                    if not re.fullmatch(r"[A-Za-z_]\w{2,79}", symbol):
+                        raise ValueError("Invalid search symbol")
+                    key = (self.snapshot.base, self.snapshot.head, "search", side, symbol, 4)
+                    entry["normalized_query"] = {"tool": "search", "symbol": symbol,
+                                                  "side": side, "limit": 4}
+                    cached = self._request_cache.get(key)
+                    current_refs = {item["evidence_ref"] for item in self.excerpts}
+                    cached_refs = set(cached.get("evidence_refs", [])) if cached else set()
+                    can_reuse = cached is not None and (
+                        cached.get("status") != "executed_with_evidence"
+                        or (cached_refs and cached_refs.issubset(current_refs))
+                    )
+                    if can_reuse:
+                        cached = dict(cached)
+                        entry.update(cached)
+                        entry.update(executed=False, reused=True)
+                    else:
+                        errors_before = len(self.snapshot.audit().get("errors", []))
+                        hits = self.snapshot.search(symbol, side, limit=4)
+                        refs = []
+                        for path, hit_line in hits:
+                            evidence_ref = self.add(
+                                path, hit_line, side, "requested_symbol_reference"
+                            )
+                            if evidence_ref:
+                                refs.append(evidence_ref)
+                        errors_after = len(self.snapshot.audit().get("errors", []))
+                        status = (
+                            "search_unavailable" if errors_after > errors_before
+                            else "executed_with_evidence" if refs
+                            else "executed_no_evidence"
+                        )
+                        entry.update(executed=True, reused=False, status=status,
+                                     hits=[{"path": p, "line": n} for p, n in hits],
+                                     evidence_refs=list(dict.fromkeys(refs)))
+                        self._request_cache[key] = {
+                            k: entry[k] for k in ("status", "hits", "evidence_refs")
+                        }
                 else:
                     raise ValueError("Only read/search tools are supported")
             except (KeyError, TypeError, ValueError):
-                entry["error"] = "invalid_request"
+                entry.update(status="invalid_request", error="invalid_request")
             self.requests.append(entry)
+            outcomes.append(entry)
+        for request in requests[6:]:
+            entry = {"request": request, "executed": False,
+                     "status": "request_limit_exceeded"}
+            self.requests.append(entry)
+            outcomes.append(entry)
+        return outcomes
 
     def render(self):
         return json.dumps({"excerpts": self.excerpts, "omitted": self.omitted,
