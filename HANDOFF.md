@@ -1,6 +1,6 @@
 # AI PR Review：当前交接
 
-快照日期：2026-10-16。当前本地 HEAD 为 `e48b00d7e7593e6912e4bc357047b7d9bf09e593`，分支 `codex/evaluation-driven-review`；HEAD 后有未提交变动：四份计划文档、用户提供的 `docs/evaluation/dataset-audit-2026-10-16.md`，以及本轮 A/B 源码与测试/criteria fixture 修复，均须保留。线上只读核验：`main` 为 `d99524db818494ac31afd06f9a40560808de7176`；PR #45 仍是 open/draft，head 与本地 e48 对齐，未合并 main。后续执行前重新核对远端状态。
+快照日期：2026-10-17。当前本地 HEAD 为 `cfca0b4232ab5bc13236b97ca74967e8ba53f927`，分支 `codex/evaluation-driven-review`；本轮 C 的源码、测试和下述计划状态更新仍未提交，工作区变更须保留。线上状态未在本轮复核；提交或推送前重新核对远端和 PR #45。
 
 ## 先读
 
@@ -12,9 +12,9 @@
 ## 当前实现快照：只陈述可验证部分
 
 - 生产入口包括 CLI、GitHub Actions 与 Web；审查上下文、模型发现、证据核验、结果报告已有实现。VS Code 插件已冻结，不是当前受支持入口；源码保留不构成产品承诺。
-- A/B 在工作区已修、未提交：Playbook 符号 scope 必须经 changed frozen source 的 AST line mapping 才能匹配；按真实 PR repo/path/language 过滤，`.kt` 映射 Kotlin；scoped domain 不进全 PR prompt/扁平 witness domain，KB-0003 synthetic contract 为 candidate。补充源读取上限为 12 个 changed files、单文件 100k UTF-8 bytes、总量 400k bytes；缺失/`parse_errors`/超限保持 unknown 并告警。无 domain 的 scoped 自然语言 guidance（如 KB-0004）仍可召回。
+- A/B 已在 HEAD：Playbook 符号 scope 必须经 changed frozen source 的 AST line mapping 才能匹配；按真实 PR repo/path/language 过滤，`.kt` 映射 Kotlin；scoped domain 不进全 PR prompt/扁平 witness domain，KB-0003 synthetic contract 为 candidate。补充源读取上限为 12 个 changed files、单文件 100k UTF-8 bytes、总量 400k bytes；缺失/`parse_errors`/超限保持 unknown 并告警。无 domain 的 scoped 自然语言 guidance（如 KB-0004）仍可召回。
 - `src/analyzer/context_builder.py` 最终送入 context 的排序现将 over-budget triage 优先级置于生产路径/文件体量 tie-break 之前；9-hunk fixture 验证 flagged hunk 和普通上下文都保留。Coverage complete 只表示账目完整。
-- C 仍未修：`src/analyzer/deterministic_tools.py` 的 Ruff 仍未绑定冻结 head SHA 或区分 PR 新增行与既存诊断；confidence 1.0 不代表真实 Bug 概率。
+- C 的核心接线在本轮工作区实现：Ruff 仅在单 PR scan 中通过共用的 base/head snapshot 运行，overview 不启动 Ruff；新增行结果作为未语义确认的 lint candidate，并带工具/快照/失败状态。子进程有输出与超时硬边界；source read 有数量、返回文本和处理预算，但底层 `snapshot.read()` 仍可能先完整取回单次响应再检查大小，不能称硬 I/O 上限。平台管道限制和本地源码门禁已测，Windows 未验证。
 - `src/reviewer/decision_ledger.py` 和 `src/reviewer/publish.py` 实现了账本/指纹/驳回记忆组件，但本轮源码检索未找到 `src/` 生产调用。不要声称已具备生产级完整候选账本或发布去重闭环。
 - Grounded 发现/证据/核验中的静态边或一跳搜索是有界线索，不是完整调用图或可达性证明。受限 witness 只能处理有限表达式输入域。
 
@@ -24,7 +24,7 @@
 - `reports/real-run/b7b-diagnostic.json` 可复算 5 PR/43 gold 的 raw file+line match：5/6 published match=83.3% 位置 precision，5/43=11.63% published recall，8/43=18.60% identified recall。它不是人工语义裁决，产物也不足以复原完整模型/配置/重试/费用协议。
 - 选材 coverage、fixture 通过、位置匹配与人工判断的真实 Bug 发现必须分别报告，不能拼成同一个漏斗，也不能从这些数字推出“完整可审计”或“瓶颈已移到识别”。
 - 费用未知记 unknown；真实模型实验先核对预算和冻结协议。本轮未授权模型调用。
-- 本轮验证：`pytest -q` 387 passed；CI 最小 Ruff 规则、`criteria_gate.py`、默认 `interface_audit.py`、14 条 synthetic `holdout_eval.py` 均通过。`criteria_gate.py` 将 safe-division `count:int` 明确作为 fixture 注入，不再依赖 KB-0003 的生产权威状态。无真实 PR/模型验证；C 与 #46 其他接线项未完成。细节见[唯一执行计划](docs/review-v2-development.md)。
+- 2026-10-17 验证：使用仓库 `.venv/bin/python -m pytest -q` 得 **396 passed**；仓库 `.venv/bin/ruff check --select E9,F63,F7,F82 src tests`、`criteria_gate.py`、`interface_audit.py`、14 条 synthetic `holdout_eval.py` 和 `git diff --check` 均通过。此前 `/opt/anaconda3/bin/python` 全量结果的单个 TS 用例失败是该解释器缺少 `tree_sitter_typescript`；同一 `.venv` 下 `cfca0b4` 临时基线和当前分支的该用例均通过。无真实 PR/模型效果验证。C 的硬 I/O 上限和 unit checkpoint 结果恢复仍待办，详见[唯一执行计划](docs/review-v2-development.md)。
 
 ## 决策方向
 

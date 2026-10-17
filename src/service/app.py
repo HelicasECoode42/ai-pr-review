@@ -223,38 +223,47 @@ def analyze(req: AnalyzeRequest) -> AnalyzeResponse | dict:
     if not req.language:
         req.language = detect_output_language(pr.title or "", pr.body or "")
 
-    # 2. Rule scan
-    scan = scan_signals(files)
-    findings = list(scan.findings)
-    analyzer_warnings = list(scan.warnings)
+    # Keep one frozen reader alive across lint and repository-grounded review.
+    from src.analyzer.repository_context import GitHubSnapshot
 
-    # 3. Build report
-    report = build_rule_only_report(
-        pr, files, findings, language=req.language, analyzer_warnings=analyzer_warnings
-    )
-
-    # 4. AI review (if enabled)
-    if req.use_ai:
-        api_key = settings.openai_api_key
-        if not api_key:
-            report.analysis_warnings.append(
-                "OPENAI_API_KEY not set; falling back to rule-only."
+    with GitHubClient(settings.github_token, timeout=settings.request_timeout_seconds) as evidence_client:
+        snapshot = None
+        if pr.base_sha and pr.head_sha:
+            snapshot = GitHubSnapshot(
+                evidence_client, pr.repo, pr.base_sha, pr.head_sha,
+                [f.filename for f in files],
             )
-        else:
-            from src.application.review import ReviewApplication
-            try:
-                report = ReviewApplication(settings).review(
-                    pr=pr,
-                    files=files,
-                    findings=findings,
-                    language=req.language,
-                    analyzer_warnings=analyzer_warnings,
-                )
-            except Exception as exc:
-                report.ai_failure_reason = str(exc)
+        scan = scan_signals(files, snapshot=snapshot)
+        findings = list(scan.findings)
+        analyzer_warnings = list(scan.warnings)
+
+        report = build_rule_only_report(
+            pr, files, findings, language=req.language, analyzer_warnings=analyzer_warnings
+        )
+
+        if req.use_ai:
+            api_key = settings.openai_api_key
+            if not api_key:
                 report.analysis_warnings.append(
-                    f"AI review failed: {exc}. Showing rule-based analysis only."
+                    "OPENAI_API_KEY not set; falling back to rule-only."
                 )
+            else:
+                from src.application.review import ReviewApplication
+                try:
+                    report = ReviewApplication(settings).review(
+                        pr=pr,
+                        files=files,
+                        findings=findings,
+                        language=req.language,
+                        analyzer_warnings=analyzer_warnings,
+                        gh_client=evidence_client,
+                        repository_snapshot=snapshot,
+                    )
+                except Exception as exc:
+                    report.ai_failure_reason = str(exc)
+                    report.analysis_warnings.append(
+                        f"AI review failed: {exc}. Showing rule-based analysis only."
+                    )
 
     # 5. Render output
     md = render_markdown(report, language=req.language)
@@ -386,14 +395,16 @@ def repo_trend(req: TrendRequest) -> dict:
         )
 
     if not pr_list:
-        return {"repo": req.repo, "prs": [], "note": "No open PRs found"}
+        return {"repo": req.repo, "prs": [], "note": "No open PRs found", "lint_status": "not_run"}
 
     results = []
     for pr in pr_list:
         try:
             with GitHubClient(settings.github_token, timeout=settings.request_timeout_seconds) as gh:
                 files = gh.get_changed_files(req.repo, pr.number)
-            findings = list(scan_signals(files).findings)
+            # The overview intentionally stays a cheap rules-only pass; frozen
+            # Ruff requires a per-review snapshot and belongs on the detail path.
+            findings = list(scan_signals(files, include_linters=False).findings)
             additions = sum(f.additions for f in files)
             deletions = sum(f.deletions for f in files)
             risk = "low"
@@ -415,6 +426,7 @@ def repo_trend(req: TrendRequest) -> dict:
                 "additions": additions,
                 "deletions": deletions,
                 "findings_count": len(findings),
+                "lint_status": "not_run",
                 "top_findings": [
                     {"rule_id": f.rule_id, "title": f.title, "severity": f.severity.value}
                     for f in findings[:3]
@@ -424,7 +436,7 @@ def repo_trend(req: TrendRequest) -> dict:
             # Individual PR fetch failure — skip this PR, continue with others
             continue
 
-    return {"repo": req.repo, "count": len(results), "prs": results}
+    return {"repo": req.repo, "count": len(results), "prs": results, "lint_status": "not_run"}
 
 # Serve static frontend at root
 static_dir = Path(__file__).resolve().parent / "static"

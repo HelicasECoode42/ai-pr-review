@@ -75,6 +75,86 @@ def sample_files() -> list[ChangedFile]:
 
 
 class TestRunnerRuleOnly:
+    def test_rule_only_agent_lints_frozen_pr_head_not_working_tree(
+        self, mock_settings: Settings, tmp_path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.models import PullRequest
+
+        monkeypatch.chdir(tmp_path)
+        # The local cwd is intentionally clean; only frozen PR head has F401.
+        pr = PullRequest(
+            repo="test/repo", number=9, title="Add module",
+            base_sha="a" * 40, head_sha="b" * 40,
+        )
+        file = ChangedFile(
+            filename="src/issue.py", status=FileStatus.MODIFIED,
+            additions=1, deletions=0,
+            patch="@@ -1,0 +1,1 @@\n+import os\n",
+        )
+        github = MagicMock()
+        github.get_pull_request.return_value = pr
+        github.get_changed_files.return_value = [file]
+        github.get_file_contents.side_effect = lambda repo, path, sha: (
+            "import os\ndef f():\n    return 1\n" if sha == pr.head_sha
+            else "def f():\n    return 1\n"
+        )
+        context = MagicMock()
+        context.__enter__.return_value = github
+        monkeypatch.setattr("src.github.client.GitHubClient", lambda *a, **k: context)
+
+        result = ReviewAgentRunner(mock_settings).run(ReviewAgentRequest(
+            repo="test/repo", pr_number=9, use_ai=False, agent_mode="rule_only",
+        ))
+
+        lint = [finding for finding in result.report.rule_findings
+                if finding.rule_id == "lint-candidate-f401"]
+        assert len(lint) == 1 and lint[0].line == 1
+        assert github.get_file_contents.call_count == 2
+        assert any("status=complete" in warning for warning in result.report.analysis_warnings)
+
+    def test_agent_shares_one_frozen_snapshot_between_scan_and_review(
+        self, mock_settings: Settings, sample_pr: PullRequest, sample_files: list[ChangedFile],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        pr = sample_pr.model_copy(update={"base_sha": "a" * 40, "head_sha": "b" * 40})
+        client = MagicMock()
+        client.get_pull_request.return_value = pr
+        client.get_changed_files.return_value = sample_files
+        client_context = MagicMock()
+        client_context.__enter__.return_value = client
+        monkeypatch.setattr("src.github.client.GitHubClient", lambda *args, **kwargs: client_context)
+
+        snapshot = object()
+        import src.analyzer.repository_context as repository_context
+        monkeypatch.setattr(
+            repository_context, "GitHubSnapshot",
+            lambda *args, **kwargs: snapshot,
+        )
+        seen: dict[str, object] = {}
+
+        from src.analyzer.risk_rules import SignalScan
+        def scan(files, **kwargs):
+            seen["scan_snapshot"] = kwargs["snapshot"]
+            return SignalScan()
+        monkeypatch.setattr("src.analyzer.risk_rules.scan_signals", scan)
+
+        from src.reviewer.engine import build_rule_only_report
+        def review(_self, **kwargs):
+            seen["review_snapshot"] = kwargs["repository_snapshot"]
+            return build_rule_only_report(
+                kwargs["pr"], kwargs["files"], kwargs["findings"],
+                language=kwargs["language"],
+            )
+        monkeypatch.setattr("src.application.review.ReviewApplication.review", review)
+
+        settings = mock_settings.model_copy(update={"openai_api_key": "test-only"})
+        result = ReviewAgentRunner(settings).run(ReviewAgentRequest(
+            repo="test/repo", pr_number=1, use_ai=True, agent_mode="one_shot_ai",
+        ))
+
+        assert seen == {"scan_snapshot": snapshot, "review_snapshot": snapshot}
+        assert result.report.used_ai is False
+
     def test_rule_only_produces_report(
         self, mock_settings: Settings, sample_pr: PullRequest, sample_files: list[ChangedFile]
     ) -> None:

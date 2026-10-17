@@ -79,7 +79,7 @@ def reload_rules(user_rules_path: str | None = None) -> None:
 
 def scan_signals(
     files: list[ChangedFile] | None, *, include_cross_file: bool = True,
-    include_linters: bool = True,
+    include_linters: bool = True, snapshot=None,
 ) -> SignalScan:
     """Run the rule scans and report both findings and what could not be scanned.
 
@@ -128,33 +128,41 @@ def scan_signals(
             _warn(warnings, f"Cross-file signal collection failed: {type(exc).__name__}: {exc}")
 
     if include_linters and files:
-        # Deterministic checks cost nothing and never guess, so they run alongside
-        # the pattern rules and their findings enter the same pipeline. A file that
-        # could not be checked is warned about rather than assumed clean.
+        # Ruff has no model cost, but frozen source reads still have API and time
+        # budgets. Its output is retained as a diagnostic candidate, not a defect.
         from src.analyzer.deterministic_tools import run_linters
 
-        lint = run_linters(files)
+        lint = run_linters(files, snapshot=snapshot)
         findings.extend(lint.findings)
-        if lint.unavailable_reason:
-            _warn(warnings, f"Deterministic checks unavailable: {lint.unavailable_reason}")
-        # A path absent from the working tree is normal for a frozen snapshot and
-        # is not a degradation, so it is not warned about: the count travels in the
-        # scan result instead of pretending the file was checked.
+        if lint.status != "not_applicable":
+            details = "; ".join(lint.notes[:8])
+            reason = f" reason={lint.unavailable_reason}" if lint.unavailable_reason else ""
+            _warn(
+                warnings,
+                f"Ruff status={lint.status} version={lint.tool_version or 'unknown'} "
+                f"base={lint.base_sha or 'unknown'} head={lint.head_sha or 'unknown'}"
+                f" reads={lint.snapshot_read_calls}/{20} snapshot_bytes={lint.snapshot_bytes_read}/{1_000_000}"
+                f" read_window_s={30} baseline={lint.baseline_diagnostics}"
+                f" unattributed={lint.unattributed_diagnostics}"
+                f"{reason}; added-line diagnostics are candidates, not confirmed defects."
+                + (f" details={details}" if details else ""),
+            )
 
     return SignalScan(findings=tuple(findings), warnings=tuple(warnings))
 
 
 def scan_risks(files: list[ChangedFile] | None) -> list[RiskFinding]:
-    """Findings only; cross-file analysis is orchestrated separately.
+    """Findings only; use scan_signals to provide a frozen snapshot for Ruff.
 
-    Kept for callers that do not need the degradation list.
+    This legacy findings-only API cannot return an unavailable status, so it
+    deliberately omits snapshot-dependent tooling rather than hiding a failure.
     """
-    return list(scan_signals(files, include_cross_file=False).findings)
+    return list(scan_signals(files, include_cross_file=False, include_linters=False).findings)
 
 
 def collect_signals(files: list[ChangedFile] | None) -> list[RiskFinding]:
-    """Findings only; use `scan_signals` when the caller also needs warnings."""
-    return list(scan_signals(files).findings)
+    """Collect offline rule signals only; callers must use scan_signals for Ruff."""
+    return list(scan_signals(files, include_linters=False).findings)
 
 
 def _scan_path_risk(file: ChangedFile) -> list[RiskFinding]:

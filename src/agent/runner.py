@@ -81,7 +81,6 @@ class ReviewAgentRunner:
 
     def _register_tools(self) -> None:
         """Register all available agent tools into the registry."""
-        from src.github.client import GitHubClient
         from src.output.json_report import render_json
         from src.output.markdown import render_markdown
         from src.reviewer.engine import build_rule_only_report
@@ -92,22 +91,28 @@ class ReviewAgentRunner:
 
         # ── fetch_pull_request ──────────────────────────
         def _fetch_pr(ctx: AgentContext) -> None:
-            with GitHubClient(settings.github_token, timeout=settings.request_timeout_seconds) as gh:
-                ctx.pr = gh.get_pull_request(ctx.repo, ctx.pr_number)
+            ctx.pr = ctx.github_client.get_pull_request(ctx.repo, ctx.pr_number)
 
         self._registry.register(AgentTool(name="fetch_pull_request", execute=_fetch_pr))
 
         # ── fetch_changed_files ─────────────────────────
         def _fetch_files(ctx: AgentContext) -> None:
-            with GitHubClient(settings.github_token, timeout=settings.request_timeout_seconds) as gh:
-                ctx.files = gh.get_changed_files(ctx.repo, ctx.pr_number)
+            ctx.files = ctx.github_client.get_changed_files(ctx.repo, ctx.pr_number)
 
         self._registry.register(AgentTool(name="fetch_changed_files", execute=_fetch_files))
 
         # ── scan_risks ──────────────────────────────────
         def _scan(ctx: AgentContext) -> None:
             from src.analyzer.risk_rules import scan_signals
-            scan = scan_signals(ctx.files, include_cross_file=False)
+            from src.analyzer.repository_context import GitHubSnapshot
+            if ctx.pr and ctx.pr.base_sha and ctx.pr.head_sha:
+                ctx.repository_snapshot = GitHubSnapshot(
+                    ctx.github_client, ctx.pr.repo, ctx.pr.base_sha, ctx.pr.head_sha,
+                    [file.filename for file in ctx.files],
+                )
+            scan = scan_signals(
+                ctx.files, include_cross_file=False, snapshot=ctx.repository_snapshot,
+            )
             ctx.findings = list(scan.findings)
             ctx.analyzer_warnings = list(scan.warnings)
 
@@ -173,6 +178,8 @@ class ReviewAgentRunner:
                 pr_syntax_ok=ctx.pr_syntax_ok,
                 review_meta=review_meta,
                 two_stage=(ctx.strategy == "two_stage"),
+                gh_client=ctx.github_client,
+                repository_snapshot=ctx.repository_snapshot,
                 analyzer_warnings=ctx.analyzer_warnings,
             )
 
@@ -195,6 +202,16 @@ class ReviewAgentRunner:
     # ── main entry point ─────────────────────────────────────
 
     def run(self, request: ReviewAgentRequest) -> ReviewAgentResult:
+        """Own one GitHub reader for the full single-PR analysis lifetime."""
+        from src.github.client import GitHubClient
+
+        with GitHubClient(
+            self._settings.github_token,
+            timeout=self._settings.request_timeout_seconds,
+        ) as client:
+            return self._run_with_client(request, client)
+
+    def _run_with_client(self, request: ReviewAgentRequest, github_client) -> ReviewAgentResult:
         """Execute a full review run and return report + trace.
 
         Execution order (Batch A):
@@ -222,6 +239,7 @@ class ReviewAgentRunner:
         # ── Build tool context (mutable data carrier) ────────
         ctx = AgentContext(
             **request.model_dump(exclude={"agent_mode", "language"}), language=language,
+            github_client=github_client,
         )
 
         # ── Step 1-3: Fetch + Scan (before strategy) ─────────

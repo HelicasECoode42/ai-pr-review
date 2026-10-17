@@ -358,7 +358,11 @@ def build_rule_only_report(
                 "rule_id": finding.rule_id,
                 "file_path": finding.file_path,
                 "line": finding.line,
-                "reason": "AI semantic verification was not available.",
+                "reason": (
+                    "Ruff diagnostic candidate; not semantically confirmed."
+                    if finding.rule_id.startswith("lint-")
+                    else "AI semantic verification was not available."
+                ),
             }
             for finding in findings
         ],

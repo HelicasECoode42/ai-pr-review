@@ -1,7 +1,14 @@
 # 状态一页纸（给新会话/压缩后接手用）
 
 > 只读这一页就能接着干。规范在 [`HARNESS.md`](HARNESS.md)，本页只放**当前事实与下一步**。
-> 最后更新：2026-10-16，HEAD `5a01732`，远端已同步，tag `0.1.0`。
+> 当前状态更新：2026-10-17。HEAD `cfca0b4232ab5bc13236b97ca74967e8ba53f927`；C 源码/测试和计划状态仍是未提交工作区改动。下方原有数字与路线是历史记录，若与本状态块冲突，以本块和 [`HANDOFF.md`](../HANDOFF.md)、[唯一执行计划](review-v2-development.md)为准。
+
+## 当前验证与边界（2026-10-17）
+
+- 仓库解释器 `/Users/wangyufan/Desktop/code/ai-pr-review/ai-pr-review/.venv/bin/python -m pytest -q`：**396 passed**。此前 Anaconda Python 的单个 TypeScript 用例失败是因为该解释器缺少 `tree_sitter_typescript`；在 cfca0b4 临时源码树和当前工作区使用相同仓库 `.venv` 均通过该用例。
+- 仓库 `.venv/bin/ruff check --select E9,F63,F7,F82 src tests`、`criteria_gate.py`、`interface_audit.py`、14 条 synthetic `holdout_eval.py` 与 `git diff --check` 通过。interface audit 仍打印 7 个未使用参数报告项；门禁通过不代表这些参数已修复。
+- C 在工作区把隔离 Ruff 接到单 PR frozen base/head snapshot 扫描；Agent、CLI、Web detail 复用 snapshot，overview 显示 `not_run`。Ruff 新增行匹配只是未确认 candidate，不是语义 TP。无真实 PR/model/cost 结果。
+- snapshot 返回内容的读取/处理预算不是硬 I/O 限制：单次 `snapshot.read()` 仍可能先完整返回再检查大小；严格响应体上限/取消待办。另有 unit checkpoint 只恢复 metadata、可能遗漏已完成 findings 的问题待独立修复；不得宣称无损恢复或 exactly-once。阶段1的 fail-fast、候选持久账本与发布幂等仍未完成。
 
 ## 目标（已按实测重写）
 

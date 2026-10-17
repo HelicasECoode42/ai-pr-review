@@ -351,63 +351,74 @@ def analyze(
 
     # Safe execution path
     try:
-        scan = scan_signals(files)
-        findings = list(scan.findings)
-        analyzer_warnings = list(scan.warnings)
-        report = build_rule_only_report(
-            pr,
-            files,
-            findings,
-            language=language.value,
-            reviewer_version=reviewer_version,
-            execution_status=execution_status,
-            degradation_reason=degradation_reason,
-            report_confidence=report_confidence,
-            pr_syntax_ok=pr_syntax_ok,
-            review_meta=ReviewMeta(
-                reviewed_commit=reviewed_commit,
-                trigger_event=trigger_event,
-                workflow_run_url=workflow_run_url,
-                updated_at=datetime.now(timezone.utc).isoformat(),
-                review_mode=review_mode,
-            ),
-            gh_client=github,
-            analyzer_warnings=analyzer_warnings,
-        )
-
-        if use_ai:
-            if not settings.openai_api_key:
-                console.print("[yellow]OPENAI_API_KEY is not set; falling back to rule-only report.[/yellow]")
-                try:
-                    from src.utils.actions import write_step_summary
-                    write_step_summary(
-                        "## AI Review - Skipped\n\n**Reason:** OPENAI_API_KEY not set; falling back to rule-only report.\n"
-                    )
-                except Exception as exc:
-                    _warn_step_summary_failure(None, exc)
-            else:
-                from src.application.review import ReviewApplication
-                report = ReviewApplication(settings).review(
-                    pr=pr,
-                    files=files,
-                    findings=findings,
-                    language=language.value,
-                    reviewer_version=reviewer_version,
-                    execution_status=execution_status,
-                    degradation_reason=degradation_reason,
-                    report_confidence=report_confidence,
-                    pr_syntax_ok=pr_syntax_ok,
-                    review_meta=ReviewMeta(
-                        reviewed_commit=reviewed_commit,
-                        trigger_event=trigger_event,
-                        workflow_run_url=workflow_run_url,
-                        updated_at=datetime.now(timezone.utc).isoformat(),
-                        review_mode=review_mode,
-                    ),
-                    two_stage=two_stage,
-                    gh_client=github,
-                    analyzer_warnings=analyzer_warnings,
+        from src.analyzer.repository_context import GitHubSnapshot
+        with GitHubClient(
+            settings.github_token, timeout=settings.request_timeout_seconds,
+        ) as evidence_client:
+            snapshot = None
+            if pr.base_sha and pr.head_sha:
+                snapshot = GitHubSnapshot(
+                    evidence_client, pr.repo, pr.base_sha, pr.head_sha,
+                    [f.filename for f in files],
                 )
+            scan = scan_signals(files, snapshot=snapshot)
+            findings = list(scan.findings)
+            analyzer_warnings = list(scan.warnings)
+            report = build_rule_only_report(
+                pr,
+                files,
+                findings,
+                language=language.value,
+                reviewer_version=reviewer_version,
+                execution_status=execution_status,
+                degradation_reason=degradation_reason,
+                report_confidence=report_confidence,
+                pr_syntax_ok=pr_syntax_ok,
+                review_meta=ReviewMeta(
+                    reviewed_commit=reviewed_commit,
+                    trigger_event=trigger_event,
+                    workflow_run_url=workflow_run_url,
+                    updated_at=datetime.now(timezone.utc).isoformat(),
+                    review_mode=review_mode,
+                ),
+                gh_client=evidence_client,
+                analyzer_warnings=analyzer_warnings,
+            )
+
+            if use_ai:
+                if not settings.openai_api_key:
+                    console.print("[yellow]OPENAI_API_KEY is not set; falling back to rule-only report.[/yellow]")
+                    try:
+                        from src.utils.actions import write_step_summary
+                        write_step_summary(
+                            "## AI Review - Skipped\n\n**Reason:** OPENAI_API_KEY not set; falling back to rule-only report.\n"
+                        )
+                    except Exception as exc:
+                        _warn_step_summary_failure(None, exc)
+                else:
+                    from src.application.review import ReviewApplication
+                    report = ReviewApplication(settings).review(
+                        pr=pr,
+                        files=files,
+                        findings=findings,
+                        language=language.value,
+                        reviewer_version=reviewer_version,
+                        execution_status=execution_status,
+                        degradation_reason=degradation_reason,
+                        report_confidence=report_confidence,
+                        pr_syntax_ok=pr_syntax_ok,
+                        review_meta=ReviewMeta(
+                            reviewed_commit=reviewed_commit,
+                            trigger_event=trigger_event,
+                            workflow_run_url=workflow_run_url,
+                            updated_at=datetime.now(timezone.utc).isoformat(),
+                            review_mode=review_mode,
+                        ),
+                        two_stage=two_stage,
+                        gh_client=evidence_client,
+                        repository_snapshot=snapshot,
+                        analyzer_warnings=analyzer_warnings,
+                    )
 
         # ── FixTracking: compare against previous review ─────────
         try:

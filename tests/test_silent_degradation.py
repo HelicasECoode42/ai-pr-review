@@ -167,16 +167,19 @@ class BrokenProvider:
 
 def test_scan_reports_a_file_whose_patch_the_api_omitted():
     scan = scan_signals([ChangedFile(filename="src/big.py", patch=None)])
-    assert scan.warnings == (
-        "src/big.py has no patch from the API; its changed lines were not scanned.",
+    assert scan.warnings[0] == (
+        "src/big.py has no patch from the API; its changed lines were not scanned."
     )
+    assert "Ruff status=unavailable" in scan.warnings[1]
+    assert "frozen repository snapshot unavailable" in scan.warnings[1]
 
 
 def test_scan_stays_quiet_when_everything_parsed():
     scan = scan_signals(
         [ChangedFile(filename="src/a.py", patch="@@ -1,1 +1,1 @@\n-old\n+new\n")]
     )
-    assert scan.warnings == ()
+    assert len(scan.warnings) == 1
+    assert "Ruff status=unavailable" in scan.warnings[0]
 
 
 def test_legacy_scan_wrappers_still_return_findings():
@@ -194,9 +197,10 @@ def test_analyzer_warnings_reach_the_rule_only_report():
         list(scan.findings),
         analyzer_warnings=list(scan.warnings),
     )
-    assert report.analysis_warnings == [
+    assert report.analysis_warnings[0] == (
         "src/big.py has no patch from the API; its changed lines were not scanned."
-    ]
+    )
+    assert "Ruff status=unavailable" in report.analysis_warnings[1]
 
 
 def test_analyzer_warnings_reach_the_ai_report():

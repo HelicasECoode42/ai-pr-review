@@ -1,8 +1,15 @@
 # Review V2：唯一执行计划
 
-更新：2026-10-16。代码基线 HEAD `e48b00d7e7593e6912e4bc357047b7d9bf09e593`；以下本轮 A/B 修复都在未提交工作区，尚未进入 HEAD。目标顺序是：**①让现有工具可信；②做跨文件意图 Agent；③用失败案例改进知识与策略**。本文件是唯一排期与验收计划；[PRD](PRD-review-capability-v2.md)只定义目标/边界，[HANDOFF](../HANDOFF.md)只做当前快照入口。旧 D1–D5、D2 图规划和 RSI 方案只作历史材料，不构成自动执行路线。
+更新：2026-10-17。代码基线 HEAD `cfca0b4232ab5bc13236b97ca74967e8ba53f927`；A/B 已在 HEAD，C 核心接线和测试当前仍在未提交工作区。目标顺序是：**①让现有工具可信；②做跨文件意图 Agent；③用失败案例改进知识与策略**。本文件是唯一排期与验收计划；[PRD](PRD-review-capability-v2.md)只定义目标/边界，[HANDOFF](../HANDOFF.md)只做当前快照入口。旧 D1–D5、D2 图规划和 RSI 方案只作历史材料，不构成自动执行路线。
 
-本轮只完成阶段1的 A/B 两项：Playbook 真实 PR repo、语言/path/symbol 作用域与 scoped contract 的 fail-closed 边界；最终上下文排序保留 over-budget triage 优先级。生产代码和反例测试的工作区版本 `pytest -q` 为 **387 passed**；CI 当前离线 criteria gate、14 条合成 holdout、默认 src interface audit 均通过。criteria gate 的 safe-division domain 已改为测试 fixture 显式输入，KB-0003 降为 candidate，不再被当作生产 API 契约。没有真实 PR/模型质量验证。**阶段1仍未完成**：C（冻结 Ruff/新增行归因）、启用但未接线路径门禁、完整候选账本与发布幂等仍待做；故 #46 不可标记关闭。CI 规定的最小 Ruff 规则通过；更宽 Ruff 在 `context_builder.py` 有 14 条与 HEAD 基线相同的历史 lint 提示。
+本轮前 A/B 已完成并进入 HEAD：Playbook 真实 PR repo、语言/path/symbol 作用域与 scoped contract 的 fail-closed 边界；最终上下文排序保留 over-budget triage 优先级。2026-10-17 本轮 C 在工作区接通冻结 base/head snapshot Ruff scan、新增行候选归因、明确 unavailable/partial 与同一 snapshot 复用；CI 小 Ruff、离线 criteria gate、14 条合成 holdout、默认 src interface audit 均通过。使用仓库 `.venv/bin/python -m pytest -q` 为 **396 passed**；此前 Anaconda Python 缺 TS grammar 的失败已由同一 `.venv` 下 cfca0b4 临时基线和当前分支各自通过该用例证实为环境差异。`criteria_gate.py` 的 safe-division domain 由测试 fixture 显式输入，KB-0003 仍为 candidate。没有真实 PR/模型质量验证。**阶段1仍未完成**：snapshot 底层单次读取硬 I/O 上限、unit checkpoint 结果无损恢复、启用但未接线路径门禁、完整候选账本与发布幂等仍待做；#46 不可标记关闭。
+
+### 2026-10-17：确定性 Ruff 接线的完成边界
+
+- `src/agent/runner.py`、CLI 与 Web 单 PR detail 在同一分析生命周期创建/复用 snapshot；overview 明确 `not_run`，不为 PR 列表拉取源码或运行 Ruff。Agent 的规则扫描和后续 grounded review 共享 snapshot。
+- Ruff 只读取冻结 base/head 的 Python 内容，不回退到当前工作目录；固定隔离参数，不执行 PR 代码。进程 stdout/stderr 共用硬输出上限，超限或 deadline 到期会终止并清理子进程。新增行匹配只产生低置信度 `lint-candidate-*`，不等于语义 Bug 或 confirmed finding。
+- 内容读取目前限制读取尝试/返回文本量和后续处理量；`Snapshot.read()` 可能先完整返回一次响应再做大小检查，因此这些值不是硬网络响应上限。严格单次响应截断与可取消读取单独跟进。POSIX 管道实现已验证；Windows 走明确 unavailable 分支，但未实机验证。
+- 仓库 `.venv/bin/python -m pytest -q`: 396 passed。仓库 `.venv/bin/ruff check --select E9,F63,F7,F82 src tests`、criteria/holdout/interface 三个离线门禁和 `git diff --check` 通过。无模型请求、真实 PR 质量或成本结论。
 
 ## 项目目标与当前成熟度
 
@@ -49,8 +56,8 @@
 
 | 功能点 | 现状 | 实施流程 | 依赖 | 可验收产物/判据 |
 |---|---|---|---|---|
-| 规则、知识 scope、lint 与冻结快照 | A 在工作区修复；C lint 归因待做 | source SHA 绑定 → 规则执行 → changed-line 归因 → scope 召回 → 报告 | 阶段1 | 冻结快照报告；scope/lint 回归反例；不可用显式状态 |
-| 预算、hunk 顺序与覆盖 | B 在工作区修复，fixture 通过 | 输入清单 → triage → 最终选择 → 每 hunk 终态 → omission | 阶段1 | 超预算 fixtures 显示 triage 风险进入最终上下文；所有 hunk 有终态 |
+| 规则、知识 scope、lint 与冻结快照 | A/B 已进 HEAD；C 核心已在工作区，底层硬 I/O 上限待做 | 单 PR 共用 snapshot → 规则/隔离 Ruff → changed-line 候选归因 → scope 召回 → 状态报告 | 阶段1 | 冻结快照报告；scope/lint 回归反例；不可用显式状态；底层响应截断另验 |
+| 预算、hunk 顺序与覆盖 | B 已进 HEAD，fixture 通过 | 输入清单 → triage → 最终选择 → 每 hunk 终态 → omission | 阶段1 | 超预算 fixtures 显示 triage 风险进入最终上下文；所有 hunk 有终态 |
 | 候选/判定/发布账本 | 组件存在、生产未接 | candidate id → 每阶段事件 → verdict/过滤 → 发布或扣下原因 | 阶段1 | 一次 run 的完整 candidate ledger；重试/重复运行不重复发评论 |
 | 跨文件 Agent 计划与取证 | 部分原型、未知真实增益 | intent hypothesis → relation plan → bounded read → evidence refs → update | 阶段2 | 冻结 PR 人工语义评测；S/D/P 独立；跨文件分层结果 |
 | 可取消、限时和可恢复执行 | 部分：资源释放/阶段协议存在；生产持久恢复未实现 | run identity → stage artifact/checkpoint → cancel/timeout → 同身份 resume | 阶段1可信状态后，独立交付 | 故障注入报告；取消不发布；强杀窗口不宣称 exactly-once |

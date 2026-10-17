@@ -7,7 +7,7 @@ import them from this path.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -59,6 +59,9 @@ class AgentContext(BaseModel):
     workflow_run_url: str | None = None
     review_mode: str = "full_pr"
     pr: PullRequest | None = None
+    # Owned by one ReviewAgentRunner.run lifetime and shared by scan/review.
+    github_client: Any = None
+    repository_snapshot: Any = None
     files: list[ChangedFile] = Field(default_factory=list)
     findings: list[RiskFinding] = Field(default_factory=list)
     cross_file_findings: list[RiskFinding] = Field(default_factory=list)
