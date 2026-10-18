@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import inspect
 import json
 import re
 import subprocess
+import os
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -28,13 +30,26 @@ def main() -> None:
     parser.add_argument("--source-root", type=Path, default=ROOT)
     parser.add_argument("--source-revision", default=None)
     parser.add_argument(
+        "--counter", "--tokenizer", dest="tokenizer",
+        choices=("bytebound", "cl100k"), default="cl100k",
+        help="token-count layer; bytebound is a UTF-8 byte upper bound, cl100k requires the verified local cache",
+    )
+    parser.add_argument(
+        "--cache-dir", "--token-cache", dest="token_cache", type=Path,
+        default=Path("/private/tmp/codex-cl100k-cache"),
+    )
+    parser.add_argument(
         "--output", type=Path,
-        default=ROOT / "docs/evaluation/offline-context-strategy-2026-10-18.json",
+        default=None,
     )
     parser.add_argument("--case-ids", nargs="*", default=None)
     args = parser.parse_args()
+    if args.output is None:
+        args.output = ROOT / f"docs/evaluation/offline-context-{args.tokenizer}-2026-10-18.json"
     data_root = args.data.resolve()
     source_root = args.source_root.resolve()
+    if args.tokenizer == "cl100k":
+        os.environ["TIKTOKEN_CACHE_DIR"] = str(args.token_cache.resolve())
     prepared_path = data_root / "prepared/prepared.json"
     prepared = json.loads(prepared_path.read_text(encoding="utf-8"))
 
@@ -58,12 +73,33 @@ def main() -> None:
     from src.utils import detect_programming_language
     from src.analyzer.risk_rules import _should_skip_scan
 
-    # The local cl100k encoding file is absent. Avoid a network lookup and pin all
-    # four arms to the documented offline UTF-8 byte upper-bound estimator.
-    context_builder._token_encoding = lambda: None  # type: ignore[assignment]
+    if args.tokenizer == "bytebound":
+        context_builder._token_encoding = lambda: None  # type: ignore[assignment]
     count_tokens = context_builder.count_tokens
     token_mode = context_builder.tokenizer_name()
+    if args.tokenizer == "cl100k" and token_mode != "cl100k_base":
+        raise RuntimeError("cl100k cache did not load; refusing tokenizer fallback")
+    tokenizer_asset = None
+    if args.tokenizer == "cl100k":
+        asset_url = "https://openaipublic.blob.core.windows.net/encodings/cl100k_base.tiktoken"
+        expected_asset_sha256 = "223921b76ee99bde995b7ff738513eef100fb51d18c93597a113bcffe865b2a7"
+        asset_path = args.token_cache.resolve() / hashlib.sha1(asset_url.encode()).hexdigest()
+        asset_sha256 = sha(asset_path.read_bytes())
+        if asset_sha256 != expected_asset_sha256:
+            raise RuntimeError("cached cl100k asset hash differs from installed official expected_sha256")
+        tokenizer_asset = {
+            "source_host": "openaipublic.blob.core.windows.net",
+            "size_bytes": asset_path.stat().st_size,
+            "sha256": asset_sha256,
+            "installed_expected_sha256_verified": True,
+        }
     budget = 6_000
+    arm_names = ("A0", "A1", "B", "C", "D_full", "D_prefix")
+    budget_units = (
+        f"{token_mode} token count"
+        if token_mode == "cl100k_base"
+        else "UTF-8 byte upper bound, not exact model tokens"
+    )
 
     signature = re.compile(
         r"^\s*(?:export\s+)?(?:async\s+)?(?:def|class|function|interface|type|enum)\s+"
@@ -328,6 +364,7 @@ def main() -> None:
     # opened at this point.
     arms_by_case: list[dict] = []
     scan_by_case: dict[str, dict] = {}
+    d_prefix_injection_sha256: str | None = None
     selected_case_ids = set(args.case_ids or [])
     input_records = [
         row for row in prepared.get("records", [])
@@ -403,14 +440,109 @@ def main() -> None:
             preamble, eligible_files, hunks_by_file, c_order,
         )
 
-        contexts = {"A0": a0_text, "A1": a1_text, "B": b_text, "C": c_text}
-        for name in ("B", "C"):
+        # D keeps the production file order and per-file cap but avoids always
+        # consuming a file's budget on its earliest small hunks. Every file's
+        # first source hunk gets first priority; remaining hunks are ranked by
+        # descending cl100k raw-hunk size with source index as a stable tie-break.
+        production_order = {entry.path: i for i, entry in enumerate(a0.coverage)}
+        d_files = sorted(
+            eligible_files,
+            key=lambda file: production_order.get(file.filename, len(production_order)),
+        )
+        per_file_budget = max(1, budget // min(8, max(1, len(files))))
+        d_selected: set[tuple[str, int]] = set()
+        d_no_fit: list[tuple[str, int]] = []
+        d_selection_rank: dict[tuple[str, int], int] = {}
+        for file in d_files:
+            path = file.filename
+            file_hunks = hunks_by_file[path]
+            if not file_hunks:
+                continue
+            priority = [0] + sorted(
+                range(1, len(file_hunks)),
+                key=lambda idx: (-count_tokens(file_hunks[idx].raw), idx),
+            )
+            selected_here: set[int] = set()
+            for index in priority:
+                trial_here = selected_here | {index}
+                file_body = "\n".join(file_hunks[idx].raw for idx in sorted(trial_here))
+                key = (path, index)
+                trial_ids = d_selected | {key}
+                _trial_text, rendered_units, _selected = selected_context(
+                    preamble, trial_ids, d_files, hunks_by_file,
+                )
+                if count_tokens(file_body) > per_file_budget or rendered_units > budget:
+                    d_no_fit.append(key)
+                    continue
+                selected_here = trial_here
+                d_selected = trial_ids
+                d_selection_rank[key] = len(d_selection_rank)
+        d_text, d_tokens, _d_rendered = selected_context(
+            preamble, d_selected, d_files, hunks_by_file,
+        )
+        # D_full is the separately defined complete-hunk greedy selector above.
+        # D_prefix is a controlled probe of the actual builder: only the parser
+        # return order changes, and it is restored even if building fails.
+        original_builder_parser = context_builder.parse_file_hunks
+        def prefix_reordered_parser(file):
+            parsed = original_builder_parser(file)
+            if len(parsed) < 2:
+                return parsed
+            indexed = list(enumerate(parsed))
+            return [indexed[0][1], *[
+                hunk for _index, hunk in sorted(
+                    indexed[1:], key=lambda pair: (-count_tokens(pair[1].raw), pair[0])
+                )
+            ]]
+        injection_sha256 = sha(inspect.getsource(prefix_reordered_parser).encode("utf-8"))
+        if d_prefix_injection_sha256 is None:
+            d_prefix_injection_sha256 = injection_sha256
+        elif d_prefix_injection_sha256 != injection_sha256:
+            raise AssertionError("D_prefix injection function changed during run")
+        try:
+            context_builder.parse_file_hunks = prefix_reordered_parser
+            d_prefix_builder = build_review_context(
+                pr, files, include_context_pack=False, prioritize_rule_files=False,
+                allow_remote_file_fetch=False, max_patch_tokens=budget,
+            )
+        finally:
+            context_builder.parse_file_hunks = original_builder_parser
+        d_prefix_text, d_prefix_rendered_tokens, d_prefix_stopped = prefix_fit_a1(
+            d_prefix_builder.text
+        )
+        d_trace = []
+        for file in d_files:
+            for index, hunk in enumerate(hunks_by_file[file.filename]):
+                key = (file.filename, index)
+                if key not in d_selected:
+                    continue
+                changed_lines = [
+                    line[1:] for line in hunk.raw.splitlines()
+                    if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))
+                ]
+                d_trace.append({
+                    "path": file.filename,
+                    "source_hunk_index_0based": index,
+                    "source_hunk_new_start": hunk.new_start,
+                    "raw_hunk_token_count": count_tokens(hunk.raw),
+                    "is_first_source_hunk": index == 0,
+                    "selection_priority_rank": d_selection_rank[key],
+                    "render_order_rank": len(d_trace),
+                    "declaration_signature_proxy": any(
+                        signature.search(line) for line in changed_lines
+                    ),
+                })
+
+        contexts = {"A0": a0_text, "A1": a1_text, "B": b_text, "C": c_text, "D_full": d_text, "D_prefix": d_prefix_text}
+        for name in ("B", "C", "D_full", "D_prefix"):
             if contexts[name].count("## Patches\n") != 1:
                 raise AssertionError(f"{case_id} {name}: expected exactly one patch-section marker")
             if patch_marker(contexts[name]) < 0:
                 raise AssertionError(f"{case_id} {name}: patch-section marker is missing")
             if count_tokens(patch_section(contexts[name])) > budget:
-                raise AssertionError(f"{case_id} {name}: rendered patch exceeds byte-bound budget")
+                raise AssertionError(f"{case_id} {name}: rendered patch exceeds tokenizer budget")
+        if not extract_patch_chunks(d_prefix_text):
+            raise AssertionError(f"{case_id} D_prefix: empty patch after builder and strict fit")
         scan_by_case[case_id] = {
             "files": files,
             "contexts": contexts,
@@ -427,9 +559,9 @@ def main() -> None:
             payload_units = sum(count_tokens("\n".join(lines)) for _path, lines in visible)
             arm_metrics[name] = {
                 "context_sha256": sha(text.encode()),
-                "context_byte_upper_bound": count_tokens(text),
-                "patch_section_byte_upper_bound": count_tokens(section),
-                "patch_body_only_byte_upper_bound": payload_units,
+                "context_count_units": count_tokens(text),
+                "patch_section_count_units": count_tokens(section),
+                "patch_body_only_count_units": payload_units,
                 "source_hunks": sum(len(parse_file_hunks(file)) for file in files),
                 "source_hunk_body_visibility": dict(hunk_counts),
                 "header_only_stub_sections": header_stubs,
@@ -440,20 +572,30 @@ def main() -> None:
                     ))) for path, lines in visible
                 ),
                 "selected_hunk_atoms": (
-                    len(b_selected) if name == "B" else len(c_selected) if name == "C" else None
+                    len(b_selected) if name == "B" else
+                    len(c_selected) if name == "C" else
+                    len(d_selected) if name == "D_full" else None
                 ),
             }
-            if name in ("B", "C") and arm_metrics[name]["selected_hunk_atoms"]:
+            if name in ("B", "C", "D_full") and arm_metrics[name]["selected_hunk_atoms"]:
                 if arm_metrics[name]["selected_files"] == 0 or arm_metrics[name]["selected_rendered_hunk_bodies"] == 0:
                     raise AssertionError(f"{case_id} {name}: selected hunks absent from rendered output")
         scan_by_case[case_id]["arm_metrics"] = arm_metrics
         scan_by_case[case_id]["selection_detail"] = {
             "a0_builder_patch_budget": a0.patch_token_budget,
-            "a0_builder_token_count": a0.token_count,
+            "a0_builder_count_units": a0.token_count,
             "a1_rendered_budget_units": a1_rendered_tokens,
             "a1_stopped_at_line_boundary": a1_stopped,
             "b_selected_hunks": len(b_selected), "b_no_fit_hunks": len(b_no_fit),
             "c_selected_hunks": len(c_selected), "c_no_fit_hunks": len(c_no_fit),
+            "d_full_selected_hunks": len(d_selected), "d_full_no_fit_hunks": len(d_no_fit),
+            "d_full_per_file_budget": per_file_budget,
+            "d_prefix_builder_patch_budget": d_prefix_builder.patch_token_budget,
+            "d_prefix_builder_count_units": d_prefix_builder.token_count,
+            "d_prefix_strict_rendered_budget_units": d_prefix_rendered_tokens,
+            "d_prefix_stopped_at_line_boundary": d_prefix_stopped,
+            "d_hunk_priority": "first source hunk; then descending cl100k hunk tokens, stable original index",
+            "d_selected_hunk_trace": d_trace,
             "c_scanner_findings": len(signals.findings),
             "c_scan_warnings": len(signals.warnings),
             "c_risky_hunks": len(risk_by_hunk),
@@ -464,7 +606,7 @@ def main() -> None:
 
     # Post-hoc only: load gold after all four context arms and their hashes exist.
     per_case = []
-    confusion = {arm: Counter() for arm in ("A0", "A1", "B", "C")}
+    confusion = {arm: Counter() for arm in arm_names}
     source_categories = Counter()
     a0_missing_causes = Counter()
     rule_input_totals = Counter()
@@ -606,15 +748,16 @@ def main() -> None:
         "cases": len(per_case),
         "raw_tp_findings": sum(c["gold_raw_tp_count"] for c in per_case),
         "tokenizer": token_mode,
-        "budget_units": "UTF-8 byte upper bound, not exact model tokens",
+        "budget_units": budget_units,
         "patch_section_budget": budget,
-        "arms": {arm: dict(confusion[arm]) for arm in ("A0", "A1", "B", "C")},
+        "arms": {arm: dict(confusion[arm]) for arm in arm_names},
         "rule_signal_classes": dict(source_categories),
         "a0_no_visible_target_causes": dict(a0_missing_causes),
         "rule_input_totals": dict(rule_input_totals),
+        "tokenizer_asset": tokenizer_asset,
     }
     gold_visibility_by_arm = {}
-    for arm in ("A0", "A1", "B", "C"):
+    for arm in arm_names:
         counts = Counter()
         for case in per_case:
             for finding in case["finding_mappings"]:
@@ -665,7 +808,7 @@ def main() -> None:
     for split_name, case_ids in split_ids.items():
         split_cases = [case for case in per_case if case["case_id"] in case_ids]
         arm_outcomes = {}
-        for arm in ("A0", "A1", "B", "C"):
+        for arm in arm_names:
             counts = Counter()
             for case in split_cases:
                 for finding in case["finding_mappings"]:
@@ -696,6 +839,43 @@ def main() -> None:
             )
             if outcome_sum != expected_raw:
                 raise AssertionError(f"{split_name}/{arm}: visibility counts do not sum to raw TP")
+    dev_comparison_to_a1 = {}
+    dev_cases = [case for case in per_case if case["case_id"] in dev_ids]
+    for candidate_arm in ("C", "D_prefix"):
+        total = {key: [] for key in ("all_gained", "all_lost", "any_gained", "any_lost")}
+        per_case_comparison = []
+        for case in dev_cases:
+            changes = {key: [] for key in total}
+            for finding in case["finding_mappings"]:
+                if finding.get("mapping_status") != "mapped":
+                    continue
+                before = finding["A1"]["visibility"]
+                after = finding[candidate_arm]["visibility"]
+                finding_id = finding["finding_id_sha256"]
+                if before != "all" and after == "all":
+                    changes["all_gained"].append(finding_id)
+                if before == "all" and after != "all":
+                    changes["all_lost"].append(finding_id)
+                if before == "none" and after in ("some", "all"):
+                    changes["any_gained"].append(finding_id)
+                if before in ("some", "all") and after == "none":
+                    changes["any_lost"].append(finding_id)
+            for key, values in changes.items():
+                total[key].extend(values)
+            if any(changes.values()):
+                per_case_comparison.append({
+                    "case_id": case["case_id"],
+                    **changes,
+                    "counts": {key: len(values) for key, values in changes.items()},
+                })
+        dev_comparison_to_a1[candidate_arm] = {
+            "split": "dev9",
+            "mapped_findings_only": True,
+            "totals": {key: len(values) for key, values in total.items()},
+            "finding_id_sha256": total,
+            "per_case": per_case_comparison,
+        }
+
     source_files = (
         "src/analyzer/context_builder.py",
         "src/analyzer/risk_rules.py",
@@ -713,21 +893,34 @@ def main() -> None:
     out = {
         "experiment": "offline-context-selection-and-rule-signal-coverage",
         "method": (
-            "No model/network/target code execution; all selectors run before gold is read. "
-            "A0 is actual build_review_context output under the documented offline byte-bound fallback; "
+            "No model/API/target code execution; the tokenizer asset was pre-cached and network access was disabled for this run. "
+            "All selectors run before gold is read. A0 is actual build_review_context output; "
             "A1 is strict rendered-patch prefix fit; B is cross-file hunk round-robin; "
-            "C is global existing rule/AST risk plus declaration tie-break."
+            "C is global existing rule/AST risk plus declaration tie-break; D_prefix "
+            "is an actual-builder parser-order injection restored in finally, then strict-fit."
         ),
         "input_manifest": {
+            "schema_version": 2,
+            "counter": token_mode,
             "runtime_git_revision": revision,
             "runtime_source_sha256": source_hashes,
             "evaluation_script_sha256": sha(Path(__file__).read_bytes()),
+            "d_prefix_injection_sha256": d_prefix_injection_sha256,
+            "d_prefix_injection_parameters": {
+                "preserve_first_source_hunk": True,
+                "remaining_order": "descending cl100k raw-hunk token count",
+                "stable_tie_break": "original source hunk index ascending",
+                "shared_selector_and_builder_parser": True,
+                "restore_with_finally": True,
+                "strict_final_rendered_patch_token_budget": 6000,
+            },
             "prepared_sha256": sha(prepared_path.read_bytes()),
             "split_manifest_path": "datasets/dev/split.json",
             "split_manifest_sha256": sha(split_manifest_path.read_bytes()),
             "benchmark_commit": prepared.get("benchmark_commit"),
             "split_definition": "datasets/dev/split.json; 9 dev, 15 previously used holdout regressions, 1 excluded; all input cases must map to exactly one split member",
             "budget_units": summary["budget_units"],
+            "tokenizer_cache_metadata": tokenizer_asset,
             "patch_section_budget": budget,
             "context_pack": False,
             "remote_fetch": False,
@@ -735,7 +928,9 @@ def main() -> None:
             "rule_line_match": "same normalized file and inclusive gold [start_line,end_line]; position-only proxy, never semantic TP",
             "secondary_strategy_factors": {
                 "B": "round-robin by original diff file order and hunk order; complete hunks only; skip non-fitting hunk and continue",
-                "C": "existing scan_signals plus triage risk priority; declaration/signature heuristic tie-break; global complete-hunk ranking; removes per-file cap",
+                "C": "global complete-hunk sort key (-flagged, -triage_score, -declaration_signature_regex, path, new_start); triage_score=10*rule_hits + 10*risky + 0.02*churn + 0.5*public_interface; flagged when rule_hits>0 or score>=10; uses production scan_signals; removes per-file cap",
+                "D_full": "custom complete-hunk greedy selector; production file order and per-file cap; first source hunk, then descending cl100k raw-hunk token count with stable original-index ties; fit uses complete hunks and per-file/final rendered budgets",
+            "D_prefix": "controlled actual-builder probe; temporarily reorder parse_file_hunks to first source hunk then descending cl100k raw-hunk token count, stable original-index ties; restore parser in finally; run actual build_review_context; then strict rendered-patch prefix fit to 6000 tokens",
             },
             "case_ids": [row.get("case_id") for row in input_records],
         },
@@ -743,6 +938,7 @@ def main() -> None:
         "gold_target_line_visibility_by_arm": gold_visibility_by_arm,
         "rule_signal_visibility_A0": dict(rule_signal_visibility),
         "per_split": per_split,
+        "dev_comparison_to_A1": dev_comparison_to_a1,
         "per_case": per_case,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
