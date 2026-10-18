@@ -1,6 +1,6 @@
 # 当前交接
 
-更新：2026-10-18。当前文档提交为 `6db6173`；离线 soak 已在冻结的 `ca7b501` 源码归档上完成并退出 0。此页只作入口，当前事实以 [`docs/STATE.md`](docs/STATE.md) 和 [soak 摘要](docs/evaluation/offline-runtime-soak-2026-10-18.json) 为准；不要从历史记录推导完成状态。
+更新：2026-10-18。本轮代码/测试基线为 `ca7b501`；离线 soak 在该冻结源码归档上完成并退出 0。此页只作入口，当前状态以 [`docs/STATE.md`](docs/STATE.md) 和 [soak 摘要](docs/evaluation/offline-runtime-soak-2026-10-18.json) 为准；不要从历史记录推导完成状态。
 
 ## 必读
 
