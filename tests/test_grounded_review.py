@@ -759,6 +759,25 @@ def test_witness_filter_blocks_confirmation_of_an_equivalent_rewrite(equivalent_
     assert report.metrics["witness_blocked_count"] == 1
 
 
+def test_unsupported_witness_blocks_confirmation_and_keeps_candidate_pending(
+    equivalent_repo, monkeypatch,
+):
+    from src.reviewer import criteria
+    from src.reviewer.witness import WitnessResult
+
+    monkeypatch.setattr(
+        criteria,
+        "witness_for_evidence",
+        lambda _evidence: WitnessResult("unsupported", "value size limit exceeded"),
+    )
+    report, _ = run_equivalent(equivalent_repo, [equivalent_candidate(), equivalent_verdict()])
+    assert report.suggestions == []
+    assert len(report.pending_suggestions) == 1
+    verdicts = {v["filter"]: v for v in report.behavior_verifications[0]["filter_verdicts"]}
+    assert verdicts["witness_eval"]["passed"] is False
+    assert verdicts["witness_eval"]["status"] == "unsupported"
+
+
 def verdict_with_expression_pair(**updates):
     """Same verdict, but citing the changed expression on both sides so the
     witness check has something to evaluate."""

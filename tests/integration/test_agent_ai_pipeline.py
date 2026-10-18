@@ -274,9 +274,9 @@ def test_auto_large_pr_keeps_grounded_cross_file_review():
                for query in queries)
     assert any(query.get("tool") == "search" and query.get("symbol") == "get_profile"
                for query in queries)
-    assert result.report.behavior_verifications[0]["criteria_version"].startswith(
-        "grounded-v3:"
-    )
+    from src.reviewer.criteria import CRITERIA_VERSION
+
+    assert result.report.behavior_verifications[0]["criteria_version"] == CRITERIA_VERSION
     assert result.report.context_tokenizer in {
         "cl100k_base", "utf8_byte_upper_bound",
     }

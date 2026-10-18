@@ -534,6 +534,33 @@ def test_checkpoint_identity_change_reexecutes_unit_instead_of_reusing_result(tm
     assert result.suggestions[0].title == "model result 1"
 
 
+def test_witness_criteria_version_change_invalidates_old_unit_checkpoint(tmp_path):
+    from src.reviewer.criteria import CRITERIA_VERSION
+
+    plan, files = plan_with_two_units()
+    snapshot = _Mem({"src/a.py": "def foo(x):\n    return x\n", "src/b.py": "value = 2\n"})
+    checkpoint = tmp_path / "units.jsonl"
+    calls: list[str] = []
+
+    def review(ctx, unit_files_):
+        calls.append(unit_files_[0].filename)
+        return grounded(suggestions=[suggestion(unit_files_[0].filename, 1)])
+
+    run_units_for_review(
+        review, snapshot, files, token_budget=1000, max_units=1, checkpoint_path=checkpoint,
+        checkpoint_identity={"repo": "owner/repo", "criteria_version": "grounded-v3"},
+    )
+    calls.clear()
+    result, details = run_units_for_review(
+        review, snapshot, files, token_budget=1000, max_units=1, checkpoint_path=checkpoint,
+        checkpoint_identity={"repo": "owner/repo", "criteria_version": CRITERIA_VERSION},
+    )
+    assert calls
+    assert details["units_resumed"] == 0
+    assert details["unit_checkpoint_issues"]
+    assert result.suggestions
+
+
 @pytest.mark.parametrize("mutation", ["missing", "truncated", "schema"])
 def test_invalid_checkpoint_artifact_reexecutes_unit(tmp_path, mutation):
     plan, files = plan_with_two_units()

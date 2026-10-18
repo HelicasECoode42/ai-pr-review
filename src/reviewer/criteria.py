@@ -20,7 +20,8 @@ Rules:
   input where base and head differ. No witness on an enumerated domain is a
   refutation of the claim's evidence, so it blocks confirmation - and it is
   recorded as such rather than silently dropped. Expressions outside the safe
-  subset are reported as ``unsupported`` and do not block.
+  subset or outside a resource bound are reported as ``unsupported`` and block
+  confirmation, because the evaluator cannot establish a safe witness result.
 * Every verdict is written into the decision record, so a candidate's route is
   auditable and a criteria change can be attributed.
 """
@@ -33,7 +34,7 @@ from src.reviewer.witness import WitnessResult, evaluate_equivalence, expression
 
 # Version of the confirmation rules. Bump it whenever a filter or a threshold
 # changes: a report records which rules produced it (H6).
-CRITERIA_VERSION = "grounded-v3: chain+provenance+witness+contract"
+CRITERIA_VERSION = "grounded-v4: bounded-witness+chain+provenance+contract"
 
 _CONFIRMED_CHAIN_FIELDS = (
     "trigger", "expected_behavior", "actual_behavior", "introduced_by", "reason",
@@ -209,7 +210,7 @@ def confirmation_verdicts(
             ))
         else:
             verdicts.append(FilterVerdict(
-                "witness_eval", True, f"not evaluable: {result.reason}",
+                "witness_eval", False, f"not evaluable: {result.reason}",
                 {"status": result.status},
             ))
 

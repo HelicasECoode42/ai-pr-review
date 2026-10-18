@@ -54,7 +54,93 @@ def test_raising_the_same_exception_on_both_sides_is_not_a_witness():
 def test_unsupported_expression_is_reported_not_guessed():
     result = evaluate_equivalence("return obj.method()", "return other.method()")
     assert result.status == "unsupported"
-    assert result.blocks_confirmation is False
+    assert result.blocks_confirmation is True
+
+
+def test_unsupported_pow_is_not_silently_rewritten_to_zero():
+    result = evaluate_equivalence("x ** 9", "0")
+    assert result.status == "unsupported"
+    assert "exponent" in result.reason
+
+
+def test_sequence_multiplication_is_rejected_before_large_result_allocation(monkeypatch):
+    import src.reviewer.witness as witness
+
+    monkeypatch.setattr(witness, "MAX_VALUE_ITEMS", 32)
+    result = evaluate_equivalence('"x" * (2 ** 6)', '"x" * 32')
+    assert result.status == "unsupported"
+    assert "value size" in result.reason
+
+
+def test_ast_depth_and_node_count_are_bounded_iteratively(monkeypatch):
+    import src.reviewer.witness as witness
+
+    monkeypatch.setattr(witness, "MAX_AST_DEPTH", 12)
+    with pytest.raises(UnsupportedExpression, match="depth"):
+        parse_expression("not " * 20 + "x")
+
+    monkeypatch.setattr(witness, "MAX_AST_DEPTH", 100)
+    monkeypatch.setattr(witness, "MAX_AST_NODES", 10)
+    with pytest.raises(UnsupportedExpression, match="node count"):
+        parse_expression("x + x + x + x + x + x")
+
+
+def test_domain_product_over_limit_is_unsupported_not_truncated(monkeypatch):
+    import src.reviewer.witness as witness
+
+    monkeypatch.setattr(witness, "MAX_DOMAIN_ASSIGNMENTS", 7)
+    result = evaluate_equivalence("x + y", "y + x")
+    assert result.status == "unsupported"
+    assert "domain" in result.reason
+
+
+def test_small_supported_arithmetic_and_sequence_witnesses_remain_available():
+    assert evaluate_equivalence("x + 1", "x + 2").status == "differs"
+    assert evaluate_equivalence('"a" * 2', '"a" * 3').status == "differs"
+    assert evaluate_equivalence("x ** 2", "x ** 3").status == "differs"
+    assert evaluate_equivalence("1 / x", "2 / x").status == "differs"
+    assert evaluate_equivalence("sum([1, 2], 3)", "sum([1, 2], 4)").status == "differs"
+    assert evaluate_equivalence("sum([1], 10)", "11").status == "no_witness"
+    assert evaluate_equivalence("sum()", "0").status == "differs"
+    assert evaluate_equivalence('"a" * 0', "''").status == "no_witness"
+
+
+def test_nested_sequence_repetition_counts_logical_elements_before_multiplying(monkeypatch):
+    import src.reviewer.witness as witness
+
+    monkeypatch.setattr(witness, "MAX_VALUE_ITEMS", 19)
+    result = evaluate_equivalence("[[0] * 4] * 4", "[[0] * 4] * 3")
+    assert result.status == "unsupported"
+    assert "value size" in result.reason
+
+
+def test_non_finite_float_results_are_unsupported_not_false_witnesses():
+    result = evaluate_equivalence("1e999 - 1e999", "1e999 - 1e999")
+    assert result.status == "unsupported"
+    assert "non-finite float" in result.reason
+    assert evaluate_equivalence("sum([], '')", "''").status == "unsupported"
+
+
+@pytest.mark.parametrize("resource_error", [MemoryError, RecursionError])
+def test_evaluator_resource_errors_become_unsupported(monkeypatch, resource_error):
+    import src.reviewer.witness as witness
+
+    def exhaust(*_args, **_kwargs):
+        raise resource_error("synthetic bounded evaluator failure")
+
+    monkeypatch.setattr(witness, "_evaluate", exhaust)
+    result = evaluate_equivalence("1", "2")
+    assert result.status == "unsupported"
+    assert result.blocks_confirmation is True
+
+
+def test_oversized_integer_literal_is_unsupported(monkeypatch):
+    import src.reviewer.witness as witness
+
+    monkeypatch.setattr(witness, "MAX_INT_BITS", 8)
+    result = evaluate_equivalence("256", "0")
+    assert result.status == "unsupported"
+    assert "integer literal" in result.reason
 
 
 def test_imports_and_attributes_are_refused():
