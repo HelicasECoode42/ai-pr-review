@@ -1,111 +1,25 @@
-# 状态一页纸（给新会话/压缩后接手用）
+# 当前状态与证据边界
 
-> 只读这一页就能接着干。规范在 [`HARNESS.md`](HARNESS.md)，本页只放**当前事实与下一步**。
-> 当前状态更新：2026-10-18。HEAD `5025c559bb67aebf7214ef87c5e987a3f96c2c35`；Harness预算/发布、策略生命周期与路由调整仍在共享工作区并有并行工作。下方原有数字与路线是历史记录，若与本状态块冲突，以本块和 [`HANDOFF.md`](../HANDOFF.md)、[唯一执行计划](review-v2-development.md)为准。
+更新：2026-10-18。文档基线提交 `6db6173`；本次状态补记离线 soak 结果。阶段计划见 [`review-v2-development.md`](review-v2-development.md)，本页是当前状态唯一真相。
 
-## 当前验证与边界（2026-10-18）
+## 当前能力
 
-- 离线轻量 smoke 记录在 [`offline-runtime-smoke-2026-10-18.json`](evaluation/offline-runtime-smoke-2026-10-18.json)：25个缓存输入的 `build_review_context` 修复前三次中位0.349秒/67.1MiB，仅是上下文组装，不是审查速度。修复前735个文件均有文件级记录，hunk分母1460；早期文档/lockfile/敏感路径排除未计源hunk。工作区修复后逐case复验为1771/1771源hunk进入终态账目，311个仍按文件原因标记omitted（文档125、lockfile185、敏感路径1），排除内容仍不进prompt。随机预算探针两种计数器均通过；旧耗时不代表修后性能。
+- 自动路由对大型 PR 保留 grounded 审查；显式 `two_stage` 仍走 legacy 路径。不要将两条路径的能力混称为同一 agent 流程。
+- 判据使用 criteria-v4 的有界 witness。超出支持资源/表达式范围的输入保持 unsupported/unknown，不能报告为 confirmed。
+- 受约束策略存储只允许固定模板的 prompt addendum；`playbook_recall_k` 固定为 5，当前不能作为可变策略晋升。candidate 需隔离评估并由人工显式晋升；这不是完整自动模型自进化闭环。
+- `decision_ledger.py` 尚未接入生产候选生命周期。发布依赖 marker 与 artifact，可做有限去重与状态记录，不提供跨 host exactly-once。
+- CLI smoke 的帮助检查和缓存上下文组装不等于完整 PR 审查耗时；不能据此声称 review 提速。
 
-- 本轮工作区：CLI/API/Web默认 `auto`，显式 `off` 在SSE也进入legacy并返回requested/effective/reason；CLI `--two-stage`对Agent路由生效。策略选择按大小阈值，是规则路由而非LLM语义分类。Agent sidecar记录请求模式、实际策略和原因。
-- Application把主审、Critic、unit provider纳入同一 `ReviewRequestBudget`：完整system/user输入以UTF-8字节保守上界计数、HTTP attempt与总deadline共用；`scripts/run_real_review.py`也改用该入口。数字不是精确token或费用。预算拒绝时已返回的候选保留pending/partial。
-- reusable workflow会按冻结报告head校验并以bot作者身份验证review comment marker；同一PR workflow串行，按候选写publication artifact。PR作者显式回复对应评论可dismiss当前指纹；读API失败或创建结果不明记录unknown。该机制不承诺跨workflow/跨host exactly-once，`decision_ledger.py`仍不是生产运行账本。
-- Active策略默认baseline；可选store路径经版本哈希与固定prompt模板校验后加载，workflow仅透传调用方工作区路径，不在runner间持久化。fixture生命周期已覆盖 `promote_candidate→ReviewApplication实际prompt→rollback→baseline prompt`；这不是自动自主晋升或真实模型效果。
-- 阶段2本地工作区已接通一条意图取证切片：同一次 grounded discovery 生成假设与 bound read/search，host 在固定快照执行，真实证据 refs 进入 verifier；假设评估只作注释，不覆盖 finding 的 quote/chain/witness 判据。未知/未绑定任务不读源码；重复请求复用、无新增证据后强制停止、budget-final requests 标记未执行。单机 fixture 流程可测，真实模型质量/召回/成本节省尚无结论。
-- 稳定工作区 `.venv/bin/python -m pytest -q`：**443 passed**，1 条 Starlette/httpx deprecation warning。关键 Ruff 规则、criteria/holdout/interface 离线 gates、`git diff --check` 均通过。23 个改动/新 Python 文件的新增行/新文件Ruff扫描为0条新诊断。
+## 离线证据
 
-- 阶段2只由 fake-provider 与本地 fixture 验证；没有真实模型质量、召回、token 或成本收益结论。C 的单次 snapshot 硬 I/O 上限和 unit checkpoint 跨进程/强杀恢复仍待办；有效 JSON 产物恢复不代表 exactly-once。
-- `.venv/bin/ruff check --select E9,F63,F7,F82`、criteria/holdout/interface 三个离线 gate、`git diff --check` 通过。interface audit 仍报告 6 个accepted-but-unused参数；其门禁只要求没有未消费flag或调用/定义不匹配。
-- C 已在 HEAD：隔离 Ruff 接入单 PR frozen base/head snapshot；Agent、CLI、Web detail 复用 snapshot，overview 显示 `not_run`。新增行匹配只是未确认 candidate，不是语义 TP。无真实 PR/model/cost 结果。
-- 当前工作区的Harness改造还包括共享输入/HTTP尝试/总时间预算、带partial候选保留、工作流发布指纹/可信marker/dismissal及 requested/effective mode追踪；它们已通过本地mock与测试，但GitHub Actions真实写评论、跨host恰好一次、模型费用和语义质量均未验证。
-- 运行时策略默认baseline；显式可信store路径才加载哈希匹配的固定模板，reusable workflow只透传调用方工作区目录，不持久化。fixture完成promote→ReviewApplication prompt→rollback验证，不表示自主晋升或生产自进化。
-- unit checkpoint 当前工作区改动以有匹配身份、校验通过的 JSON 结果产物恢复真实 findings；旧 metadata-only 记录不能标成成功恢复。当前模型结果若无法落盘仍保留在本次 partial 报告中，之后重跑可能重复请求。单进程中断恢复已有 fake-provider 测试；跨进程并发和强杀窗口不承诺 exactly-once，unit review 默认关闭。
-- snapshot 返回内容的读取/处理预算不是硬 I/O 限制：单次 `snapshot.read()` 仍可能先完整返回再检查大小；严格响应体上限/取消待办。候选持久决策账本仍未接生产；workflow评论指纹只保证当前单PR串行运行中的有限去重，不提供跨host exactly-once。
+- 严格完整测试为 **463 passed**，提交 `ca7b501` 的正常 pre-commit hooks 通过；随后 `6db6173` 仅更新评测文档。该测试结果对应代码树 `ca7b501`（tree `d60702c9a4e4ef98376508cdf666b278c65c75d1`），不是新的 soak 结果。
+- 历史轻量 smoke 详见 [`offline-runtime-smoke-2026-10-18.json`](evaluation/offline-runtime-smoke-2026-10-18.json)：其源码 HEAD 为 `805271cfaa1e2628afa4991b1669f829237bedf6`。25 个缓存输入的上下文组装旧计时中位数为 0.3488 秒 / 70.3 MB 峰值 RSS（原报告的 67.1 MiB 是同一量级换算）；当时 hunk denominator 为 1460。后续独立验证修复后 1771/1771 源 hunk 进入终态账目，但没有在修复后重测该耗时，不能把旧计时归给新源码。
+- 固定源码 soak 详见 [`offline-runtime-soak-2026-10-18.json`](evaluation/offline-runtime-soak-2026-10-18.json)：约 75 分 34 秒内完成 579 批，11,580 次缓存上下文构建、28,950 次安全 witness、4,632 次 Unicode/预算截断检查和 579 次 fake-provider 生产入口测试，错误数为 0。单输入为 1 个本地缓存 fixture PR（10 个文件）；不含真实模型、真实 PR、Gold 输入或 GitHub 写入，不能证明 P/R、成本或线上网络客户端稳定性。日志记录运行至预设 deadline 附近并正常退出 0，但没有记录独立 stop reason；512 MiB RSS 是采样软停止阈值，不是 OS 硬限制。
+- 缓存数据的 1,771 个源 hunk 均进入终态账目；其中 311 个因文件类别排除，分别是文档 125、lockfile 185、敏感路径 1，排除内容不进入 prompt。
+- cl100k 选材对照是首轮 patch 目标行可见性实验，不是语义 recall。C 只是实验臂，未改默认：Dev9 对 A1 的 any-visible 为 15 gain/11 loss；security 为 0 gain/2 loss，maintainability 为 0 gain/3 loss。all-visible 为 17 gain/10 loss。不能用净值掩盖分类损失。
+- 新样本 roster 20 个；首个公开 GET 返回 HTTP 403 后停止，1 次请求、0 个样本接受，原因未证实。没有新增 PR 泛化验证。
+- 本轮没有新增真实模型 P/R、成本或语义裁决结果。历史 raw file+line 匹配只是位置 proxy，不是人工语义精确率/召回率；旧 holdout 15 PR 已被使用，只能作回归。
 
-## 目标（已按实测重写）
+## 范围与下一步
 
-本地优先 + CI 影子模式的 PR 审查工具。**可测目标**：机械可判定类（守卫/边界/空值/错误传播/契约）高召回并**逐类报告**；**精确率 ≥0.8**；lint 能抓的一律不报；单 PR 便宜；**不静默丢**（每个 hunk/单元都有终态与原因）。
-
-**非目标**：大 PR 全量覆盖（物理地板约 8 元/59 万 tokens）、自动改代码、队列/DB/多租户、IDE（已冻存）。
-
-## 真实 PR 基线（ReviewBench 官方 gold，5 个真实 PR，官方 `tp_fp` 标注）
-
-```
-发布召回 11.6% | 识别召回 18.6% | 精确率 83.3%（micro）
-43 条 gold 去向：发布命中 5 | 识别但被扣 3 | 完全没提出 35（81%）
-```
-- **81% 是"看不见"（发现/检索），不是判据** → 主战场在"看得更多"
-- 参考：阿里 AACR-Bench agent 召回 10.10% / 精确 39.90%；**我们精度高一倍多，召回同量级**
-- 脚本：`scripts/reviewbench_real_eval.py --benchmark <ReviewBench clone> --limit N`
-  （gold 不入库，需 `git clone --depth 1 https://github.com/review-bench/ReviewBench.git`）
-
-## 合成/离线基线
-
-| 评测 | 数字 | 命令 |
-|---|---|---|
-| 判据门禁（dev 集） | 等价被拒、真缺陷出见证、契约外见证被阻断 | `scripts/criteria_gate.py` |
-| **held-out**（14 case，与 dev 不重叠） | witness 7/7、equivalent 7/7 | `scripts/holdout_eval.py` |
-| 接缝审计 | 0 惰性开关、0 调用/定义不匹配 | `scripts/interface_audit.py` |
-| 单测 | **360 passed** | `.venv/bin/python -m pytest -q` |
-| 真实小 PR 成本 | 74k tokens ≈ 0.08 元 | — |
-| 大 PR 逐单元 | 13.8k tokens/单元（旧 62k） | `scripts/run_real_review.py` |
-| 缓存命中 | 稳定前缀 96.9%；按单元 50% | `docs/graph-planning-dataflow.md` |
-
-## 已实现（能力 + 门禁）
-
-- **判据链** `chain → provenance → counter_evidence → witness → contract`（`grounded-v3`），每条候选带 `filter_verdicts`
-- **见证求值** `witness_eval`（AST 白名单、无 exec）+ 契约域阻断 → 等价改写机械上无法 confirmed
-- **账本**：预算/覆盖/单元终态守恒；`checkpoint/resume/retry/cancel`；判定账本 `decision_ledger`
-- **两级扫描** `tiered_scan`（**已调准：大 PR 深审 12.7%，小 PR 装得下 100%**；**未接生产**）
-- **impact closure** 指标（**已进报告 metrics**）；语义 diff 划分；发布幂等（哈希去重 + 驳回记忆）
-- **知识层** playbook（`kb-0001..0006`，含 gold 提炼的契约/并发/ReDoS 假阳性条目）
-- **门禁**：CI 四条 + **pre-commit 四条**（已实测能拦住失败提交）
-- 文档：规范 `HARNESS.md`、DFD/STD、模块图（生成）、优势与依据 `ADVANTAGES.md`
-
-## 下一步（按优先级，只有一件是主杠杆）
-
-1. **A｜两级扫描接线**（已试过一次，被测试拦回，见下方"A 的失败记录"）：正确做法是**在渲染 patch 的地方过滤**，而不是重建 `ChangedFile.patch`
-2. **C｜确定性工具**：ruff/类型 + SARIF 输出（机械类召回，0 模型成本）
-3. **E｜分级模型**：便宜模型一级 + 强模型二级（让全量扫便宜到能常开）
-4. **F｜重跑真实评测**：`--limit 5`，看识别/发布拆分的变化（2.5 元）
-5. **RSI 循环**：门禁 + 判定账本 + held-out 都已就绪，等的就是 A/C 带来的增量信号
-
-## 坑与铁律（都是踩过的）
-
-- **不要**在没有评测验证时声称"已达标"（我错过三次：P4 覆盖率、AST 背锅、扣下是主因）
-- **不要**让测试失败进入提交（已 3 次；现由 pre-commit 物理阻断）
-- 我的补丁**切坏过文件两次**（正则/块替换）→ 大改就用整文件重写
-- 断言**不要**强求 fixture 给不出的形状（closure 0 节点是合法的）
-- `.env` 被 gitignore；`PRE_COMMIT_HOME` 需指向工作区（沙箱 `~/.cache` 不可写）
-
-## A 的失败记录（两次尝试，2026-10-16）
-
-**第一次**：在入口处重建 `ChangedFile.patch`（拼 `hunk.raw`）。两个生产路径测试立刻显示 `coverage_summary.hunks_total=0`——**重建的 patch 不可解析，diff 内容被删**。回退。
-
-**第二次**：改成"在渲染 hunk 的循环里按 tier-1 结果过滤"（正确位置）。仍然失败，而且 **12 个测试红了**——因为**纯"可疑"过滤会把不装得下的 diff 清成空**：没有规则命中的 PR（例如只有 `check_permission(user, resource_i)` 这种新增调用的改动）会**一条 hunk 都不剩，模型什么都看不到**。这正好与"看得更多"的目标相反。
-
-**结论（A 的正确形状，别再一次只做一半）**：
-```
-keep = 可疑 hunk（tier-1 命中）  ∪  按价值用背包填满剩余预算的 hunk
-```
-- 可疑 = **优先级提升**，不是唯一入选条件；
-- 剩余预算必须由 `src/analyzer/selection.py` 的 `select_hunks_optimal` 按价值填满，否则上下文会饿死；
-- **单位必须是 token**（`max_patch_tokens` 是 token；比行数会让门禁在错误的时候触发——这个错在本仓已犯过两次）；
-- 先写两条测试：**装得下 → 每个 hunk 都在**；**装不下 → 可疑 hunk 全在 + 背包填满 + 每条被丢弃的 hunk 都有 omission**；
-- 改完必须用真实 PR 评测（2.4 元）验证召回，**不能只看测试绿就声称有效**。
-
-**不要**在没有上述 keep-set 公式时再动这个函数。
-
-## A 的失败记录（2026-10-16，不要在同一个坑里再摔一次）
-
-在 `build_review_context` 里按 tier-1 结果**重建 `ChangedFile.patch`**（用 `hunk.raw` 拼）后，两个生产路径测试立刻变了：过滤后 `coverage_summary.hunks_total=0`，即**重建的 patch 里没有可解析的 hunk——diff 内容被删掉了**。已回退（默认行为不变，360 通过）。
-
-**教训**：
-1. `hunk.raw` 对合法 patch 是有值的，但**不同 fixture/文件形态下不可靠**；
-2. 正确接法是**在产出 patch 文本的那个循环里过滤**（那里已有正确的 hunk 文本），而不是在入口处重建文件对象；
-3. 补测试时必须断言**"装得下 → 每个 hunk 都在文本里"**和**"装不下 → 只有可疑 hunk + 逐条 omission"**，仅断言 `truncated` 会漏掉内容丢失；
-4. **是测试拦住的，不是评审**——所以接 A 之前先写这两条测试。
-
-## 钱
-
-共用 key（别人也在用）。本轮实测花费：3 PR 试点 1.5 元、5 PR 诊断 2.4 元、逐单元验证 1.3 元。**跑评测前先看余额。**
+策略/知识 candidate 的离线生命周期测试与 fake-provider 验证，不证明自主反思或真实模型效果。Soak 用固定源码 `ca7b501`；脚本、网络阻断配置、输入 fixture、日志哈希见摘要文件。VS Code 继续冻结，不作为本轮验收目标。
