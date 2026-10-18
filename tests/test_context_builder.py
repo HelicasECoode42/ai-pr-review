@@ -178,14 +178,34 @@ def test_over_budget_context_accounts_for_every_hunk() -> None:
     assert ctx.text.strip()
 
 
-def test_over_budget_context_still_shows_the_model_something() -> None:
+def test_over_budget_context_still_shows_the_model_something(monkeypatch) -> None:
     """Guardrail: a diff that does not fit must not become an empty prompt.
 
     Filtering to flagged hunks alone did exactly that, and it is the failure this
     replacement exists to avoid.
     """
+    class DeterministicEncoding:
+        """Keep this budget-selection regression independent of local tiktoken cache."""
+
+        def encode(self, text, disallowed_special=()):
+            return [text[index:index + 8] for index in range(0, len(text), 8)]
+
+        def decode(self, tokens):
+            return "".join(tokens)
+
+    monkeypatch.setattr(
+        "src.analyzer.context_builder._token_encoding", DeterministicEncoding
+    )
     ctx = build_review_context(
         PullRequest(repo="test/repo", number=12, title="Over budget"), _over_budget_files(), [],
         max_patch_tokens=40,
     )
     assert "value_" in ctx.text
+    patch_budget = next(line for line in ctx.budgets.lines if line.name == "patch_context")
+    assert patch_budget.used <= patch_budget.limit
+    assert ctx.coverage_summary.hunks_total == (
+        ctx.coverage_summary.hunks_complete
+        + ctx.coverage_summary.hunks_partial
+        + ctx.coverage_summary.hunks_omitted
+    )
+    assert ctx.coverage_summary.hunks_complete < ctx.coverage_summary.hunks_total

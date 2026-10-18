@@ -355,6 +355,9 @@ def _build_context_pack(
     result = "\n\n".join(parts)
     if result:
         result = "\n\n---\n\n" + result + "\n\n---"
+        # The report ledger charges the rendered pack, including headings and
+        # separators. Keep those wrappers inside the same cap as the guide/index.
+        result, _, _ = truncate_to_token_budget(result, budget)
     return result
 
 

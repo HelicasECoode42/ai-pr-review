@@ -5,7 +5,7 @@ import json
 import re
 from dataclasses import dataclass
 
-from src.analyzer.context_builder import ReviewContext, count_tokens
+from src.analyzer.context_builder import ReviewContext, count_tokens, tokenizer_name
 from src.analyzer.repository_context import EvidenceBundle, Snapshot, safe_source_path
 from src.models import (
     BudgetReport,
@@ -1007,6 +1007,7 @@ def build_grounded_report(pr, files, findings, result, context, *, reviewer_vers
                         completeness=_build_completeness(pr, files, skipped, incomplete, True, False, pr_syntax_ok),
                         candidate_audit=result.candidates, behavior_verifications=result.decisions,
                         repository_context=result.bundle,
+                        context_tokenizer=tokenizer_name(),
                         budget_report=run_budget,
                         hidden_suggestions_count=len(result.candidates) - len(result.suggestions),
                         metrics=run_metrics)

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from src.analyzer import context_builder
 from src.analyzer.context_builder import (
     _fetch_repo_file_text,
     _is_frozen_ref,
     build_review_context,
     partial_inclusion_counts,
     partial_inclusion_warning,
+    tokenizer_name,
 )
 from src.models import ChangedFile, FileStatus, PullRequest, StepStatus
 
@@ -62,6 +64,18 @@ def test_context_budget_ledger_names_its_scope_and_respects_its_limits():
     names = {line.name for line in ctx.budgets.lines}
     assert {"context_pack", "patch_context", "per_file_patch"} <= names
     assert ctx.budgets.over_limit == ()
+
+
+def test_context_pack_wrappers_fit_under_byte_fallback_budget(monkeypatch):
+    monkeypatch.setattr(context_builder, "_token_encoding", lambda: None)
+    files = [ChangedFile(filename="src/a.py", patch="@@ -1,1 +1,1 @@\n-old\n+new\n")]
+
+    ctx = build_review_context(frozen_pr(), files, max_patch_tokens=1000)
+
+    pack = next(line for line in ctx.budgets.lines if line.name == "context_pack")
+    assert tokenizer_name() == "utf8_byte_upper_bound"
+    assert ctx.budgets.over_limit == ()
+    assert pack.used <= pack.limit
 
 
 def test_partial_inclusion_is_reported_as_one_warning_line():
