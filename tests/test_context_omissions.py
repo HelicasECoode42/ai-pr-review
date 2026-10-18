@@ -78,6 +78,57 @@ def test_context_pack_wrappers_fit_under_byte_fallback_budget(monkeypatch):
     assert pack.used <= pack.limit
 
 
+def test_header_only_hunks_are_omitted_but_blank_and_deleted_lines_are_reviewable(monkeypatch):
+    monkeypatch.setattr(context_builder, "_token_encoding", lambda: None)
+
+    header_only = ChangedFile(
+        filename="src/header_only.py",
+        status=FileStatus.MODIFIED,
+        patch="@@ -1,1 +1,1 @@\n",
+    )
+    metadata_only = ChangedFile(
+        filename="src/metadata_only.py",
+        status=FileStatus.MODIFIED,
+        patch="@@ -1,1 +1,1 @@\n\\ No newline at end of file\n",
+    )
+    blank_added = ChangedFile(
+        filename="src/blank_added.py",
+        status=FileStatus.ADDED,
+        patch="@@ -0,0 +1,1 @@\n+\n",
+    )
+    pure_deletion = ChangedFile(
+        filename="src/deleted.py",
+        status=FileStatus.MODIFIED,
+        deletions=1,
+        patch="@@ -1,1 +0,0 @@\n-deleted_value\n",
+    )
+
+    ctx = build_review_context(
+        frozen_pr(),
+        [header_only, metadata_only, blank_added, pure_deletion],
+        max_patch_tokens=1000,
+        allow_remote_file_fetch=False,
+        include_context_pack=False,
+    )
+
+    by_path = {entry.path: entry for entry in ctx.coverage}
+    assert ctx.status is StepStatus.PARTIAL
+    for path in ("src/header_only.py", "src/metadata_only.py"):
+        assert by_path[path].hunks_total == 1
+        assert by_path[path].hunks_complete == 0
+        assert by_path[path].hunks_omitted == 1
+        assert by_path[path].reason == "header_only_hunk"
+    assert by_path["src/blank_added.py"].hunks_complete == 1
+    assert by_path["src/deleted.py"].hunks_complete == 1
+    assert "deleted_value" in ctx.text
+    assert partial_inclusion_counts(ctx) == {"header_only_hunk": 2}
+    assert ctx.coverage_summary.hunks_total == (
+        ctx.coverage_summary.hunks_complete
+        + ctx.coverage_summary.hunks_partial
+        + ctx.coverage_summary.hunks_omitted
+    )
+
+
 def test_partial_inclusion_is_reported_as_one_warning_line():
     files = [ChangedFile(filename="src/a.py", patch=OVERSIZED)]
     ctx = build_review_context(frozen_pr(), files, max_patch_tokens=200)

@@ -63,19 +63,45 @@ def truncate_to_token_budget(text: str, budget: int) -> tuple[str, int, bool]:
         tokens = encoding.encode(text or "", disallowed_special=())
     if len(tokens) <= budget:
         return text, len(tokens), False
+
+    def decode_prefix(prefix):
+        if encoding is None:
+            return bytes(prefix).decode("utf-8", errors="ignore")
+        decode_bytes = getattr(encoding, "decode_bytes", None)
+        if callable(decode_bytes):
+            return decode_bytes(prefix).decode("utf-8", errors="ignore")
+        return encoding.decode(prefix)
+
     marker = TRUNCATION_MARKER
     marker_tokens = (
         list(marker.encode("utf-8"))
         if encoding is None
         else encoding.encode(marker, disallowed_special=())
     )
-    body_budget = max(0, budget - len(marker_tokens))
-    if encoding is None:
-        body = bytes(tokens[:body_budget]).decode("utf-8", errors="ignore")
-    else:
-        body = encoding.decode(tokens[:body_budget])
+    body_budget = budget - len(marker_tokens)
+    if body_budget < 0:
+        # The marker is useful only if it fits. Returning it over budget while
+        # reporting `min(budget, ...)` made the ledger undercount tiny contexts.
+        fitted = decode_prefix(tokens[:budget])
+        consumed = count_tokens(fitted)
+        if consumed <= budget:
+            return fitted, consumed, True
+        # A tokenizer may decode a prefix to text with a different tokenization.
+        # Fail closed rather than report a fitting fragment that exceeds the cap.
+        return "", 0, True
+
+    body = decode_prefix(tokens[:body_budget])
     fitted = body + marker
-    return fitted, min(budget, count_tokens(fitted)), True
+    consumed = count_tokens(fitted)
+    if consumed <= budget:
+        return fitted, consumed, True
+
+    # Token boundaries can merge across the body/marker join. Preserve the
+    # visible truncation signal when possible, but never exceed the requested cap.
+    marker_count = count_tokens(marker)
+    if marker_count <= budget:
+        return marker, marker_count, True
+    return "", 0, True
 
 
 def _covered_chars(fitted: str, clipped: bool, full_length: int) -> int:
@@ -92,15 +118,33 @@ def _covered_chars(fitted: str, clipped: bool, full_length: int) -> int:
     return len(fitted)
 
 
+def _hunk_body_offset(raw: str) -> int | None:
+    """Find the first source line; headers and no-newline markers are metadata."""
+    lines = raw.splitlines(keepends=True)
+    offset = len(lines[0]) if lines else 0
+    for line in lines[1:]:
+        if line.startswith((" ", "+", "-")):
+            return offset
+        offset += len(line)
+    return None
+
+
 def _hunk_buckets(hunk_texts: list[str], covered_chars: int) -> tuple[int, int, int]:
-    """Split hunks into (complete, partial, omitted) for a prefix cover of their join."""
+    """Split hunks into (complete, partial, omitted) for a prefix cover of their join.
+
+    A hunk header and Git's no-newline marker are metadata, not reviewed code.
+    Keep those hunks in the denominator, but never count them as complete.
+    """
     complete = partial = omitted = 0
     offset = 0
     for raw in hunk_texts:
         end = offset + len(raw)
-        if end <= covered_chars:
+        body_offset = _hunk_body_offset(raw)
+        if body_offset is None:
+            omitted += 1
+        elif end <= covered_chars:
             complete += 1
-        elif offset < covered_chars:
+        elif offset + body_offset < covered_chars:
             partial += 1
         else:
             omitted += 1
@@ -396,6 +440,7 @@ def _fetch_repo_file_text(repo: str, path: str, ref: str | None) -> str | None:
 _PARTIAL_INCLUSION_REASONS = frozenset(
     {
         "patch_clipped",
+        "header_only_hunk",
         "full_file_substituted_for_missing_patch",
         "full_file_substituted_for_truncated_hunk",
     }
@@ -742,10 +787,15 @@ def build_review_context(
                     hunk_texts,
                     _covered_chars(file_text, clipped, len("\n".join(hunk_texts))),
                 )
+                header_only_hunks = sum(
+                    _hunk_body_offset(raw) is None for raw in hunk_texts
+                )
                 if not part and not omitted_hunks:
                     chunk_status, chunk_reason = "included", None
-                elif complete or part:
-                    chunk_status, chunk_reason = "partial", "patch_clipped"
+                elif complete or part or header_only_hunks:
+                    chunk_status, chunk_reason = "partial", (
+                        "header_only_hunk" if header_only_hunks else "patch_clipped"
+                    )
                 else:
                     # Nothing of this file is provably in the prompt: saying
                     # "partial" here would overstate what the model can see.
@@ -760,6 +810,18 @@ def build_review_context(
                     hunks_partial=part,
                     hunks_omitted=omitted_hunks,
                 )
+                if header_only_hunks:
+                    partial_flag = True
+                    extra_omissions.append(
+                        Omission(
+                            path=file.filename,
+                            reason="header_only_hunk",
+                            detail=(
+                                f"{header_only_hunks} hunk(s) contained only diff metadata; "
+                                "no code or context lines were available"
+                            ),
+                        )
+                    )
             if clipped:
                 extra_omissions.append(
                     Omission(

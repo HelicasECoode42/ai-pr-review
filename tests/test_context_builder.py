@@ -1,4 +1,8 @@
+import pytest
+
+from src.analyzer import context_builder
 from src.analyzer.context_builder import (
+    TRUNCATION_MARKER,
     build_review_context,
     count_tokens,
     truncate_to_token_budget,
@@ -60,6 +64,53 @@ def test_truncate_to_token_budget_is_language_independent_and_bounded() -> None:
     assert consumed <= 24
     assert count_tokens(fitted) <= 24
     assert "[truncated]" in fitted
+
+
+@pytest.mark.parametrize("use_utf8_fallback", [False, True])
+def test_tiny_budgets_count_rendered_text_including_marker(monkeypatch, use_utf8_fallback):
+    class CharacterEncoding:
+        def encode(self, text, disallowed_special=()):
+            return list(text)
+
+        def decode(self, tokens):
+            return "".join(tokens)
+
+    monkeypatch.setattr(
+        context_builder,
+        "_token_encoding",
+        (lambda: None) if use_utf8_fallback else (lambda: CharacterEncoding()),
+    )
+    text = ("权限🧪变化 " * 20) + ("long_line_" * 40)
+    marker_budget = count_tokens(TRUNCATION_MARKER)
+
+    for budget in (0, 1, marker_budget - 1, marker_budget):
+        fitted, consumed, clipped = truncate_to_token_budget(text, budget)
+        assert clipped is True
+        assert consumed == count_tokens(fitted)
+        assert consumed <= budget
+        fitted.encode("utf-8")  # decoding must never leave a broken Unicode string
+
+    pack = context_builder._build_context_pack(["src/auth.py"], budget=marker_budget - 1)
+    assert count_tokens(pack) <= marker_budget - 1
+
+    ctx = build_review_context(
+        PullRequest(repo="test/repo", number=3, title="Tiny patch cap"),
+        [ChangedFile(filename="src/auth.py", patch="@@ -1,1 +1,2 @@\n+" + text)],
+        [],
+        max_patch_tokens=marker_budget - 1,
+        include_context_pack=False,
+        allow_remote_file_fetch=False,
+    )
+    patch_budget = next(line for line in ctx.budgets.lines if line.name == "patch_context")
+    assert patch_budget.used <= patch_budget.limit
+    assert ctx.status.value == "partial"
+    assert ctx.coverage_summary.hunks_omitted == 1
+    assert ctx.coverage_summary.hunks_partial == 0
+    assert ctx.coverage_summary.hunks_total == (
+        ctx.coverage_summary.hunks_complete
+        + ctx.coverage_summary.hunks_partial
+        + ctx.coverage_summary.hunks_omitted
+    )
 
 
 def test_build_review_context_reports_token_usage_and_truncation() -> None:
