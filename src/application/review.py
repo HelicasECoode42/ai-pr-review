@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from collections.abc import Callable
 from contextlib import ExitStack
@@ -318,6 +320,14 @@ class ReviewApplication:
             from src.application.strategy_policy import load_active_policy
 
             loaded_policy = load_active_policy(s.strategy_policy_store_dir)
+            policy_bytes = json.dumps(
+                loaded_policy.policy.model_dump(), sort_keys=True,
+                separators=(",", ":"), ensure_ascii=False,
+            ).encode("utf-8")
+            effective_policy_sha256 = hashlib.sha256(policy_bytes).hexdigest()
+            defaults["strategy_policy_id"] = loaded_policy.policy_id
+            defaults["strategy_policy_status"] = loaded_policy.status
+            defaults["strategy_policy_content_sha256"] = effective_policy_sha256
             # Knowledge layer (P3): recall scope-matched playbook entries and offer
             # them as guidance. Entries never override the criteria, and the ids
             # used are recorded so a report says which knowledge was in play.
@@ -365,6 +375,7 @@ class ReviewApplication:
                 metrics.update(request_budget.snapshot())
                 metrics["strategy_policy_id"] = loaded_policy.policy_id
                 metrics["strategy_policy_status"] = loaded_policy.status
+                metrics["strategy_policy_effective_sha256"] = effective_policy_sha256
                 if unavailable_contract_domain_ids:
                     metrics["contract_scope_unavailable_count"] = len(
                         unavailable_contract_domain_ids
@@ -375,9 +386,43 @@ class ReviewApplication:
                 from src.reviewer.grounded_review import CRITERIA_VERSION
 
                 metrics["criteria_version"] = CRITERIA_VERSION
+                trace = getattr(report, "repository_context", {}).get("review_trace")
+                if isinstance(trace, dict):
+                    trace["policy"] = {
+                        "policy_id": loaded_policy.policy_id,
+                        "status": loaded_policy.status,
+                        "effective_policy_sha256": effective_policy_sha256,
+                    }
+                    usage_keys = (
+                        "usage_responses_known", "usage_responses_unknown",
+                        "usage_prompt_tokens", "usage_completion_tokens", "usage_total_tokens",
+                        "cache_hit_tokens", "cache_miss_tokens", "cache_hit_rate",
+                        "request_http_attempts", "request_http_attempt_cap",
+                        "request_input_upper_bound_utf8_bytes",
+                        "request_input_upper_bound_cap_utf8_bytes",
+                        "request_input_upper_bound_unit",
+                        "request_input_estimated_method", "request_budget_stop_reason",
+                        "request_budget_elapsed_seconds",
+                    )
+                    usage = dict(trace.get("usage") or {})
+                    usage.update({key: metrics[key] for key in usage_keys if key in metrics})
+                    trace["usage"] = usage
+                    trace["usage"]["request_total_timeout_seconds"] = (
+                        s.max_review_timeout_seconds
+                    )
+                    trace["usage_status"] = (
+                        "reported" if metrics.get("usage_responses_known", 0) else
+                        "partial" if metrics.get("usage_responses_unknown", 0) else "unknown"
+                    )
+                    trace.pop("trace_sha256", None)
+                    trace_body = json.dumps(
+                        trace, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+                    ).encode("utf-8")
+                    trace_sha256 = hashlib.sha256(trace_body).hexdigest()
+                    trace["trace_sha256"] = trace_sha256
+                    metrics["review_trace_path"] = "embedded:repository_context.review_trace"
+                    metrics["review_trace_sha256"] = trace_sha256
                 if pr.repo and pr.number and pr.head_sha:
-                    import json
-
                     from src.reviewer.publish import (
                         review_comment_body,
                         review_publication_fingerprint,

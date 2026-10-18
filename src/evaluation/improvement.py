@@ -8,6 +8,7 @@ provider by itself.
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import math
@@ -15,7 +16,7 @@ import os
 import re
 import time
 from collections.abc import Callable
-from contextlib import closing
+from contextlib import closing, contextmanager
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
@@ -29,6 +30,9 @@ from src.application.strategy_policy import (
     RuntimePolicy,
     load_active_policy,
 )
+from src.application.strategy_policy import (
+    current_criteria_fingerprint as active_policy_criteria_fingerprint,
+)
 from src.evaluation.reviewbench import run_review
 from src.evaluation.runtime import source_identity
 from src.reviewer.provider import ReviewRequestBudget
@@ -36,7 +40,9 @@ from src.reviewer.provider import ReviewRequestBudget
 SCHEMA_VERSION = 1
 CASE_ID = re.compile(r"^[A-Za-z0-9_.-]{1,180}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
-ALLOWED_FAILURE_TAGS = frozenset({"missing_cross_file_evidence"})
+ALLOWED_FAILURE_TAGS = frozenset(
+    {"missing_cross_file_evidence", "cross_file_task_budget_omitted"}
+)
 
 
 class ImprovementError(ValueError):
@@ -48,6 +54,11 @@ class Diagnosis(BaseModel):
     case_id: str
     failure_tag: str
     run_artifact_sha256: str
+    trace_sha256: str
+    failure_id: str | None = None
+    source: str
+    adjudicator: str | None = None
+    evidence_ref: str | None = None
 
 
 def _assert_provider_budget(provider: object, expected_output: int, request_budget) -> None:
@@ -123,6 +134,19 @@ def _append_event(store_dir: Path, value: dict) -> None:
         stream.write(json.dumps(value, sort_keys=True, ensure_ascii=False) + "\n")
 
 
+@contextmanager
+def _store_lock(store_dir: Path):
+    """Serialize local holdout and policy mutations on one filesystem."""
+    store_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = store_dir / ".lifecycle.lock"
+    with lock_path.open("a+") as stream:
+        fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+
+
 def _read_json(path: Path) -> dict:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -150,6 +174,8 @@ def _read_split_registry(path: Path | None = None) -> tuple[dict, str]:
     registry = _read_json(registry_path)
     if registry.get("split_rule") != "by repository":
         raise ImprovementError("split registry must declare repository-level isolation")
+    if not SHA256.fullmatch(str(registry.get("prepared_sha256", ""))):
+        raise ImprovementError("split registry must pin the trusted prepared input manifest")
     for split_name in ("dev", "holdout", "test"):
         values = registry.get(split_name, [])
         if not isinstance(values, list) or any(not isinstance(x, str) for x in values):
@@ -228,6 +254,14 @@ def build_input_manifest(
     if not records:
         raise ImprovementError("manifest contains no ready fixed inputs")
     groups = [x["group"] for x in records]
+    if any(not isinstance(group, str) or not group.strip() for group in groups):
+        raise ImprovementError("prepared records require a non-empty repository identity")
+    if any(
+        not re.fullmatch(r"[0-9a-f]{40}", str(record.get(key, "")))
+        for record in records
+        for key in ("base", "head")
+    ):
+        raise ImprovementError("prepared records require fixed 40-character base/head SHAs")
     if len(groups) != len(set(groups)):
         raise ImprovementError("manifest must use at most one case per repository group")
     body = {
@@ -235,6 +269,7 @@ def build_input_manifest(
         "split": split,
         "split_registry_sha256": registry_sha256,
         "prepared_sha256": sha256_file(prepared_path),
+        "prepared_path": str(prepared_path),
         "benchmark_commit": prepared.get("benchmark_commit"),
         "case_count": len(records),
         "records": records,
@@ -260,6 +295,7 @@ def _validate_manifest(
     if (
         split not in {"dev", "holdout", "test"}
         or manifest.get("split_registry_sha256") != registry_sha256
+        or manifest.get("prepared_sha256") != registry.get("prepared_sha256")
         or any(r.get("case_id") not in set(registry.get(split, [])) for r in manifest["records"])
     ):
         raise ImprovementError("manifest case assignment does not match trusted split registry")
@@ -277,6 +313,173 @@ def _validate_manifest(
     expected = hashlib.sha256(canonical_bytes(unsigned)).hexdigest()
     if manifest.get("input_set_sha256") != expected:
         raise ImprovementError("input manifest hash mismatch")
+    prepared_path = manifest.get("prepared_path")
+    if not isinstance(prepared_path, str) or not Path(prepared_path).is_file():
+        raise ImprovementError("trusted prepared input manifest is unavailable")
+    if sha256_file(Path(prepared_path)) != registry.get("prepared_sha256"):
+        raise ImprovementError("prepared input manifest does not match trusted split registry")
+    rebuilt = build_input_manifest(
+        Path(prepared_path), split=split, case_ids=ids, split_registry_path=split_registry_path
+    )
+    if any(
+        manifest.get(key) != rebuilt.get(key)
+        for key in (
+            "prepared_sha256",
+            "benchmark_commit",
+            "case_count",
+            "records",
+        )
+    ):
+        raise ImprovementError("manifest records do not match trusted prepared input records")
+
+
+def _load_verified_trace(
+    run_path: Path, run_record: dict, manifest: dict, manifest_record: dict
+) -> tuple[dict, str]:
+    relative = run_record.get("review_trace_path")
+    linked_sha = run_record.get("review_trace_sha256")
+    if not isinstance(relative, str) or not SHA256.fullmatch(str(linked_sha or "")):
+        raise ImprovementError("run record has no valid review trace linkage")
+    trace_path = _contained(run_path.parent, run_path.parent / relative)
+    if not trace_path.is_file():
+        raise ImprovementError("review trace sidecar is missing")
+    file_sha = sha256_file(trace_path)
+    if file_sha != linked_sha:
+        raise ImprovementError("review trace sidecar hash does not match run linkage")
+    trace = _read_json(trace_path)
+    if trace.get("schema_version") != 1 or not SHA256.fullmatch(
+        str(trace.get("trace_sha256", ""))
+    ):
+        raise ImprovementError("review trace schema/hash is invalid")
+    unsigned_trace = {key: value for key, value in trace.items() if key != "trace_sha256"}
+    if hashlib.sha256(canonical_bytes(unsigned_trace)).hexdigest() != trace["trace_sha256"]:
+        raise ImprovementError("review trace content hash mismatch")
+    identity = trace.get("identity", {})
+    metadata, _, _ = _verify_case_input(manifest_record)
+    expected_identity = {
+        "benchmark_case_id": manifest_record["case_id"],
+        "repository": metadata.get("nwo"),
+        "pr_number": metadata.get("pr_number"),
+        "base_sha": metadata.get("base"),
+        "head_sha": metadata.get("head"),
+        "prepared_metadata_sha256": manifest_record["metadata_sha256"],
+        "prepared_diff_sha256": manifest_record["diff_sha256"],
+        "input_set_sha256": manifest.get("input_set_sha256"),
+    }
+    if any(identity.get(key) != value for key, value in expected_identity.items()):
+        raise ImprovementError("review trace identity does not match fixed prepared input")
+    for key in ("criteria_sha256", "runtime_sha256", "prompt_sha256"):
+        if not SHA256.fullmatch(str(trace.get(key, ""))):
+            raise ImprovementError(f"review trace {key} is missing or invalid")
+    policy = trace.get("policy", {})
+    if not isinstance(policy, dict) or not SHA256.fullmatch(
+        str(policy.get("effective_policy_sha256", ""))
+    ):
+        raise ImprovementError("review trace effective policy identity is invalid")
+    run_identity = run_record.get("review_trace_identity", {})
+    if run_identity and any(
+        run_identity.get(key) != value
+        for key, value in {
+            "policy_id": policy.get("policy_id"),
+            "effective_policy_sha256": policy.get("effective_policy_sha256"),
+            "criteria_sha256": trace.get("criteria_sha256"),
+            "runtime_sha256": trace.get("runtime_sha256"),
+            "prompt_sha256": trace.get("prompt_sha256"),
+        }.items()
+    ):
+        raise ImprovementError("review trace policy/runtime identity differs from run record")
+    return trace, file_sha
+
+
+def derive_trace_diagnoses(
+    *, run_path: Path, manifest_path: Path, split_registry_path: Path | None = None
+) -> dict:
+    """Derive only host-recorded, allowlisted engineering omissions from saved traces."""
+    run = _read_json(run_path)
+    manifest = _read_json(manifest_path)
+    _validate_manifest(manifest, required_split="dev", split_registry_path=split_registry_path)
+    run_sha = sha256_file(run_path)
+    records = {item.get("case_id"): item for item in run.get("records", []) if isinstance(item, dict)}
+    diagnoses = []
+    unavailable = []
+    for manifest_record in manifest["records"]:
+        record = records.get(manifest_record["case_id"])
+        if not record or record.get("status") != "success":
+            unavailable.append({"case_id": manifest_record["case_id"], "reason": "run_not_successful"})
+            continue
+        try:
+            trace, trace_file_sha = _load_verified_trace(
+                run_path, record, manifest, manifest_record
+            )
+        except ImprovementError as exc:
+            unavailable.append({"case_id": manifest_record["case_id"], "reason": str(exc)})
+            continue
+        failures = trace.get("mechanical_failures", [])
+        if not isinstance(failures, list):
+            unavailable.append({"case_id": manifest_record["case_id"], "reason": "invalid_mechanical_failures"})
+            continue
+        for failure in failures:
+            if not isinstance(failure, dict):
+                continue
+            if failure.get("failure_tag") != "cross_file_task_budget_omitted":
+                continue
+            task_id = failure.get("failure_id")
+            hypothesis_id = failure.get("hypothesis_id")
+            reason = failure.get("reason")
+            source_refs = failure.get("valid_source_refs")
+            if (
+                not isinstance(task_id, str)
+                or not task_id
+                or not isinstance(hypothesis_id, str)
+                or reason not in {"task_limit", "evidence_budget"}
+                or not isinstance(source_refs, list)
+                or not source_refs
+                or any(not isinstance(ref, str) or ref.startswith("pr:") for ref in source_refs)
+            ):
+                continue
+            intent = trace.get("intent", {})
+            hypotheses = intent.get("hypotheses", []) if isinstance(intent, dict) else []
+            hypothesis = next(
+                (item for item in hypotheses if isinstance(item, dict) and item.get("id") == hypothesis_id),
+                None,
+            )
+            omitted = intent.get("omitted_tasks", []) if isinstance(intent, dict) else []
+            task = next(
+                (item for item in omitted if isinstance(item, dict) and item.get("task_id") == task_id),
+                None,
+            ) if isinstance(omitted, list) else None
+            if (
+                not hypothesis
+                or hypothesis.get("source_status") != "known"
+                or not task
+                or task.get("hypothesis_id") != hypothesis_id
+                or task.get("reason") != reason
+                or task.get("omission_reason") != failure.get("omission_reason")
+                or task.get("request_kind") not in {"read", "search"}
+                or task.get("status") not in {"evidence_omitted", "not_executed_budget"}
+                or not set(source_refs).issubset(set(hypothesis.get("source_refs", [])))
+                or source_refs != task.get("valid_source_refs")
+            ):
+                continue
+            diagnoses.append(
+                {
+                    "case_id": manifest_record["case_id"],
+                    "failure_tag": "cross_file_task_budget_omitted",
+                    "run_artifact_sha256": run_sha,
+                    "trace_sha256": trace_file_sha,
+                    "failure_id": task_id,
+                    "source": "trace_mechanical",
+                }
+            )
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "split": "dev",
+        "run_artifact_sha256": run_sha,
+        "input_set_sha256": manifest["input_set_sha256"],
+        "diagnoses": diagnoses,
+        "unavailable": unavailable,
+        "status": "ready" if diagnoses else "blocked_no_mechanical_diagnosis",
+    }
 
 
 def generate_candidate(
@@ -319,7 +522,61 @@ def generate_candidate(
                     "diagnosis run is missing its persisted candidate/audit artifacts"
                 )
             _verify_case_input(record)
-    policy = RuntimePolicy(prompt_addendum=PROMPT_TEMPLATES["cross_file_contract_check_v1"])
+    manifest_by_case = {record["case_id"]: record for record in manifest["records"]}
+    run_by_case = {
+        record.get("case_id"): record
+        for record in run.get("records", [])
+        if isinstance(record, dict)
+    }
+    verified_traces = {}
+    mechanically_derived = derive_trace_diagnoses(
+        run_path=run_path,
+        manifest_path=manifest_path,
+        split_registry_path=split_registry_path,
+    )
+    mechanical_keys = {
+        (item["case_id"], item["failure_tag"], item["failure_id"], item["trace_sha256"])
+        for item in mechanically_derived["diagnoses"]
+    }
+    for diagnosis in parsed:
+        run_record = run_by_case[diagnosis.case_id]
+        trace, trace_file_sha = _load_verified_trace(
+            run_path, run_record, manifest, manifest_by_case[diagnosis.case_id]
+        )
+        if diagnosis.trace_sha256 != trace_file_sha:
+            raise ImprovementError("diagnosis does not bind to the exact persisted trace")
+        if diagnosis.source == "trace_mechanical":
+            if diagnosis.failure_tag != "cross_file_task_budget_omitted" or (
+                diagnosis.case_id,
+                diagnosis.failure_tag,
+                diagnosis.failure_id,
+                diagnosis.trace_sha256,
+            ) not in mechanical_keys:
+                raise ImprovementError("mechanical diagnosis is not derivable from the host trace")
+        elif diagnosis.source == "human_adjudication":
+            if (
+                diagnosis.failure_tag != "missing_cross_file_evidence"
+                or not diagnosis.adjudicator
+                or not diagnosis.evidence_ref
+            ):
+                raise ImprovementError("semantic diagnosis requires a named human and evidence ref")
+            evidence_refs = trace.get("evidence_refs", [])
+            evidence = next(
+                (item for item in evidence_refs if item.get("evidence_ref_id") == diagnosis.evidence_ref),
+                None,
+            ) if isinstance(evidence_refs, list) else None
+            if not evidence or evidence.get("repo_sha") != trace.get("identity", {}).get("head_sha"):
+                raise ImprovementError("human semantic diagnosis ref is not available at frozen head SHA")
+        else:
+            raise ImprovementError("unsupported diagnosis source")
+        verified_traces[diagnosis.case_id] = trace_file_sha
+    failure_tags = {diagnosis.failure_tag for diagnosis in parsed}
+    template_id = (
+        "bounded_cross_file_evidence_v1"
+        if "cross_file_task_budget_omitted" in failure_tags
+        else "cross_file_contract_check_v1"
+    )
+    policy = RuntimePolicy(prompt_addendum=PROMPT_TEMPLATES[template_id])
     active = load_active_policy(store_dir)
     if policy == active.policy:
         raise ImprovementError("candidate is identical to active policy")
@@ -333,6 +590,8 @@ def generate_candidate(
             {r["group"] for r in manifest["records"] if r["case_id"] in {d.case_id for d in parsed}}
         ),
         "failure_tags": sorted({d.failure_tag for d in parsed}),
+        "review_trace_sha256": verified_traces,
+        "diagnosis_sources": sorted({d.source for d in parsed}),
         "review_artifacts": {
             d.case_id: {
                 "candidate_sha256": sha256_file(
@@ -357,6 +616,11 @@ def generate_candidate(
         "created_at_epoch": int(time.time()),
     }
     path = store_dir / "candidates" / f"{record['candidate_id']}.json"
+    if path.exists():
+        existing = _read_json(path)
+        if existing.get("candidate_id") != record["candidate_id"] or existing.get("status") != "candidate":
+            raise ImprovementError("candidate id already exists with different lifecycle state")
+        return existing
     _write_json(path, record, exclusive=True)
     return record
 
@@ -378,6 +642,46 @@ def _verify_case_input(record: dict) -> tuple[dict, str, Path]:
         if not context_path.is_file() or sha256_file(context_path) != expected:
             raise ImprovementError("frozen repository guidance changed after manifest creation")
     return _read_json(metadata_path), diff_path.read_text(encoding="utf-8"), input_dir
+
+
+def _scope_receipt_path(store_dir: Path, kind: str, value: str) -> Path:
+    digest = hashlib.sha256(f"{kind}:{value}".encode("utf-8")).hexdigest()
+    return store_dir / "consumed-holdouts" / f"scope-{digest}.json"
+
+
+def _consume_evaluation_scopes(
+    store_dir: Path, manifest: dict, candidate_id: str, attested_by: str
+) -> None:
+    """Consume every case and repo scope before any provider is constructed."""
+    with _store_lock(store_dir):
+        for record in manifest["records"]:
+            for kind, value in (("case", record["case_id"]), ("group", record["group"])):
+                _write_json(
+                    _scope_receipt_path(store_dir, kind, value),
+                    {
+                        "schema_version": SCHEMA_VERSION,
+                        "scope_kind": kind,
+                        "scope_value": value,
+                        "input_set_sha256": manifest["input_set_sha256"],
+                        "candidate_id": candidate_id,
+                        "attested_by": attested_by,
+                        "consumed_at_epoch": int(time.time()),
+                        "status": "consumed_before_replay",
+                    },
+                    exclusive=True,
+                )
+        _write_json(
+            store_dir / "consumed-holdouts" / f"{manifest['input_set_sha256']}.json",
+            {
+                "schema_version": SCHEMA_VERSION,
+                "input_set_sha256": manifest["input_set_sha256"],
+                "candidate_id": candidate_id,
+                "attested_by": attested_by,
+                "consumed_at_epoch": int(time.time()),
+                "status": "consumed_before_replay",
+            },
+            exclusive=True,
+        )
 
 
 def replay_candidate(
@@ -434,6 +738,13 @@ def replay_candidate(
     if protocol.get("runtime_fingerprint") != runtime_before["reviewer_source_sha256"]:
         raise ImprovementError("runtime fingerprint does not match current source tree")
     if manifest["split"] in {"holdout", "test"}:
+        registry, _ = _read_split_registry(split_registry_path)
+        if provider_mode == "live" and manifest["split"] == "holdout":
+            raise ImprovementError("the configured holdout is regression-only, not promotable")
+        if provider_mode == "live" and (
+            manifest["split"] != "test" or registry.get("test_status") != "fresh_authorized"
+        ):
+            raise ImprovementError("live promotion requires an explicitly authorized fresh test split")
         att = holdout_attestation or {}
         if (
             att.get("previously_exposed_to_candidate_design") is not False
@@ -449,18 +760,8 @@ def replay_candidate(
         eval_groups = {r["group"] for r in manifest["records"]}
         if candidate_cases & eval_cases or candidate_groups & eval_groups:
             raise ImprovementError("candidate development data overlaps holdout")
-        receipt = {
-            "schema_version": SCHEMA_VERSION,
-            "input_set_sha256": manifest["input_set_sha256"],
-            "candidate_id": candidate_id,
-            "attested_by": att["attested_by"],
-            "consumed_at_epoch": int(time.time()),
-            "status": "consumed_before_replay",
-        }
-        _write_json(
-            store_dir / "consumed-holdouts" / f"{manifest['input_set_sha256']}.json",
-            receipt,
-            exclusive=True,
+        _consume_evaluation_scopes(
+            store_dir, manifest, candidate_id, str(att["attested_by"])
         )
     # The exact same protocol identity is recorded for both arms; no CLI path here
     # constructs a live provider or reads settings/.env.
@@ -529,6 +830,11 @@ def replay_candidate(
                         repository_evidence_tokens=int(
                             protocol.get("repository_evidence_tokens", 6000)
                         ),
+                        strategy_policy_id=("baseline" if arm == "baseline" else candidate_id),
+                        strategy_policy_status=("baseline" if arm == "baseline" else "candidate"),
+                        strategy_policy_content_sha256=hashlib.sha256(
+                            canonical_bytes(arm_policy.model_dump())
+                        ).hexdigest(),
                     )
                 arm_record = {
                     "case_id": item["case_id"],
@@ -620,6 +926,12 @@ def evaluate_gate(
 
     if replay.get("status") != "complete" or replay.get("split") not in {"holdout", "test"}:
         reasons.append("replay_not_complete_independent_split")
+    if replay.get("provider_mode") == "live" and replay.get("split") != "test":
+        reasons.append("live_replay_is_not_on_fresh_test_split")
+    if replay.get("provider_mode") == "live":
+        registry, _ = _read_split_registry(split_registry_path)
+        if registry.get("test_status") != "fresh_authorized":
+            reasons.append("fresh_test_split_not_authorized")
     if replay.get("provider_mode") != "live" and not allow_fixture:
         reasons.append("fixture_provider_cannot_pass_production_gate")
     if not isinstance(protocol_fingerprint, str) or not protocol_fingerprint:
@@ -644,6 +956,14 @@ def evaluate_gate(
     receipt_path = store_dir / "consumed-holdouts" / f"{replay.get('input_set_sha256')}.json"
     if not receipt_path.is_file():
         reasons.append("holdout_not_consumed")
+    elif input_manifest:
+        for record in input_manifest.get("records", []):
+            if any(
+                not _scope_receipt_path(store_dir, kind, value).is_file()
+                for kind, value in (("case", record.get("case_id")), ("group", record.get("group")))
+            ):
+                reasons.append("holdout_scope_not_consumed")
+                break
     bound_to_replay(adjudication, "adjudication")
     if (
         adjudication.get("method") != "independent_semantic"
@@ -851,7 +1171,7 @@ def evaluate_gate(
     return gate
 
 
-def promote_candidate(
+def _promote_candidate_unlocked(
     store_dir: Path, candidate_id: str, evaluation_id: str, *, allow_fixture: bool = False
 ) -> str:
     """Explicit human CLI action after a successful holdout gate."""
@@ -894,6 +1214,23 @@ def promote_candidate(
         raise ImprovementError(
             "fixture replay is regression-only and cannot promote production policy"
         )
+    if replay.get("provider_mode") == "live":
+        manifest_path = _contained(
+            store_dir, store_dir / "evaluations" / evaluation_id / "input_manifest.json"
+        )
+        manifest = _read_json(manifest_path)
+        _validate_manifest(manifest)
+        registry, _ = _read_split_registry()
+        if manifest.get("split") != "test" or registry.get("test_status") != "fresh_authorized":
+            raise ImprovementError("production promotion requires an authorized fresh test split")
+        for record in manifest["records"]:
+            for kind, value in (("case", record["case_id"]), ("group", record["group"])):
+                scope_receipt = _read_json(_scope_receipt_path(store_dir, kind, value))
+                if (
+                    scope_receipt.get("input_set_sha256") != replay.get("input_set_sha256")
+                    or scope_receipt.get("candidate_id") != candidate_id
+                ):
+                    raise ImprovementError("matching case/repository consumption receipt is missing")
     receipt_path = _contained(
         store_dir,
         store_dir / "consumed-holdouts" / f"{replay.get('input_set_sha256')}.json",
@@ -911,6 +1248,7 @@ def promote_candidate(
         "version_id": "",
         "status": "accepted",
         "policy": policy.model_dump(),
+        "criteria_fingerprint": active_policy_criteria_fingerprint(),
         "candidate_id": candidate_id,
         "evaluation_id": evaluation_id,
         "gate_sha256": sha256_file(gate_path),
@@ -928,20 +1266,34 @@ def promote_candidate(
         "content_sha256": sha256_file(version_path),
     }
     _write_json(store_dir / "active.json", pointer)
-    _append_event(
-        store_dir,
-        {
-            "event": "promoted",
-            "candidate_id": candidate_id,
-            "evaluation_id": evaluation_id,
-            "version_id": version_id,
-            "at_epoch": int(time.time()),
-        },
-    )
+    try:
+        _append_event(
+            store_dir,
+            {
+                "event": "promoted",
+                "candidate_id": candidate_id,
+                "evaluation_id": evaluation_id,
+                "version_id": version_id,
+                "at_epoch": int(time.time()),
+            },
+        )
+    except OSError as exc:
+        raise ImprovementError(
+            f"policy {version_id} is active, but the promotion event was not recorded; reconcile active.json and events.jsonl"
+        ) from exc
     return version_id
 
 
-def rollback_policy(store_dir: Path, version_id: str) -> LoadedPolicy:
+def promote_candidate(
+    store_dir: Path, candidate_id: str, evaluation_id: str, *, allow_fixture: bool = False
+) -> str:
+    with _store_lock(store_dir):
+        return _promote_candidate_unlocked(
+            store_dir, candidate_id, evaluation_id, allow_fixture=allow_fixture
+        )
+
+
+def _rollback_policy_unlocked(store_dir: Path, version_id: str) -> LoadedPolicy:
     """Point to baseline or an existing accepted immutable local version."""
     if version_id == "baseline":
         pointer = {
@@ -950,9 +1302,14 @@ def rollback_policy(store_dir: Path, version_id: str) -> LoadedPolicy:
             "content_sha256": BASELINE_CONTENT_SHA256,
         }
         _write_json(store_dir / "active.json", pointer)
-        _append_event(
-            store_dir, {"event": "rollback", "version_id": "baseline", "at_epoch": int(time.time())}
-        )
+        try:
+            _append_event(
+                store_dir, {"event": "rollback", "version_id": "baseline", "at_epoch": int(time.time())}
+            )
+        except OSError as exc:
+            raise ImprovementError(
+                "baseline is active, but the rollback event was not recorded; reconcile active.json and events.jsonl"
+            ) from exc
         return load_active_policy(store_dir)
     if not re.fullmatch(r"[0-9a-f]{64}", version_id):
         raise ImprovementError("rollback target must be baseline or a known version id")
@@ -960,6 +1317,8 @@ def rollback_policy(store_dir: Path, version_id: str) -> LoadedPolicy:
     record = _read_json(path)
     if record.get("version_id") != version_id or record.get("status") != "accepted":
         raise ImprovementError("rollback target is not an accepted version")
+    if record.get("criteria_fingerprint") != active_policy_criteria_fingerprint():
+        raise ImprovementError("rollback target is incompatible with current review criteria")
     _write_json(
         store_dir / "active.json",
         {
@@ -968,10 +1327,20 @@ def rollback_policy(store_dir: Path, version_id: str) -> LoadedPolicy:
             "content_sha256": sha256_file(path),
         },
     )
-    _append_event(
-        store_dir, {"event": "rollback", "version_id": version_id, "at_epoch": int(time.time())}
-    )
+    try:
+        _append_event(
+            store_dir, {"event": "rollback", "version_id": version_id, "at_epoch": int(time.time())}
+        )
+    except OSError as exc:
+        raise ImprovementError(
+            f"policy {version_id} is active, but the rollback event was not recorded; reconcile active.json and events.jsonl"
+        ) from exc
     return load_active_policy(store_dir)
+
+
+def rollback_policy(store_dir: Path, version_id: str) -> LoadedPolicy:
+    with _store_lock(store_dir):
+        return _rollback_policy_unlocked(store_dir, version_id)
 
 
 __all__ = [

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+
 import pytest
 
 from src.analyzer.review_plan import build_review_plan
@@ -220,7 +221,8 @@ def test_worker_count_is_validated_and_capped():
 
 
 def _unit_review_report(
-    tmp_path, *, units_enabled: int, checkpoint_path=None, repo_ready=False, call_counter=None
+    tmp_path, *, units_enabled: int, checkpoint_path=None, repo_ready=False, call_counter=None,
+    strategy_policy_id="baseline", strategy_policy_content_sha256=None,
 ):
     """Drive the engine's unit path with a scripted provider over a small repo.
 
@@ -319,6 +321,8 @@ def _unit_review_report(
         unit_review_max_units=units_enabled, unit_review_workers=1,
         unit_checkpoint_path=str(checkpoint_path) if checkpoint_path is not None else None,
         unit_provider_factory=Scripted,
+        strategy_policy_id=strategy_policy_id,
+        strategy_policy_content_sha256=strategy_policy_content_sha256,
     )
     return report, provider
 
@@ -375,6 +379,27 @@ def test_engine_resume_uses_restored_result_without_fake_provider_calls(tmp_path
     assert second.metrics["behavior_verification_request_count"] == 0
     assert second.metrics["discovery_calls_restored"] == first_discovery_calls > 0
     assert second.metrics["verification_calls_restored"] == first_verification_calls > 0
+
+
+def test_engine_policy_change_rejects_previous_unit_checkpoint(tmp_path):
+    checkpoint = tmp_path / "units.jsonl"
+    call_counter: list[str] = []
+    repo = tmp_path / "repo"
+    _unit_review_report(
+        repo, units_enabled=8, checkpoint_path=checkpoint, call_counter=call_counter,
+        strategy_policy_id="policy-a", strategy_policy_content_sha256="a" * 64,
+    )
+    assert call_counter
+
+    call_counter.clear()
+    second, _ = _unit_review_report(
+        repo, units_enabled=8, checkpoint_path=checkpoint, repo_ready=True,
+        call_counter=call_counter, strategy_policy_id="policy-b",
+        strategy_policy_content_sha256="b" * 64,
+    )
+    assert call_counter
+    assert second.metrics["units_resumed"] == 0
+    assert second.repository_context["unit_details"]["unit_checkpoint_issues"]
 
 
 def test_unit_review_is_off_by_default(tmp_path):

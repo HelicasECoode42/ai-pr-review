@@ -1,3 +1,4 @@
+import hashlib
 import json
 
 import pytest
@@ -59,6 +60,58 @@ def test_success_contract_and_no_reviewer_repository_context():
     assert output["pr"]["head"] == META["head"]
     assert "Function Index" not in provider.prompts[0]
     assert audit["cost_usd"] is None
+
+
+def test_saved_trace_marks_missing_usage_unknown_and_rehashes():
+    import src.evaluation.reviewbench as reviewbench
+    from src.models import ReviewReport
+
+    identity = {
+        "benchmark_case_id": "fixture-case",
+        "prepared_metadata_sha256": "a" * 64,
+        "prepared_diff_sha256": "b" * 64,
+        "input_set_sha256": "c" * 64,
+    }
+    trace = {
+        "usage": {"discovery_requests": 0, "verification_requests": 0,
+                  "provider_usage": "pending_application_boundary"},
+        "trace_sha256": "",
+    }
+    trace["trace_sha256"] = hashlib.sha256(
+        json.dumps({key: value for key, value in trace.items() if key != "trace_sha256"},
+                   sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    ).hexdigest()
+    report = ReviewReport(
+        pr=reviewbench.PullRequest(
+            repo=META["nwo"], number=META["pr_number"], title=META["title"],
+            base_sha=META["base"], head_sha=META["head"],
+        ),
+        files=parse_diff(DIFF), summary="No bugs", risk_level="low", used_ai=True,
+        repository_context={"review_trace": trace},
+    )
+    original = reviewbench.review_with_ai
+
+    def fake_review(*args, **kwargs):
+        args[3].complete_json("system", "user")
+        return report
+
+    reviewbench.review_with_ai = fake_review
+    try:
+        _output, audit = run_review(
+            META, DIFF, Provider({"summary": "No bugs", "risk_level": "low", "suggestions": []}),
+            trace_input_identity=identity,
+        )
+    finally:
+        reviewbench.review_with_ai = original
+    trace = audit["report"]["repository_context"]["review_trace"]
+    assert trace["usage_status"] == "partial"
+    assert trace["usage"]["usage_total_tokens"] is None
+    assert trace["usage"]["usage_responses_unknown"] == 1
+    assert trace["trace_sha256"] == hashlib.sha256(
+        json.dumps({key: value for key, value in trace.items() if key != "trace_sha256"},
+                   sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    ).hexdigest()
+    assert audit["report"]["metrics"]["review_trace_sha256"] == trace["trace_sha256"]
 
 
 def test_failure_is_not_empty_success():
@@ -124,6 +177,14 @@ def test_target_context_is_bounded_and_not_external_symlink(tmp_path):
     provider.prompts.clear()
     run_review(META, DIFF, provider, context_pack=False, project_root=tmp_path)
     assert "Use bounded retries" not in provider.prompts[0]
+
+
+def test_non_grounded_corpus_runner_rejects_trace_manifest(tmp_path):
+    from src.evaluation.corpus import evaluate
+
+    with pytest.raises(ValueError, match="use paired's grounded arm"):
+        evaluate({"records": []}, tmp_path / "run", Provider({}), "fake",
+                 trace_manifest={"schema_version": 1})
 
 
 def test_critic_unverified_is_failed_experiment():

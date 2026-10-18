@@ -10,12 +10,11 @@ from pathlib import Path
 from threading import Event, Lock
 
 from src.analyzer.repository_context import GitSnapshot
-from src.evaluation.corpus import write_json
+from src.evaluation.corpus import persist_review_trace, trace_input_identity, write_json
 from src.evaluation.reviewbench import _usage_total, run_review
-from src.evaluation.runtime import EvaluationFailure, FATAL_HTTP_STATUSES, source_identity
+from src.evaluation.runtime import FATAL_HTTP_STATUSES, EvaluationFailure, source_identity
 from src.reviewer.provider import OpenAICompatibleProvider, ProviderError
 from src.utils.config import get_settings
-
 
 DEFAULT_OUTPUT_TOKENS = 32768
 MAX_REVIEW_MODEL_CALLS = 5  # three discovery rounds and two verification calls
@@ -125,7 +124,11 @@ def _usage_status(usage_records, http_attempts):
 
 def paired(prepared, mirrors, output, *, arms=("control", "grounded"), concurrency=3, limit=None,
            max_attempts=2, max_output_tokens=DEFAULT_OUTPUT_TOKENS,
-           max_http_attempts=None):
+           max_http_attempts=None, trace_manifest=None):
+    if trace_manifest is not None:
+        from src.evaluation.improvement import _validate_manifest
+
+        _validate_manifest(trace_manifest)
     if max_attempts < 1:
         raise ValueError("max_attempts must be >= 1")
     if max_output_tokens < 1:
@@ -233,11 +236,15 @@ def paired(prepared, mirrors, output, *, arms=("control", "grounded"), concurren
                     context_pack=True, project_root=work / "project", critic=False,
                     follow_changes=arm == "grounded",
                     repository_snapshot=GitSnapshot(root, meta["base"], meta["head"]) if arm == "grounded" else None,
-                    patch_and_repository_tokens=12000, repository_evidence_tokens=6000)
+                    patch_and_repository_tokens=12000, repository_evidence_tokens=6000,
+                    trace_input_identity=trace_input_identity(task, trace_manifest))
                 audit.update(identity)
+                trace_link = persist_review_trace(output / arm, task["case_id"], audit)
                 write_json(output / arm / "candidates" / (task["case_id"] + ".json"), candidate)
                 write_json(output / arm / "audits" / (task["case_id"] + ".json"), audit)
                 record.update(status="success", finding_count=len(candidate["findings"]))
+                if trace_link:
+                    record.update(trace_link)
             except Exception as exc:
                 error_kind = measured.calls[-1].get("error_kind") if measured.calls else None
                 record.update(
@@ -308,11 +315,15 @@ def main():
     )
     parser.add_argument("--max-http-attempts", type=_positive_int,
                         help="Shared hard cap across all tasks, arms, retries, and HTTP fallbacks")
+    parser.add_argument("--trace-manifest", type=Path,
+                        help="Exact trusted input manifest used to bind saved review traces")
     args = parser.parse_args()
     result = paired(json.loads(args.prepared.read_text()), args.mirrors, args.output,
                     arms=args.arms, concurrency=args.concurrency, limit=args.limit,
                     max_attempts=args.max_attempts, max_output_tokens=args.max_output_tokens,
-                    max_http_attempts=args.max_http_attempts)
+                    max_http_attempts=args.max_http_attempts,
+                    trace_manifest=(json.loads(args.trace_manifest.read_text())
+                                    if args.trace_manifest else None))
     if any(r["status"] != "success" for arm in result.values() for r in arm.values()):
         raise SystemExit(1)
 

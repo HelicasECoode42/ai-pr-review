@@ -26,6 +26,13 @@ PROMPT_TEMPLATES = {
         "contract or path is unavailable, keep the conclusion unverified instead of "
         "inferring it from names or the PR description."
     ),
+    "bounded_cross_file_evidence_v1": (
+        "For a validated cross-file hypothesis, spend the limited repository-evidence budget first "
+        "on one narrow caller or callee signature and its relevant call site. Use a bounded read "
+        "or search task tied to the changed behavior; do not broaden into unrelated files. If the "
+        "host omits the task or evidence is unavailable, keep the candidate unverified and report "
+        "the limitation. Never treat the PR description or an unsupported hypothesis as a contract."
+    ),
 }
 PROMPT_TEMPLATE_VALUES = frozenset(PROMPT_TEMPLATES.values())
 MAX_PROMPT_ADDENDUM_CHARS = 1200
@@ -92,6 +99,12 @@ def estimate_prompt_tokens(text: str) -> int:
     return (len(text) + 2) // 3
 
 
+def current_criteria_fingerprint() -> str:
+    from src.reviewer.criteria import CRITERIA_VERSION
+
+    return hashlib.sha256(CRITERIA_VERSION.encode("utf-8")).hexdigest()
+
+
 def _safe_version_path(root: Path, version_id: str) -> Path:
     if not _VERSION_ID.fullmatch(version_id):
         raise PolicyError("invalid policy version id")
@@ -138,6 +151,8 @@ def load_active_policy(store_dir: str | Path | None = None) -> LoadedPolicy:
             raise PolicyError("active version metadata mismatch")
         if record.get("status") != "accepted":
             raise PolicyError("active version is not accepted")
+        if record.get("criteria_fingerprint") != current_criteria_fingerprint():
+            raise PolicyError("active version criteria compatibility mismatch")
         policy = RuntimePolicy.model_validate(record.get("policy"))
         return LoadedPolicy(policy, version_id, "active")
     except (OSError, ValueError, TypeError, KeyError) as exc:

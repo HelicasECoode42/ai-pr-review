@@ -114,6 +114,10 @@ def run_review(
     repository_snapshot=None,
     patch_and_repository_tokens=12000,
     repository_evidence_tokens=6000,
+    trace_input_identity: dict | None = None,
+    strategy_policy_id: str = "baseline",
+    strategy_policy_status: str = "baseline",
+    strategy_policy_content_sha256: str | None = None,
 ) -> tuple[dict, dict]:
     files = parse_diff(diff)
     pr = PullRequest(
@@ -129,7 +133,8 @@ def run_review(
     # Do not accidentally inject AI PR Review's own guide into other repositories.
     context = build_review_context(
         pr, files, include_context_pack=False, allow_remote_file_fetch=False,
-        max_patch_tokens=patch_and_repository_tokens - (repository_evidence_tokens if follow_changes else 0),
+        max_patch_tokens=patch_and_repository_tokens
+        - (repository_evidence_tokens if follow_changes else 0),
     )
     if context_pack and project_root is not None:
         root = project_root.resolve()
@@ -162,6 +167,10 @@ def run_review(
         enable_evidence_gate=evidence,
         review_context=context,
         prompt_addendum=prompt_addendum,
+        trace_input_identity=trace_input_identity,
+        strategy_policy_id=strategy_policy_id,
+        strategy_policy_status=strategy_policy_status,
+        strategy_policy_content_sha256=strategy_policy_content_sha256,
         review_meta=ReviewMeta(reviewed_commit=metadata["head"]),
     )
     if observed.errors:
@@ -174,6 +183,65 @@ def run_review(
         raise EvaluationFailure("review_failed_or_degraded", outputs=observed.outputs)
     if critic and any(d.get("decision") == "unverified" for d in report.critic_decisions):
         raise EvaluationFailure("critic_degraded")
+    usage_records = getattr(provider, "usage_records", [])[usage_start:]
+    token_usage = _usage_total(usage_records)
+    trace = report.repository_context.get("review_trace")
+    if isinstance(trace, dict):
+        known_usage = sum(
+            1 for item in usage_records
+            if isinstance(item, dict) and isinstance(item.get("usage"), dict)
+            and all(type(item["usage"].get(key)) is int
+                    for key in ("prompt_tokens", "completion_tokens", "total_tokens"))
+        )
+        base_provider = provider
+        while getattr(base_provider, "provider", None) is not None:
+            base_provider = base_provider.provider
+        budget = getattr(provider, "_request_budget", None) or getattr(
+            base_provider, "_request_budget", None
+        )
+        http_attempts = getattr(base_provider, "http_attempts", observed.calls)
+        budget_snapshot = budget.snapshot() if budget is not None else {}
+        trace["usage"] = {
+            "discovery_requests": trace.get("usage", {}).get("discovery_requests", 0),
+            "verification_requests": trace.get("usage", {}).get("verification_requests", 0),
+            "request_count": http_attempts,
+            "request_calls": observed.calls,
+            "usage_responses_known": known_usage,
+            "usage_responses_unknown": max(0, http_attempts - known_usage),
+            "usage_prompt_tokens": token_usage["prompt_tokens"] if token_usage else None,
+            "usage_completion_tokens": token_usage["completion_tokens"] if token_usage else None,
+            "usage_total_tokens": token_usage["total_tokens"] if token_usage else None,
+            "request_http_attempts": http_attempts,
+            "request_http_attempt_cap": budget_snapshot.get("request_http_attempt_cap"),
+            "request_input_upper_bound_utf8_bytes": budget_snapshot.get(
+                "request_input_upper_bound_utf8_bytes"
+            ),
+            "request_input_upper_bound_cap_utf8_bytes": budget_snapshot.get(
+                "request_input_upper_bound_cap_utf8_bytes"
+            ),
+            "request_input_upper_bound_unit": budget_snapshot.get(
+                "request_input_upper_bound_unit"
+            ),
+            "request_input_estimated_method": budget_snapshot.get(
+                "request_input_estimated_method"
+            ),
+            "request_budget_stop_reason": budget_snapshot.get("request_budget_stop_reason"),
+            "request_budget_elapsed_seconds": budget_snapshot.get(
+                "request_budget_elapsed_seconds"
+            ),
+            "total_timeout_seconds": getattr(budget, "total_timeout_seconds", None),
+        }
+        trace["usage_status"] = (
+            "reported" if known_usage else
+            "partial" if trace["usage"]["usage_responses_unknown"] else "unknown"
+        )
+        trace.pop("trace_sha256", None)
+        trace["trace_sha256"] = hashlib.sha256(
+            json.dumps(trace, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+            .encode("utf-8")
+        ).hexdigest()
+        report.metrics["review_trace_path"] = "embedded:repository_context.review_trace"
+        report.metrics["review_trace_sha256"] = trace["trace_sha256"]
     agent = metadata.get("agent", "ai-pr-review")
     findings = [
         {
@@ -226,8 +294,8 @@ def run_review(
         },
         "request_count": observed.calls,
         "model_outputs": observed.outputs,
-        "usage_records": getattr(provider, "usage_records", [])[usage_start:],
-        "token_usage": _usage_total(getattr(provider, "usage_records", [])[usage_start:]),
+        "usage_records": usage_records,
+        "token_usage": token_usage,
         "cost_usd": None,
     }
     return output, audit

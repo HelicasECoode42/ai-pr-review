@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import re
+from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
@@ -14,17 +15,16 @@ from src.analyzer.context_builder import (
     tokenizer_name,
 )
 from src.analyzer.signal_selection import select_verifiable_signals
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from src.github.client import GitHubClient
 
 from src.models import (
-    ReviewMeta,
     ChangedFile,
     CompletenessItem,
     FixTrackingItem,
     PullRequest,
+    ReviewMeta,
     ReviewReport,
     ReviewSuggestion,
     RiskFinding,
@@ -32,10 +32,15 @@ from src.models import (
     SkippedContextFile,
     StepStatus,
 )
-from src.reviewer.model_payload import ModelReviewPayload, parse_model_payload
-from src.reviewer.evidence_validator import validate_ai_evidence
 from src.reviewer.budget import budget_warnings, run_budget_report
-from src.reviewer.critic import CriticDecision, apply_critic, critique_batch, select_critic_candidates
+from src.reviewer.critic import (
+    CriticDecision,
+    apply_critic,
+    critique_batch,
+    select_critic_candidates,
+)
+from src.reviewer.evidence_validator import validate_ai_evidence
+from src.reviewer.model_payload import ModelReviewPayload, parse_model_payload
 from src.reviewer.prompt import SYSTEM_PROMPT, build_user_prompt
 from src.reviewer.provider import ProviderError, ReviewModelProvider
 from src.reviewer.review_merger import merge_review_results
@@ -43,6 +48,121 @@ from src.reviewer.signal_verifier import ProviderSignalVerifier, build_signal_en
 from src.reviewer.suggestion_filter import filter_suggestions
 
 logger = logging.getLogger(__name__)
+
+
+def _canonical_sha256(value: object) -> str:
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":"),
+                         ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _grounded_trace_identity(pr, files, snapshot, *, reviewer_version, prompt_addendum,
+                             policy_id, policy_status, policy_content_sha256,
+                             trace_input_identity=None):
+    """Fingerprint only review inputs and executable policy, never retain their text."""
+    from pathlib import Path
+
+    from src.reviewer.criteria import CRITERIA_VERSION
+    from src.reviewer.grounded_review import DISCOVERY_SYSTEM, VERIFY_SYSTEM
+
+    metadata = {
+        "repository": pr.repo, "pr_number": pr.number,
+        "base_sha": snapshot.base, "head_sha": snapshot.head,
+        "title": pr.title, "body": pr.body,
+    }
+    file_manifest = [{
+        "path": file.filename,
+        "status": getattr(file.status, "value", file.status),
+        "additions": file.additions,
+        "deletions": file.deletions,
+        "patch_sha256": hashlib.sha256((file.patch or "").encode("utf-8")).hexdigest(),
+    } for file in files]
+    metadata_sha = _canonical_sha256(metadata)
+    diff_sha = _canonical_sha256(file_manifest)
+    effective_policy_sha = policy_content_sha256 or _canonical_sha256({
+        "prompt_addendum": "", "playbook_recall_k": 5,
+    })
+    runtime_hash = hashlib.sha256()
+    source_root = Path(__file__).parents[1]
+    runtime_paths = (
+        Path(__file__),
+        Path(__file__).with_name("grounded_review.py"),
+        Path(__file__).with_name("criteria.py"),
+        Path(__file__).with_name("unit_review.py"),
+        source_root / "analyzer" / "repository_context.py",
+        source_root / "application" / "review.py",
+        source_root / "application" / "strategy_policy.py",
+        source_root / "reviewer" / "provider.py",
+    )
+    for path in runtime_paths:
+        runtime_hash.update(path.name.encode("utf-8"))
+        runtime_hash.update(path.read_bytes())
+    identity = {
+            "case_id": f"{pr.repo}#{pr.number}@{snapshot.head or 'unknown'}",
+            "repository": pr.repo,
+            "pr_number": pr.number,
+            "base_sha": snapshot.base,
+            "head_sha": snapshot.head,
+            "metadata_sha256": metadata_sha,
+            "diff_sha256": diff_sha,
+            "review_input_set_sha256": _canonical_sha256({
+                "metadata_sha256": metadata_sha, "diff_sha256": diff_sha,
+            }),
+            "benchmark_case_id": None,
+            "prepared_metadata_sha256": None,
+            "prepared_diff_sha256": None,
+            "input_set_sha256": None,
+        }
+    identity_status = "unavailable"
+    if trace_input_identity is not None:
+        allowed = {
+            "benchmark_case_id": (str, 180),
+            "prepared_metadata_sha256": (str, 64),
+            "prepared_diff_sha256": (str, 64),
+            "input_set_sha256": (str, 64),
+        }
+        valid = isinstance(trace_input_identity, dict)
+        values = {}
+        if valid:
+            for name, (kind, max_length) in allowed.items():
+                value = trace_input_identity.get(name)
+                if not isinstance(value, kind) or not value or len(value) > max_length:
+                    valid = False
+                    break
+                if name != "benchmark_case_id" and not re.fullmatch(r"[0-9a-f]{64}", value):
+                    valid = False
+                    break
+                if name == "benchmark_case_id" and not re.fullmatch(
+                    r"[A-Za-z0-9_.-]{1,180}", value
+                ):
+                    valid = False
+                    break
+                values[name] = value
+        if valid:
+            identity.update({
+                "benchmark_case_id": values["benchmark_case_id"],
+                "prepared_metadata_sha256": values["prepared_metadata_sha256"],
+                "prepared_diff_sha256": values["prepared_diff_sha256"],
+                "input_set_sha256": values["input_set_sha256"],
+            })
+            identity_status = "provided"
+        else:
+            identity_status = "invalid"
+    return {
+        "identity": identity,
+        "benchmark_identity_status": identity_status,
+        "policy": {
+            "policy_id": policy_id,
+            "status": policy_status,
+            "effective_policy_sha256": effective_policy_sha,
+        },
+        "criteria_sha256": hashlib.sha256(CRITERIA_VERSION.encode("utf-8")).hexdigest(),
+        "runtime_sha256": runtime_hash.hexdigest(),
+        "prompt_sha256": hashlib.sha256(
+            (DISCOVERY_SYSTEM + VERIFY_SYSTEM + prompt_addendum).encode("utf-8")
+        ).hexdigest(),
+        "reviewer_version": reviewer_version,
+    }
 
 
 def _build_completeness(
@@ -420,6 +540,10 @@ def review_with_ai(
     repository_evidence_tokens: int = 6000,
     max_input_tokens: int | None = None,
     analyzer_warnings: list[str] | None = None,
+    strategy_policy_id: str = "baseline",
+    strategy_policy_status: str = "baseline",
+    strategy_policy_content_sha256: str | None = None,
+    trace_input_identity: dict | None = None,
 ) -> ReviewReport:
     try:
         # The main review must start from the PR text and diff alone. Rule
@@ -453,6 +577,13 @@ def review_with_ai(
                         unit_provider.close()
 
             def grounded(snapshot):
+                trace_identity = _grounded_trace_identity(
+                    pr, files, snapshot, reviewer_version=reviewer_version,
+                    prompt_addendum=prompt_addendum, policy_id=strategy_policy_id,
+                    policy_status=strategy_policy_status,
+                    policy_content_sha256=strategy_policy_content_sha256,
+                    trace_input_identity=trace_input_identity,
+                )
                 # Large diffs are reviewed one semantic unit at a time. The gate is
                 # deliberate: this path costs one review per unit, so it only runs
                 # when the prompt was truncated and the unit count is capped.
@@ -477,9 +608,13 @@ def review_with_ai(
                             "head_sha": snapshot.head,
                             "reviewer_version": reviewer_version,
                             "strategy": (
-                                "grounded-unit-v2:intent-plan-v1:"
+                                "grounded-unit-v2:intent-plan-v2:"
                                 "one-discovery-one-verification"
                             ),
+                            "strategy_policy_id": strategy_policy_id,
+                            "strategy_policy_content_sha256": trace_identity["policy"][
+                                "effective_policy_sha256"
+                            ],
                             "model": str(model_name),
                             "provider_type": (
                                 f"{type(provider).__module__}.{type(provider).__qualname__}"
@@ -527,7 +662,9 @@ def review_with_ai(
                         }
 
                     merged, unit_details = run_units_for_review(
-                        lambda unit_ctx, unit_files: run_one_unit(unit_ctx, unit_files, snapshot),
+                        lambda unit_ctx, unit_files: run_one_unit(
+                            unit_ctx, unit_files, snapshot
+                        ),
                         snapshot, files,
                         token_budget=ctx.patch_token_budget or repository_evidence_tokens,
                         max_units=unit_review_max_units, max_workers=unit_review_workers,
@@ -556,6 +693,7 @@ def review_with_ai(
                             pr_syntax_ok=pr_syntax_ok,
                             max_input_tokens=max_input_tokens,
                             analyzer_warnings=warnings,
+                            trace_identity=trace_identity,
                         )
                     if unit_details.get("unit_review_skipped_cost"):
                         # Refused before spending anything; the reason is recorded
@@ -579,6 +717,7 @@ def review_with_ai(
                     report_confidence=report_confidence, degradation_reason=degradation_reason,
                     max_input_tokens=max_input_tokens,
                     analyzer_warnings=warnings,
+                    trace_identity=trace_identity,
                 )
                 if skip_details:
                     report.metrics["unit_review_skipped_cost"] = 1

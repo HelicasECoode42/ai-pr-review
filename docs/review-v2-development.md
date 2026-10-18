@@ -1,8 +1,8 @@
 # Review V2：唯一执行计划
 
-更新：2026-10-18。代码基线 HEAD `216d6316d6c259533a01ae93ec81856c53905c38`；A/B/C 与 unit JSON 结果恢复已在 HEAD；阶段2意图取证窄切片及测试在工作区。目标顺序是：**①让现有工具可信；②做跨文件意图 Agent；③用失败案例改进知识与策略**。本文件是唯一排期与验收计划；[PRD](PRD-review-capability-v2.md)只定义目标/边界，[HANDOFF](../HANDOFF.md)只做当前快照入口。旧 D1–D5、D2 图规划和 RSI 方案只作历史材料，不构成自动执行路线。
+更新：2026-10-18。A/B/C 与 unit JSON 结果恢复已在既有代码基线；阶段2意图取证及阶段3 trace→诊断 CLI 的当前工作区验收尚未提交。目标顺序是：**①让现有工具可信；②做跨文件意图 Agent；③用失败案例改进知识与策略**。本文件是唯一排期与验收计划；[PRD](PRD-review-capability-v2.md)只定义目标/边界，[HANDOFF](../HANDOFF.md)只做当前快照入口。旧 D1–D5、D2 图规划和 RSI 方案只作历史材料，不构成自动执行路线。
 
-本轮前 A/B 已完成并进入 HEAD：Playbook 真实 PR repo、语言/path/symbol 作用域与 scoped contract 的 fail-closed 边界；最终上下文排序保留 over-budget triage 优先级。C 已于 `b84fd93` 接通冻结 base/head snapshot Ruff scan、新增行候选归因、明确 unavailable/partial 与同一 snapshot 复用。Unit checkpoint 只从身份匹配、hash 与 schema 校验通过的 JSON 结果产物恢复；metadata-only 不会伪装成功。阶段2窄切片现已在 grounded review 同一 discovery 阶段接入假设与有界 read/search 任务，host 执行冻结 snapshot 取证并将证据交给现有 verifier；fake-provider 测试验证任务绑定、证据来源、去重和停止边界。`.venv/bin/python -m pytest -q` 为 **420 passed**，有 1 条 Starlette/httpx deprecation warning；关键 Ruff 规则、criteria/holdout/interface 离线 gate、6 个改动 Python 文件完整 Ruff 相对代码基线无新增诊断、`git diff --check` 均通过。`criteria_gate.py` 的 safe-division domain 由测试 fixture 显式输入，KB-0003 仍为 candidate。没有真实 PR/模型质量或 token/cost 收益验证。**阶段1仍未完成**：snapshot 底层单次读取硬 I/O 上限、启用但未接线路径门禁、完整候选账本与发布幂等仍待做；unit 跨进程并发/强杀恢复不承诺 exactly-once，#46 不可标记关闭。
+本轮前 A/B 已完成并进入代码基线：Playbook 真实 PR repo、语言/path/symbol 作用域与 scoped contract 的 fail-closed 边界；最终上下文排序保留 over-budget triage 优先级。C 已于 `b84fd93` 接通冻结 base/head snapshot Ruff scan、新增行候选归因、明确 unavailable/partial 与同一 snapshot 复用。Unit checkpoint 只从身份匹配、hash 与 schema 校验通过的 JSON 结果产物恢复；metadata-only 不会伪装成功。阶段2和3的当前工作区状态及精确验收记录见下方“2026-10-18 实施范围与验收”和 [`STATE.md`](STATE.md)。没有真实 PR/模型质量或 token/cost 收益验证。**阶段1仍未全部完成**：snapshot 底层单次读取硬 I/O 上限、启用但未接线路径门禁、完整候选账本与发布幂等仍待做；unit 跨进程并发/强杀恢复不承诺 exactly-once，#46 不可标记关闭。
 
 ### 2026-10-17：确定性 Ruff 接线的完成边界
 
@@ -23,12 +23,12 @@
 
 | 目标 | 已有功能与状态 | 当前实际流程 | 目标流程与工作项 | 验收实验/产物；成本 |
 |---|---|---|---|---|
-| Agent | 部分：auto 大 PR 保留 one-shot 的 grounded 证据路径；显式 `two_stage` 仍是 legacy 对照；`src/analyzer/review_plan.py` 原型不等于模型可用的完整调用图 | 固定 diff → 规则/模型策略 → 有冻结 SHA 时发现与限定检索；缺 SHA 或关闭仓库证据时报告降级 | 输出可修订的意图假设、目标/约束/风险/未知项；据此生成有边来源的跨文件计划；按证据更新或放弃假设；未验证的计划不发布 | 同一组人工标注跨文件 PR，比当前路径测语义根因 D 和发布 P、遗漏/partial；先 fake provider/离线。真实模型须预批预算 |
+| Agent | 部分：auto 大 PR 保留 grounded 证据路径；同次 discovery 响应接入 versioned intent hypotheses 和受限任务计划；显式 `two_stage` 仍为 legacy 对照，不是完整自主 planner | 固定 diff → 规则路由 → 发现阶段输出假设/任务 → host 在冻结 snapshot 上有界取证 → 证据 refs 进入原 verifier；无有效计划不执行计划任务，普通候选仍可按原判据核验 | 扩展跨文件关系类型及人工语义评估；追踪假设修订是否改善 N/S/D/P，而非只记录模型自评 | 当前 fake-provider E2E 验证宿主绑定/预算/trace；真实模型与跨文件质量、P/R、token/cost 均未验证；真实调用须预批预算 |
 | 轻便 | 部分：单机 Python + GitHub/CLI/Web 入口，报告和预算指标存在；没有生产持久恢复保证 | provider/上下文/审查阶段有多个独立预算；报告中 usage 仅覆盖实际可见响应 | 只加载相关变更与按需证据；产物引用可复用；文件 checkpoint、原子保存、显式 resume；暂不引入数据库/队列 | 同输入连续执行与进程中断恢复：不混快照、不重复已完成模型阶段、产物可复用；本地故障注入，免费 |
 | 好用 | 部分：Markdown/JSON 报告与 Web/CLI 可见；partial/omission 已有一部分 | 发现、核验、发布有状态字段，但用户尚不能从一份完整账本看清所有候选去了哪里 | 每个候选显示发现→取证→核验→发布/扣下状态及原因；取消、超时、预算耗尽或能力未启用时明确报告 partial，而非“无问题” | 用合成故障逐阶段打断，检查 UI/JSON 的状态及下一步动作；免费 |
 | 便宜 | 缺证据：源码缓存、provider cache 指标和局部预算存在；“缓存率”不能代替真实省费 | 当前 patch、repository evidence、模型输出/重试等预算口径不完全相同；生产全局 cost cap 与阶段结果恢复不足 | 做相同审查范围的去重证据、稳定前缀、窄 schema、工具端截断与已完成产物复用；预算耗尽则 partial，不静默少审 | 固定 PR、模型/版本、质量目标、配置；记录真实 usage/cost、重复读取/调用、延迟、Recall 与覆盖。只有质量约束相同且 usage 下降才算省钱；先离线测量方案，再审批真实请求 |
 | 可靠 | 部分：source provenance、counter-evidence、witness/contract filters、`filter_verdicts` 有接通路径；静态门禁有 CI 配置 | witness 只检查受限表达式；证据匹配不证明真实入口可达；几个完整性/幂等模块未接生产 | 对每次执行校验固定 base/head、实际功能调用、每 hunk 覆盖/遗漏、工具失败状态、取消、重试身份/预算、发布前 head；运行失败或未覆盖就阻止“完整/无问题”结论 | 改 head、强制超时、缺工具、跳过路径、断电/重复 resume 等故障注入；报告必须保留失败状态；免费 |
-| 自进化 | 未接：playbook 有 authoritative/candidate 概念；无自动晋升主链；回归 fixtures 不是新 PR 泛化 | 当前 authoritative 条目参与检索，candidate 不能仅凭命中/文字晋升；模型反馈也不是 gold | 失败 trace → 归因 → 带来源/适用范围/反例的候选知识 → 隔离回放 → 人工 accept/reject → 版本发布/回滚；先人工晋升，不自动改生产 | 冻结 KB 与评测版本；在开发集报告覆盖、TP/FP/FN、跨文件召回；知识冻结后用独立新 repo/case 留出集；人工审批，离线/免费门禁优先 |
+| 自进化 | 部分：host trace 可形成受限 mechanical diagnosis，candidate CLI/隔离 replay/gate/promote/rollback 存在；当前 CLI E2E 只到 `evaluation_required`，没有有效 fresh holdout 时不晋升 | 生产 fake-run trace → sidecar/身份校验 → allowlisted failure diagnosis → bounded policy candidate；评估输入/身份/协议不满足时 fail closed；active policy 只由显式晋升改变 | 仅由新鲜独立样本支持策略变化；版本化记录反例、影响与回滚；建立真实模型实验协议后再评估是否有泛化收益 | 当前为 fixture/regression-only；旧 holdout 已暴露且不得晋升。需要独立新 repo/case、语义人工裁定、覆盖/质量/实测成本共同通过并显式人工审批 |
 
 ## 三阶段交付
 
@@ -53,6 +53,8 @@
 先做小范围关系证据：静态 import、符号、API 参数/返回契约、调用点、测试引用；每条边标 `resolved/heuristic/unresolved`，不追求“全仓完整调用图”。模型只规划下一步读取，宿主执行并限制跳数、文件数、输出量、时限和请求预算；检索结果存成同一 run 的不可变 evidence refs，按需 hydration，重复证据去重。跨文件 bug 的发布必须展示改变了什么行为、谁受影响、为何能从入口到达；仅有同名/弱边不能确认为调用关系。
 
 **Done 条件**：先在冻结 PR 子集建立人工根因标签；比较当前方法与意图计划，在相同候选范围/每 PR 预算下报告 N/S/D/P：N=人工 gold，S=实际进入模型上下文的 gold，D=语义上发现的 gold，P=最终发布且人工判定正确的 gold；记录 FP、未读证据、partial、重复读取、tokens/cost、请求次数、时延和失败。位置命中只作为定位 proxy，需盲化人工语义裁定。先 fake provider 验工具/流程；真实模型实验先提交预算上限和冻结协议，经批准后小批执行。成本减少只有在相同覆盖与质量下实际 usage/重复调用下降才成立。
+
+**2026-10-18 实施范围与验收**：本轮把同一 discovery 响应中的 intent plan 稳定为版本化、有限结构，保留旧响应兼容；hypothesis 只决定有界 read/search 的优先级，host 执行后才授予 evidence refs，assessment 仅作假设状态记录，finding 仍走原核验判据。policy id/content hash 进入 unit checkpoint 身份。ReviewReport 产出不含源正文或密钥的 versioned `review_trace`，paired run 将 sidecar 与 run record 按 SHA/输入身份绑定；`review_improvement.py cycle` 从实际 fake-provider 生产 run 消费有效 host omission，生成 bounded candidate 并返回 `evaluation_required`。不新增默认模型轮或预算，不把 PR 描述升级为契约。验收覆盖同次调用里的 plan→取证→assessment→报告/trace、无效/未知假设不压制普通候选、policy 切换拒绝旧 checkpoint、真实 CLI 消费 trace 到 candidate。API 调用数为 0；fresh test 尚未授权，真实晋升没有发生，旧 holdout 禁止用于晋升。真实模型质量、独立泛化、P/R 与成本收益仍未知。
 
 ### 3. 失败案例知识闭环
 

@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Protocol
 
-from src.analyzer.context_builder import count_tokens, _skip_patch_reason
+from src.analyzer.context_builder import _skip_patch_reason, count_tokens
 from src.analyzer.diff_parser import parse_file_hunks
 from src.models import BudgetLine, BudgetReport, ChangedFile, Omission
 
@@ -429,12 +429,18 @@ class EvidenceBundle:
                         errors_before = len(self.snapshot.audit().get("errors", []))
                         hits = self.snapshot.search(symbol, side, limit=4)
                         refs = []
+                        omissions_before = len(self.omitted)
                         for path, hit_line in hits:
                             evidence_ref = self.add(
                                 path, hit_line, side, "requested_symbol_reference"
                             )
                             if evidence_ref:
                                 refs.append(evidence_ref)
+                        new_omissions = self.omitted[omissions_before:]
+                        omission_reason = next(
+                            (item.get("reason") for item in new_omissions
+                             if item.get("reason") == "evidence_budget_exhausted"), None
+                        )
                         errors_after = len(self.snapshot.audit().get("errors", []))
                         status = (
                             "search_unavailable" if errors_after > errors_before
@@ -444,8 +450,13 @@ class EvidenceBundle:
                         entry.update(executed=True, reused=False, status=status,
                                      hits=[{"path": p, "line": n} for p, n in hits],
                                      evidence_refs=list(dict.fromkeys(refs)))
+                        if omission_reason:
+                            entry["omission_reason"] = omission_reason
                         self._request_cache[key] = {
-                            k: entry[k] for k in ("status", "hits", "evidence_refs")
+                            k: entry[k] for k in (
+                                "status", "hits", "evidence_refs", "omission_reason"
+                            )
+                            if k in entry
                         }
                 else:
                     raise ValueError("Only read/search tools are supported")

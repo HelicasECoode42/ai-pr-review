@@ -38,6 +38,62 @@ def write_json(path: Path, value) -> None:
     temporary.replace(path)
 
 
+def trace_input_identity(task: dict, manifest: dict | None) -> dict | None:
+    if not manifest:
+        return None
+    record = next(
+        (
+            item
+            for item in manifest.get("records", [])
+            if item.get("case_id") == task.get("case_id")
+        ),
+        None,
+    )
+    if not record or record.get("diff_sha256") != task.get("diff_sha256"):
+        return None
+    input_dir = Path(task.get("input_dir", ""))
+    if hashlib.sha256((input_dir / "pr.json").read_bytes()).hexdigest() != record.get(
+        "metadata_sha256"
+    ):
+        return None
+    return {
+        "benchmark_case_id": record["case_id"],
+        "prepared_metadata_sha256": record["metadata_sha256"],
+        "prepared_diff_sha256": record["diff_sha256"],
+        "input_set_sha256": manifest.get("input_set_sha256"),
+    }
+
+
+def persist_review_trace(output: Path, case_id: str, audit: dict) -> dict | None:
+    report = audit.get("report")
+    context = report.get("repository_context") if isinstance(report, dict) else None
+    trace = context.pop("review_trace", None) if isinstance(context, dict) else None
+    if not isinstance(trace, dict) or not isinstance(trace.get("trace_sha256"), str):
+        return None
+    unsigned = {key: value for key, value in trace.items() if key != "trace_sha256"}
+    expected = hashlib.sha256(
+        json.dumps(unsigned, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        .encode("utf-8")
+    ).hexdigest()
+    if trace["trace_sha256"] != expected:
+        return None
+    path = output / "traces" / f"{case_id}.json"
+    write_json(path, trace)
+    policy = trace.get("policy", {})
+    identity = {
+        "policy_id": policy.get("policy_id"),
+        "effective_policy_sha256": policy.get("effective_policy_sha256"),
+        "criteria_sha256": trace.get("criteria_sha256"),
+        "runtime_sha256": trace.get("runtime_sha256"),
+        "prompt_sha256": trace.get("prompt_sha256"),
+    }
+    return {
+        "review_trace_path": str(path.relative_to(output)),
+        "review_trace_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "review_trace_identity": identity,
+    }
+
+
 def prepare(benchmark: Path, cache: Path, output: Path, *, fetch=False) -> dict:
     # Read only the task manifest, never golden/, findings.json or later fixes.
     tasks = json.loads((benchmark / "corpus/test/test.json").read_text())
@@ -143,7 +199,13 @@ def evaluate(
     critic=False,
     two_stage=False,
     verify_signals=False,
+    trace_manifest: dict | None = None,
 ) -> dict:
+    if trace_manifest is not None:
+        raise ValueError(
+            "corpus evaluate has no frozen repository snapshot; use paired's grounded arm "
+            "to produce bound review traces"
+        )
     if (output / "run.json").exists() or any((output / "candidates").glob("*.json")):
         raise ValueError("Use a new run output directory; stale candidates must not be reused")
     records = []
@@ -171,11 +233,15 @@ def evaluate(
                     verify_signals=verify_signals,
                     context_pack=True,
                     project_root=work / "project",
+                    trace_input_identity=trace_input_identity(task, trace_manifest),
                 )
                 audit.update(identity)
+                trace_link = persist_review_trace(output, task["case_id"], audit)
                 write_json(output / "candidates" / (task["case_id"] + ".json"), findings)
                 write_json(output / "audits" / (task["case_id"] + ".json"), audit)
                 record.update(status="success", request_count=audit["request_count"])
+                if trace_link:
+                    record.update(trace_link)
             except Exception as exc:
                 record.update(
                     status="failed",
@@ -209,6 +275,8 @@ def main() -> None:
     execution.add_argument("--critic", action="store_true")
     execution.add_argument("--two-stage", action="store_true")
     execution.add_argument("--verify-signals", action="store_true")
+    execution.add_argument("--trace-manifest", type=Path,
+                           help="Validated exact input manifest to bind saved review traces")
     judging = sub.add_parser("judge")
     judging.add_argument("--benchmark", type=Path, required=True)
     judging.add_argument("--candidates", type=Path, required=True)
@@ -278,6 +346,8 @@ def main() -> None:
                 critic=args.critic,
                 two_stage=args.two_stage,
                 verify_signals=args.verify_signals,
+                trace_manifest=(json.loads(args.trace_manifest.read_text())
+                                if args.trace_manifest else None),
             )
         if any(r["status"] != "success" for r in result["records"]):
             raise SystemExit(1)

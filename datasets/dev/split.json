@@ -28,6 +28,9 @@
     "Marvell-Consulting_statswales-frontend_626-30ba27a5"
   ],
   "split_rule": "by repository",
+  "prepared_sha256": "f7c66ed67481e3c657c270ca119d48ed6d13d30489079672aac113cf8b84c1b5",
+  "holdout_status": "regression_only",
+  "test_status": "not_authorized",
   "created": "2026-10-15",
   "excluded": [
     {

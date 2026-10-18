@@ -197,10 +197,17 @@ def test_production_review_applies_verified_policy_and_observes_rollback(tmp_pat
     import hashlib
     import json
 
-    from src.application.strategy_policy import BASELINE_CONTENT_SHA256, PROMPT_TEMPLATES
+    from src.application.strategy_policy import (
+        BASELINE_CONTENT_SHA256,
+        PROMPT_TEMPLATES,
+        current_criteria_fingerprint,
+    )
 
     pr = PullRequest(repo="owner/repo", number=10, title="t")
-    report = ReviewReport(pr=pr, files=[], summary="ok", risk_level=Severity.LOW)
+    report = ReviewReport(
+        pr=pr, files=[], summary="ok", risk_level=Severity.LOW,
+        repository_context={"review_trace": {"schema_version": 1}},
+    )
 
     class Provider:
         usage_records = []
@@ -224,12 +231,19 @@ def test_production_review_applies_verified_policy_and_observes_rollback(tmp_pat
     app.review(pr, [], [])
     assert engine.call_args.kwargs["prompt_addendum"] == ""
     assert report.metrics["strategy_policy_status"] == "baseline"
+    assert engine.call_args.kwargs["strategy_policy_id"] == "baseline"
+    baseline_policy_sha = engine.call_args.kwargs["strategy_policy_content_sha256"]
+    assert len(baseline_policy_sha) == 64
+    baseline_trace = report.repository_context["review_trace"]
+    assert baseline_trace["policy"]["policy_id"] == "baseline"
+    assert report.metrics["review_trace_sha256"] == baseline_trace["trace_sha256"]
 
     version_id = "a" * 64
     version = {
         "schema_version": 1,
         "version_id": version_id,
         "status": "accepted",
+        "criteria_fingerprint": current_criteria_fingerprint(),
         "policy": {
             "prompt_addendum": PROMPT_TEMPLATES["cross_file_contract_check_v1"],
             "playbook_recall_k": 5,
@@ -246,10 +260,28 @@ def test_production_review_applies_verified_policy_and_observes_rollback(tmp_pat
         "content_sha256": hashlib.sha256(version_bytes).hexdigest(),
     }), encoding="utf-8")
 
-    app.review(pr, [], [])
+    trace_input_identity = {
+        "benchmark_case_id": "fixture-case-10",
+        "prepared_metadata_sha256": "1" * 64,
+        "prepared_diff_sha256": "2" * 64,
+        "input_set_sha256": "3" * 64,
+    }
+    app.review(pr, [], [], trace_input_identity=trace_input_identity)
     assert engine.call_args.kwargs["prompt_addendum"] == version["policy"]["prompt_addendum"]
     assert report.metrics["strategy_policy_id"] == version_id
     assert report.metrics["strategy_policy_status"] == "active"
+    assert engine.call_args.kwargs["trace_input_identity"] == trace_input_identity
+    assert engine.call_args.kwargs["strategy_policy_id"] == version_id
+    assert engine.call_args.kwargs["strategy_policy_content_sha256"] != baseline_policy_sha
+    assert report.metrics["strategy_policy_effective_sha256"] == engine.call_args.kwargs[
+        "strategy_policy_content_sha256"
+    ]
+    active_trace = report.repository_context["review_trace"]
+    assert active_trace["policy"]["policy_id"] == version_id
+    assert active_trace["policy"]["effective_policy_sha256"] == report.metrics[
+        "strategy_policy_effective_sha256"
+    ]
+    assert report.metrics["review_trace_sha256"] == active_trace["trace_sha256"]
 
     (policy_dir / "active.json").write_text(json.dumps({
         "schema_version": 1,
@@ -260,3 +292,4 @@ def test_production_review_applies_verified_policy_and_observes_rollback(tmp_pat
     assert engine.call_args.kwargs["prompt_addendum"] == ""
     assert report.metrics["strategy_policy_id"] == "baseline"
     assert report.metrics["strategy_policy_status"] == "baseline"
+    assert report.repository_context["review_trace"]["policy"]["policy_id"] == "baseline"

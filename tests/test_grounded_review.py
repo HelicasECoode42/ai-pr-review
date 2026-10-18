@@ -64,7 +64,7 @@ def verdict(**updates):
     return {"items": [{**item, **updates}]}
 
 
-def run(repo, responses, *, description=""):
+def run(repo, responses, *, description="", trace_input_identity=None, evidence_tokens=6000):
     root, base, head = repo
     snapshot = GitSnapshot(root, base, head)
     files = parse_diff(git(root, "diff", base, head))
@@ -74,7 +74,9 @@ def run(repo, responses, *, description=""):
     provider = Provider(responses)
     report = review_with_ai(pr, files, [], provider, 20, min_confidence=.65,
                             repository_snapshot=snapshot, follow_changes=True,
-                            review_context=context)
+                            repository_evidence_tokens=evidence_tokens,
+                            review_context=context,
+                            trace_input_identity=trace_input_identity)
     return report, provider
 
 
@@ -126,6 +128,141 @@ def test_intent_plan_executes_frozen_cross_file_task_and_verification_cites_it(r
     assert "name, age = get_profile()" in provider.calls[-1][1]
     assert intent["assessments"][0]["evidence_refs"] == intent["tasks"][0]["evidence_refs"]
     assert len(report.suggestions) == 1
+
+
+def test_grounded_trace_is_versioned_and_valid_focus_prioritizes_bounded_tasks(repo):
+    def assess(system, prompt):
+        return {**verdict(), "intent_assessments": [{
+            "hypothesis_id": "H1", "status": "supported",
+            "evidence_refs": task_evidence_refs(prompt),
+            "rationale": "The changed contract has a frozen diff source.", "unknowns": [],
+        }]}
+
+    responses = [
+        {
+            "intent_hypotheses": [
+                {**planned_hypotheses()[0], "focus_tags": ["caller_contract"]},
+                {"id": "H2", "goal": "Check a lower-priority detail",
+                 "source_refs": ["pr:description"]},
+            ],
+            "context_requests": [
+                {"hypothesis_id": "H2", "purpose": "low 1", "tool": "search",
+                 "symbol": "missing_one"},
+                {"hypothesis_id": "H2", "purpose": "low 2", "tool": "search",
+                 "symbol": "missing_two"},
+                {"hypothesis_id": "H2", "purpose": "low 3", "tool": "search",
+                 "symbol": "missing_three"},
+                {"hypothesis_id": "H2", "purpose": "low 4", "tool": "search",
+                 "symbol": "missing_four"},
+                {"hypothesis_id": "H1", "purpose": "check caller contract",
+                 "tool": "search", "symbol": "get_profile"},
+            ],
+        },
+        candidate(),
+        assess,
+    ]
+    report, _ = run(
+        repo, responses, description="untrusted summary",
+        trace_input_identity={
+            "benchmark_case_id": "fixture-case-1",
+            "prepared_metadata_sha256": "a" * 64,
+            "prepared_diff_sha256": "b" * 64,
+            "input_set_sha256": "c" * 64,
+        },
+    )
+
+    plan = report.repository_context["intent_plan"]
+    assert plan["schema_version"] == 2
+    assert plan["hypotheses"][0]["focus_tags"] == ["caller_contract"]
+    assert plan["tasks"][0]["hypothesis_id"] == "H1"
+    assert plan["tasks"][0]["status"] == "executed_with_evidence"
+    assert plan["assessments"][0]["status"] == "supported"
+    assert report.suggestions
+    trace = report.repository_context["review_trace"]
+    assert trace["schema_version"] == 1
+    assert trace["identity"]["benchmark_case_id"] == "fixture-case-1"
+    assert trace["identity"]["prepared_metadata_sha256"] == "a" * 64
+    assert trace["identity"]["prepared_diff_sha256"] == "b" * 64
+    assert trace["identity"]["input_set_sha256"] == "c" * 64
+    assert trace["intent"]["hypotheses"][0]["id"] == "H1"
+    assert trace["intent"]["tasks"][0]["evidence_ref_ids"]
+    assert "Return contract" not in json.dumps(trace)
+    assert trace["trace_sha256"]
+
+
+def test_trace_records_only_host_proven_source_bound_task_omissions(repo):
+    source_hypothesis = {
+        **planned_hypotheses()[0], "focus_tags": ["caller_contract"],
+    }
+    requests = [
+        {"hypothesis_id": "H1", "purpose": f"check caller {index}",
+         "tool": "search", "symbol": f"caller_symbol_{index}"}
+        for index in range(5)
+    ]
+
+    def assess(system, prompt):
+        return {**verdict(), "intent_assessments": [{
+            "hypothesis_id": "H1", "status": "supported",
+            "evidence_refs": task_evidence_refs(prompt),
+            "rationale": "The changed contract is linked to frozen source evidence.",
+            "unknowns": [],
+        }]}
+
+    report, _ = run(repo, [
+        {"intent_hypotheses": [source_hypothesis], "context_requests": requests},
+        {**candidate(), "intent_hypotheses": [source_hypothesis]},
+        assess,
+    ])
+
+    trace = report.repository_context["review_trace"]
+    assert len(trace["intent"]["tasks"]) == 4
+    assert len(trace["intent"]["omitted_tasks"]) == 1
+    omission = trace["intent"]["omitted_tasks"][0]
+    assert omission["reason"] == "task_limit"
+    assert omission["hypothesis_id"] == "H1"
+    assert omission["valid_source_refs"] == ["diff:users.py"]
+    assert trace["mechanical_failures"] == [{
+        "failure_id": omission["task_id"],
+        "failure_tag": "cross_file_task_budget_omitted",
+        "reason": "task_limit",
+        "hypothesis_id": "H1",
+        "task_id": omission["task_id"],
+        "valid_source_refs": ["diff:users.py"],
+        "omission_reason": None,
+    }]
+
+
+def test_trace_marks_real_evidence_budget_omission_as_partial(repo):
+    hypothesis = {**planned_hypotheses()[0], "focus_tags": ["caller_contract"]}
+
+    def assess(system, prompt):
+        return {**verdict(), "intent_assessments": [{
+            "hypothesis_id": "H1", "status": "supported",
+            "evidence_refs": task_evidence_refs(prompt),
+            "rationale": "No source ref is available to support this assessment.",
+            "unknowns": [],
+        }]}
+
+    report, _ = run(repo, [
+        {
+            "intent_hypotheses": [hypothesis],
+            "context_requests": [{
+                "hypothesis_id": "H1", "purpose": "check unchanged caller",
+                "tool": "search", "symbol": "get_profile",
+            }],
+        },
+        candidate(),
+        assess,
+    ], evidence_tokens=1)
+
+    trace = report.repository_context["review_trace"]
+    assert trace["intent"]["tasks"]
+    assert trace["intent"]["tasks"][0]["omission_reason"] == "evidence_budget_exhausted"
+    assert trace["intent"]["omitted_tasks"][0]["reason"] == "evidence_budget"
+    assert trace["mechanical_failures"][0]["failure_tag"] == (
+        "cross_file_task_budget_omitted"
+    )
+    assert report.repository_context["intent_plan"]["status"] == "partial"
 
 
 def test_discovery_budget_stop_keeps_same_round_candidates_pending(repo):

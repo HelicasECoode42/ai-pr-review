@@ -1,6 +1,6 @@
 # 当前交接
 
-更新：2026-10-18。本轮代码/测试基线为 `ca7b501`；离线 soak 在该冻结源码归档上完成并退出 0。此页只作入口，当前状态以 [`docs/STATE.md`](docs/STATE.md) 和 [soak 摘要](docs/evaluation/offline-runtime-soak-2026-10-18.json) 为准；不要从历史记录推导完成状态。
+更新：2026-10-18。离线 soak 在固定源码归档上完成并退出 0；本轮意图/评估闭环仍在工作树，未提交。此页只作入口，当前状态以 [`docs/STATE.md`](docs/STATE.md) 和 [soak 摘要](docs/evaluation/offline-runtime-soak-2026-10-18.json) 为准；不要从历史记录推导完成状态。
 
 ## 必读
 
@@ -9,4 +9,4 @@
 - [数据集与知识库审计](docs/evaluation/dataset-audit-2026-10-16.md)
 - [Harness 规范](docs/HARNESS.md)
 
-VS Code 扩展冻结。真实模型调用、费用与线上 GitHub 发布效果均未在本轮验证。soak 是单个缓存 PR fixture 的低负载离线稳定性探针，不代表真实审查质量或 P/R。
+VS Code 扩展冻结。真实模型调用、费用与线上 GitHub 发布效果均未在本轮验证。soak 是单个缓存 PR fixture 的低负载离线稳定性探针，不代表真实审查质量或 P/R。当前工作树的完整测试/gates结果见 STATE；fixture CLI 不能授权晋升旧 holdout 或候选策略。
