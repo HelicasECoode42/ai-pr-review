@@ -99,7 +99,7 @@ class TestChooseAgentStrategy:
         )
         assert strategy == "one_shot_ai"
 
-    def test_auto_large_pr_uses_two_stage(self) -> None:
+    def test_auto_large_pr_keeps_grounded_capable_route(self) -> None:
         strategy, reason = choose_agent_strategy(
             use_ai=True,
             has_api_key=True,
@@ -108,7 +108,20 @@ class TestChooseAgentStrategy:
             findings_count=10,
             high_severity_count=5,
         )
-        assert strategy == "two_stage"
+        assert strategy == "one_shot_ai"
+        assert "grounded evidence" in reason
+
+    def test_auto_large_additions_keeps_grounded_capable_route(self) -> None:
+        strategy, reason = choose_agent_strategy(
+            use_ai=True,
+            has_api_key=True,
+            files_count=3,
+            additions=1200,
+            findings_count=10,
+            high_severity_count=2,
+        )
+        assert strategy == "one_shot_ai"
+        assert "bounded coverage" in reason
 
     def test_auto_distributed_signals_do_not_change_primary_strategy(self) -> None:
         strategy, reason = choose_agent_strategy(

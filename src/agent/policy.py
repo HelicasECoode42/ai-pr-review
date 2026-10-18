@@ -74,8 +74,8 @@ def choose_agent_strategy(
 
     if files_count >= 20 or additions >= 1200:
         return (
-            "two_stage",
-            "Large or high-risk PR; use triage to bound deep-review context",
+            "one_shot_ai",
+            "Large PR; retain grounded evidence review and report bounded coverage",
         )
 
     return (

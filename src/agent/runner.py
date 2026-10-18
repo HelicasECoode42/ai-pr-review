@@ -290,6 +290,23 @@ class ReviewAgentRunner:
         state.strategy = strategy  # type: ignore[assignment]
         state.strategy_reason = strategy_reason
         ctx.strategy = strategy
+        auto_large_pr = (
+            request.agent_mode == "auto"
+            and (files_count >= 20 or additions >= 1200)
+        )
+        if auto_large_pr and strategy == "one_shot_ai":
+            if not self._settings.enable_repository_review:
+                ctx.report_confidence = "partial"
+                ctx.analyzer_warnings.append(
+                    "Auto large-PR review selected the grounded-capable route, but repository "
+                    "evidence review is disabled; cross-file snapshot tools were not run."
+                )
+            elif not (ctx.pr and ctx.pr.base_sha and ctx.pr.head_sha):
+                ctx.report_confidence = "partial"
+                ctx.analyzer_warnings.append(
+                    "Auto large-PR review selected the grounded-capable route, but immutable "
+                    "base/head SHAs are unavailable; cross-file snapshot tools were not run."
+                )
         self._emit_progress("strategy_selected", {
             "strategy": strategy,
             "reason": strategy_reason,
