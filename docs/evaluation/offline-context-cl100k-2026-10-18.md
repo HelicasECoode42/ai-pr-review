@@ -33,3 +33,23 @@ The source has 1,771 diff hunks total. B, C, and D_full keep complete hunks only
 These are first-pass patch-location visibility measurements, not semantic evidence sufficiency, defect discovery, precision/recall, or unseen-PR generalization. Historical A0 context SHA-256 values match the prior 25-case artifact for all 25 cases. The machine-readable artifact binds the dataset, split, frozen source files, tokenizer asset, selector and injection hashes, and per-finding hashes/visibility.
 
 Reproduction uses `scripts/evaluation/offline_context_strategy.py --counter cl100k --cache-dir <verified-cache> --data <eval-data> --source-root <frozen-archive> --source-revision 86cbacac805b0451a2839b3cc9b07cc968097f78 --output <result.json>`. The cache must contain the verified official static cl100k asset; the runner refuses tokenizer fallback. `--counter bytebound` is a separate UTF-8 byte upper-bound layer and must not be compared as exact token counts.
+
+## Dev9 category movement and new-sample status
+
+The following post-hoc category counts are derived from the frozen JSON artifact and `datasets/dev/split.json`, restricted to the 87 Dev9 findings mapped to a unique head-side diff hunk. “All” means every target line is visible; “any” means at least one target line is visible. Gains and losses are finding counts moving between A1 and C, not semantic detections.
+
+| Category | All A1 → C | All gain / loss | Any A1 → C | Any gain / loss |
+|---|---:|---:|---:|---:|
+| api-architecture | 3 → 3 | 0 / 0 | 3 → 3 | 0 / 0 |
+| correctness | 18 → 24 | 9 / 3 | 20 → 24 | 8 / 4 |
+| documentation | 0 → 0 | 0 / 0 | 0 → 0 | 0 / 0 |
+| maintainability | 7 → 4 | 0 / 3 | 7 → 4 | 0 / 3 |
+| performance | 4 → 5 | 1 / 0 | 5 → 5 | 0 / 0 |
+| reliability | 12 → 17 | 6 / 1 | 12 → 17 | 6 / 1 |
+| security | 4 → 2 | 0 / 2 | 4 → 2 | 0 / 2 |
+| testing | 13 → 13 | 1 / 1 | 13 → 13 | 1 / 1 |
+| **Total** | **61 → 68** | **17 / 10** | **64 → 68** | **15 / 11** |
+
+The any-visible net gain of four does not mean C improves every category: security has zero gains and two losses, and maintainability has zero gains and three losses. Correctness accounts for the largest net gain. These remain location-visibility proxies and do not establish semantic recall or justify changing the default selector.
+
+No new-sample validation was obtained. A deterministic 20-case public roster (SHA-256 `c600c7059a6402b4a4c7020d56ab3d941d266f9ae42fa36819f0aab77c7061ef`) was prepared for input validation, but the first GET returned HTTP 403; the run stopped immediately with one request and zero accepted cases. The reason for the response was not independently established. The external preparation record has SHA-256 `a524c0998ae00d55462d2a68222e51db6cebc16fb5c2436835c28908b5e1fca7`. This attempt adds no validation data; the previously used 15-case regression split does not establish unseen-PR generalization.
