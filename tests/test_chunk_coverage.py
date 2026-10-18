@@ -67,6 +67,83 @@ def test_secret_adjacent_and_vendored_paths_never_enter_the_prompt():
     assert _secret_adjacent_reason("app/styles.css") is None
 
 
+def test_path_exclusions_count_hunks_without_exposing_excluded_content():
+    files = [
+        ChangedFile(
+            filename="docs/private.md",
+            patch="@@ -1,1 +1,1 @@\n-DOC_SECRET_SENTINEL\n+DOC_NEW_SENTINEL\n",
+        ),
+        ChangedFile(
+            filename="package-lock.json",
+            patch="@@ -1,1 +1,1 @@\n-LOCK_SECRET_SENTINEL\n+LOCK_NEW_SENTINEL\n",
+        ),
+        ChangedFile(
+            filename=".env.production",
+            patch="@@ -1,1 +1,1 @@\n-ENV_SECRET_SENTINEL\n+ENV_NEW_SENTINEL\n",
+        ),
+        ChangedFile(
+            filename="assets/logo.png",
+            patch=(
+                "diff --git a/assets/logo.png b/assets/logo.png\n"
+                "Binary files a/assets/logo.png and b/assets/logo.png differ\n"
+            ),
+        ),
+        ChangedFile(
+            filename="src/renamed.py",
+            status=FileStatus.RENAMED,
+            previous_filename="src/original.py",
+            patch=(
+                "diff --git a/src/original.py b/src/renamed.py\n"
+                "similarity index 100%\n"
+                "rename from src/original.py\n"
+                "rename to src/renamed.py\n"
+            ),
+        ),
+    ]
+
+    ctx = build_review_context(
+        frozen_pr(), files, allow_remote_file_fetch=False, include_context_pack=False
+    )
+
+    by_path = {entry.path: entry for entry in ctx.coverage}
+    expected = {
+        "docs/private.md": "documentation_only_change",
+        "package-lock.json": "lockfile",
+        ".env.production": "secret_adjacent_path_not_analyzed",
+    }
+    for path, reason in expected.items():
+        entry = by_path[path]
+        assert entry.status == "excluded"
+        assert entry.reason == reason
+        assert entry.hunks_total == 1
+        assert entry.hunks_omitted == 1
+        assert dict(ctx.skipped_files)[path] == reason
+
+    assert by_path["assets/logo.png"].hunks_total == 0
+    assert by_path["src/renamed.py"].hunks_total == 0
+    assert by_path["assets/logo.png"].reason == "binary_content_not_analyzed"
+    assert by_path["src/renamed.py"].reason == "patch_without_hunks"
+    assert "lockfile(s) excluded from patch context" in ctx.text
+    assert "documentation_only_change" in ctx.text
+    assert "secret_adjacent_path_not_analyzed" in ctx.text
+    assert not any(
+        sentinel in ctx.text
+        for sentinel in (
+            "DOC_SECRET_SENTINEL", "DOC_NEW_SENTINEL", "LOCK_SECRET_SENTINEL",
+            "LOCK_NEW_SENTINEL", "ENV_SECRET_SENTINEL", "ENV_NEW_SENTINEL",
+        )
+    )
+    summary = ctx.coverage_summary
+    assert summary.changed_files == 5
+    assert summary.complete is True
+    assert summary.unaccounted_files == ()
+    assert summary.hunks_total == 3
+    assert summary.hunks_omitted == 3
+    assert summary.hunks_total == (
+        summary.hunks_complete + summary.hunks_partial + summary.hunks_omitted
+    )
+
+
 def test_missing_entry_is_reported_as_unaccounted_not_assumed_fine():
     summary = ChunkCoverageSummary.from_entries(
         ["a.py", "b.py"], (ChunkCoverage(path="a.py"),)

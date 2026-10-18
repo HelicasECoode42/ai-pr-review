@@ -5,6 +5,8 @@
 
 ## 当前验证与边界（2026-10-18）
 
+- 离线轻量 smoke 记录在 [`offline-runtime-smoke-2026-10-18.json`](evaluation/offline-runtime-smoke-2026-10-18.json)：25个缓存输入的 `build_review_context` 修复前三次中位0.349秒/67.1MiB，仅是上下文组装，不是审查速度。修复前735个文件均有文件级记录，hunk分母1460；早期文档/lockfile/敏感路径排除未计源hunk。工作区修复后逐case复验为1771/1771源hunk进入终态账目，311个仍按文件原因标记omitted（文档125、lockfile185、敏感路径1），排除内容仍不进prompt。随机预算探针两种计数器均通过；旧耗时不代表修后性能。
+
 - 本轮工作区：CLI/API/Web默认 `auto`，显式 `off` 在SSE也进入legacy并返回requested/effective/reason；CLI `--two-stage`对Agent路由生效。策略选择按大小阈值，是规则路由而非LLM语义分类。Agent sidecar记录请求模式、实际策略和原因。
 - Application把主审、Critic、unit provider纳入同一 `ReviewRequestBudget`：完整system/user输入以UTF-8字节保守上界计数、HTTP attempt与总deadline共用；`scripts/run_real_review.py`也改用该入口。数字不是精确token或费用。预算拒绝时已返回的候选保留pending/partial。
 - reusable workflow会按冻结报告head校验并以bot作者身份验证review comment marker；同一PR workflow串行，按候选写publication artifact。PR作者显式回复对应评论可dismiss当前指纹；读API失败或创建结果不明记录unknown。该机制不承诺跨workflow/跨host exactly-once，`decision_ledger.py`仍不是生产运行账本。

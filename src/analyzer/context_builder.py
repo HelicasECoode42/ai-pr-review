@@ -617,7 +617,17 @@ def build_review_context(
                 reason = _documentation_reason(file.filename)
             if reason is not None:
                 skipped_files.append((file.filename, reason))
-                _cover(coverage_by_path, file.filename, status="excluded", reason=reason)
+                # Reuse the parsed diff metadata: excluded paths stay out of the
+                # prompt, while each supplied hunk still gets an omitted outcome.
+                excluded_hunks = parsed_hunks.get(file.filename, [])
+                _cover(
+                    coverage_by_path,
+                    file.filename,
+                    status="excluded",
+                    reason=reason,
+                    hunks_total=len(excluded_hunks),
+                    hunks_omitted=len(excluded_hunks),
+                )
                 if reason == "lockfile":
                     lockfiles_skipped += 1
                 continue
