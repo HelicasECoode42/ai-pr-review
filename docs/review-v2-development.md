@@ -1,8 +1,8 @@
 # Review V2：唯一执行计划
 
-更新：2026-10-18。A/B/C 与 unit JSON 结果恢复已在既有代码基线；阶段2意图取证及阶段3 trace→诊断 CLI 的当前工作区验收尚未提交。目标顺序是：**①让现有工具可信；②做跨文件意图 Agent；③用失败案例改进知识与策略**。本文件是唯一排期与验收计划；[PRD](PRD-review-capability-v2.md)只定义目标/边界，[HANDOFF](../HANDOFF.md)只做当前快照入口。旧 D1–D5、D2 图规划和 RSI 方案只作历史材料，不构成自动执行路线。
+更新：2026-10-18。A/B/C 核心与 unit JSON 结果恢复，以及阶段2意图取证和阶段3 trace→诊断 CLI 已纳入版本控制；最新提交以 `git log` 为准。目标顺序是：**①让现有工具可信；②做跨文件意图 Agent；③用失败案例改进知识与策略**。本文件是唯一排期与验收计划；[PRD](PRD-review-capability-v2.md)只定义目标/边界，[HANDOFF](../HANDOFF.md)只做当前快照入口。旧 D1–D5、D2 图规划和 RSI 方案只作历史材料，不构成自动执行路线。
 
-本轮前 A/B 已完成并进入代码基线：Playbook 真实 PR repo、语言/path/symbol 作用域与 scoped contract 的 fail-closed 边界；最终上下文排序保留 over-budget triage 优先级。C 已于 `b84fd93` 接通冻结 base/head snapshot Ruff scan、新增行候选归因、明确 unavailable/partial 与同一 snapshot 复用。Unit checkpoint 只从身份匹配、hash 与 schema 校验通过的 JSON 结果产物恢复；metadata-only 不会伪装成功。阶段2和3的当前工作区状态及精确验收记录见下方“2026-10-18 实施范围与验收”和 [`STATE.md`](STATE.md)。没有真实 PR/模型质量或 token/cost 收益验证。**阶段1仍未全部完成**：snapshot 底层单次读取硬 I/O 上限、启用但未接线路径门禁、完整候选账本与发布幂等仍待做；unit 跨进程并发/强杀恢复不承诺 exactly-once，#46 不可标记关闭。
+本轮前 A/B 已完成并进入代码基线：Playbook 真实 PR repo、语言/path/symbol 作用域与 scoped contract 的 fail-closed 边界；最终上下文排序保留 over-budget triage 优先级。C 已于 `b84fd93` 接通冻结 base/head snapshot Ruff scan、新增行候选归因、明确 unavailable/partial 与同一 snapshot 复用。Unit checkpoint 只从身份匹配、hash 与 schema 校验通过的 JSON 结果产物恢复；metadata-only 不会伪装成功。阶段2和3的实现范围与验收记录见下方“2026-10-18 实施范围与验收”和 [`STATE.md`](STATE.md)。没有真实 PR/模型质量或 token/cost 收益验证。**阶段1仍未全部完成**：snapshot 底层单次读取硬 I/O 上限、启用但未接线路径门禁、完整候选账本与发布幂等仍待做；unit 跨进程并发/强杀恢复不承诺 exactly-once，#46 不可标记关闭。
 
 ### 2026-10-17：确定性 Ruff 接线的完成边界
 
@@ -34,11 +34,11 @@
 
 ### 1. 让现有工具可信
 
-阶段1已修 A/B（仅工作区，等独立 review）；其余待办优先修行为，不扩功能面：
+阶段1 A/B/C 核心修复已纳入版本控制；底层单次响应硬 I/O 限制仍待做，其他待办优先修行为，不扩功能面：
 
-1. **A 已修（工作区）—Playbook scope**：`src/knowledge/playbook.py` 按真实 repo、逐路径语言/path/symbol 匹配；无法解析或来源超预算时 unknown；`src/application/review.py` 只读相关 changed frozen source。scoped domain 不进入全 PR prompt 或扁平 witness domain，KB-0003 synthetic 契约改为 candidate；纯自然语言 KB-0004 guidance 仍可进入 prompt。定向 scope/资源预算/parse-error 反例通过；不证明契约绑定或真实 PR 质量。
-2. **C 待做—lint 证据身份**：`src/analyzer/deterministic_tools.py` 对当前工作树 changed-file 路径执行 Ruff 整文件诊断，未绑定审查 head SHA，也未确认诊断行属于 PR 新增/修改行；`confidence=1.0` 代表工具发现本身确定，不是“本 PR 引入缺陷概率”。读取冻结 head，并做新增行归因；锁定/记录 Ruff 版本，缺工具和超时作为 unavailable/partial，不声称通过。
-3. **B 已修（工作区）—最终上下文排序**：`src/analyzer/context_builder.py:486-505` 计算 over-budget triage 优先级，`:541-550` 最终构造 patch 时优先级置于 path/size tie-break 之前；曾被 path 排序挤掉的 flagged docs hunk 现在进入最终 context。反例同时保留普通 hunk，并确认 9 个 hunk 都有 coverage 终态；`coverage.complete` 表示账目完整，不表示所有内容完整纳入，也不等于质量提升。
+1. **A 已完成—Playbook scope**：`src/knowledge/playbook.py` 按真实 repo、逐路径语言/path/symbol 匹配；无法解析或来源超预算时 unknown；`src/application/review.py` 只读相关 changed frozen source。scoped domain 不进入全 PR prompt 或扁平 witness domain，KB-0003 synthetic 契约改为 candidate；纯自然语言 KB-0004 guidance 仍可进入 prompt。定向 scope/资源预算/parse-error 反例通过；不证明契约绑定或真实 PR 质量。
+2. **C 核心已完成，底层响应界限待做**：`src/analyzer/deterministic_tools.py` 对冻结 base/head 内容做 Ruff 扫描，并把新增行匹配作为候选归因；缺工具、超时等状态显式 unavailable/partial。工具诊断不等于语义 Bug 或 confirmed。`Snapshot.read()` 仍可能先完整返回单次响应再执行大小检查，严格单次响应硬截断与可取消读取尚未完成。
+3. **B 已完成—最终上下文排序**：`src/analyzer/context_builder.py:486-505` 计算 over-budget triage 优先级，`:541-550` 最终构造 patch 时优先级置于 path/size tie-break 之前；曾被 path 排序挤掉的 flagged docs hunk 现在进入最终 context。反例同时保留普通 hunk，并确认 9 个 hunk 都有 coverage 终态；`coverage.complete` 表示账目完整，不表示所有内容完整纳入，也不等于质量提升。
 4. **开关必须有行为**：对配置已启用但运行中无调用/无产物的功能 fail-fast 或报告 `unsupported/partial`；将 `scripts/interface_audit.py` 的静态接口检查与关键功能的 runtime fake-provider seam 检查分开，避免把“名称有调用”当完成。
 5. **账本与发布只在接线后算完成**：`decision_ledger.py`、`publish.py` 有持久账本/指纹/驳回记忆实现，但当前未发现 `src/` 生产调用。接入每个发现候选（含去重、拒绝、验证失败和未处理候选）的唯一 run/candidate 身份，再接发布幂等；无法保证覆盖时明确标记 incomplete。特别不能把“每个已核验候选有 filter_verdicts”说成“所有模型候选都有持久记录”。
 
@@ -48,7 +48,7 @@
 
 链路是：PR 描述和 diff 提供**可疑意图**，而非规范真值 → 生成 `intent hypotheses`（目标、约束、风险、未知、证据与置信依据）→ 选择相关文件/测试/调用方形成 review plan → 有界工具读取原始证据并记录 side/SHA/path/line/边来源 → 按证据修订假设 → 对候选做分类核验 → 发布 confirmed 或明确 partial/needs-context。
 
-**2026-10-18 本地接线进展**：当前先交付 grounded review 的小范围垂直切片，不声称完整自主 planner。Discovery 同一模型阶段可给出有 id 的假设和 read/search 任务；host 只对已知 id 执行冻结 snapshot 查询，计划、规范化查询、执行状态和 refs 写入审计。验证阶段只接受同一假设任务实际取得、且仍展示在 prompt 中的 refs；PR 描述可作为假设来源，不能作为代码证据；assessment 不能单独确认/撤销 finding。未知/无绑定任务不执行；旧的无计划 verifier 请求保留为 candidate-scoped 兼容并显式标记。重复取证复用同一 snapshot 查询结果；无新证据和预算终点由 host 阻止后续调用并记 partial。定向 fake-provider tests 已覆盖 caller/callee、描述反证、错误 id、去重、无新证据、终点请求、checkpoint roundtrip 和多单元合并；真实模型效果、质量、延迟及 token/cost 收益仍未知。
+**2026-10-18 已纳入版本控制**：本轮交付 grounded review 的小范围垂直切片，不声称完整自主 planner。Discovery 同一模型阶段可给出有 id 的假设和 read/search 任务；host 只对已知 id 执行冻结 snapshot 查询，计划、规范化查询、执行状态和 refs 写入审计。验证阶段只接受同一假设任务实际取得、且仍展示在 prompt 中的 refs；PR 描述可作为假设来源，不能作为代码证据；assessment 不能单独确认/撤销 finding。未知/无绑定任务不执行；旧的无计划 verifier 请求保留为 candidate-scoped 兼容并显式标记。重复取证复用同一 snapshot 查询结果；无新证据和预算终点由 host 阻止后续调用并记 partial。定向 fake-provider tests 已覆盖 caller/callee、描述反证、错误 id、去重、无新证据、终点请求、checkpoint roundtrip 和多单元合并；真实模型效果、质量、延迟及 token/cost 收益仍未知。
 
 先做小范围关系证据：静态 import、符号、API 参数/返回契约、调用点、测试引用；每条边标 `resolved/heuristic/unresolved`，不追求“全仓完整调用图”。模型只规划下一步读取，宿主执行并限制跳数、文件数、输出量、时限和请求预算；检索结果存成同一 run 的不可变 evidence refs，按需 hydration，重复证据去重。跨文件 bug 的发布必须展示改变了什么行为、谁受影响、为何能从入口到达；仅有同名/弱边不能确认为调用关系。
 
@@ -66,7 +66,7 @@
 
 | 功能点 | 现状 | 实施流程 | 依赖 | 可验收产物/判据 |
 |---|---|---|---|---|
-| 规则、知识 scope、lint 与冻结快照 | A/B 已进 HEAD；C 核心已在工作区，底层硬 I/O 上限待做 | 单 PR 共用 snapshot → 规则/隔离 Ruff → changed-line 候选归因 → scope 召回 → 状态报告 | 阶段1 | 冻结快照报告；scope/lint 回归反例；不可用显式状态；底层响应截断另验 |
+| 规则、知识 scope、lint 与冻结快照 | A/B/C 核心已纳入版本控制；单次底层响应硬 I/O 上限待做 | 单 PR 共用 snapshot → 规则/隔离 Ruff → changed-line 候选归因 → scope 召回 → 状态报告 | 阶段1 | 冻结快照报告；scope/lint 回归反例；不可用显式状态；底层响应截断另验 |
 | 预算、hunk 顺序与覆盖 | B 已进 HEAD，fixture 通过 | 输入清单 → triage → 最终选择 → 每 hunk 终态 → omission | 阶段1 | 超预算 fixtures 显示 triage 风险进入最终上下文；所有 hunk 有终态 |
 | 候选/判定/发布账本 | 组件存在、生产未接 | candidate id → 每阶段事件 → verdict/过滤 → 发布或扣下原因 | 阶段1 | 一次 run 的完整 candidate ledger；重试/重复运行不重复发评论 |
 | 跨文件 Agent 计划与取证 | grounded 窄切片已接线，真实增益未知 | intent hypothesis → bound read/search → frozen snapshot evidence refs → verifier assessment → finding 仍走原判据 | 阶段2 | 冻结 PR 人工语义评测；S/D/P 独立；跨文件分层结果；同质量成本对照 |

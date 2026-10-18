@@ -2,9 +2,9 @@
 
 更新：2026-10-18。文档基线提交 `6db6173`；本次状态补记离线 soak 结果。阶段计划见 [`review-v2-development.md`](review-v2-development.md)，本页是当前状态唯一真相。
 
-## 当前工作树验收（2026-10-18，未提交）
+## 本轮离线验收（2026-10-18）
 
-- 本轮增加 grounded intent/trace 与受约束改进 CLI 闭环；验证树以本次验收时工作树为准，未提交。完整测试 `.venv/bin/python -m pytest -q`：**475 passed**，1 条 Starlette/httpx deprecation warning。`criteria_gate.py`、`interface_audit.py`、`holdout_eval.py`、CI 最低 Ruff 规则和 `git diff --check` 均通过。随后删除两个确实未使用的 trace 参数并增强 gate 失败断言；相关定向测试 113 passed。Interface audit 仍列出 6 个未使用形参提示，无失效 flag 或调用/定义不匹配，不能称零告警。
+- 本轮增加 grounded intent/trace 与受约束改进 CLI 闭环，已纳入版本控制。显式完整测试 `.venv/bin/python -m pytest -q`：**475 passed**，1 条 Starlette/httpx deprecation warning；随后删除两个确实未使用的 trace 参数并增强 gate 失败断言，相关定向测试 113 passed。正常提交 hook 的全量测试、`criteria_gate.py`、`interface_audit.py`、`holdout_eval.py` 均通过；hook 未打印 pytest 数量。CI 最低 Ruff 规则和 `git diff --check` 通过。Interface audit 仍列出 6 个未使用形参提示，无失效 flag 或调用/定义不匹配，不能称零告警。
 - Grounded discovery 的同一响应可携带 versioned intent hypotheses 与有界 read/search plan；host 只执行有效绑定任务、记录冻结证据及预算省略，assessment 不替代原 finding 判据。策略/criteria/runtime/prompt 身份写入 trace/checkpoint；trace sidecar 与 paired evaluation identity 可被诊断 CLI 消费。命令级 fake-provider E2E 到达 `evaluation_required`，provider/replay 未被创建，active policy 仍是 baseline。
 - 曾有一次并行 lifecycle gate 返回 reject，但当时未打印 reasons，暂未查明根因。增强断言保留完整 gate/reasons；四个隔离 pytest 进程重新覆盖 paired runner/host omission、holdout consumption、unknown-cost gate 和 promotion/rollback 共 6 项测试，全部通过。该次未复现不等于根因已解释。
 - 本轮没有 API 调用，也没有真实策略晋升：fresh test 尚未授权，旧 holdout 仍只作回归且不得用于晋升，active policy 保持 baseline。以上均为离线 fixture/fake-provider 验证，不是真实模型审查效果；真实 P/R、独立泛化、token/cost收益和自动自进化效果未知。只有经过有效独立评估、门禁及显式人工晋升的策略才可能成为 active。
