@@ -1,6 +1,6 @@
 {
   "experiment": "offline-production-context-coverage",
-  "method": "build_review_context actual output; no provider/network/target code execution; each raw TP remains a separate finding; per-finding target-line hashes and context/hunk hashes are post-hoc references, no gold text/source text emitted",
+  "method": "build_review_context actual output; no provider/network/target code execution; each raw TP remains a separate finding; per-finding target-line hashes and context/hunk hashes are post-hoc references, no gold text/source text emitted; hunk body states use raw-source hunk substring against the final per-file rendered patch: complete=full hunk body exact, partial=some body retained, omitted=no body retained. One bare @@ header stub in sdsykes jpeg.rb is recorded separately and remains inside omitted body count; it is not a visible hunk body.",
   "inputs": {
     "prepared_sha256": "f7c66ed67481e3c657c270ca119d48ed6d13d30489079672aac113cf8b84c1b5",
     "benchmark_commit": "968291d99e82b3e2969d7e0b4acca62585886c13",
@@ -9,7 +9,8 @@
     "prioritize_rule_files": false,
     "allow_remote_file_fetch": false,
     "secondary_group_key": "file,start_line,end_line,category(case-insensitive); informational only, never deduplicates the primary raw finding denominator",
-    "gold_mapping": "exact path + actual new-side visible line interval; no suffix matching"
+    "gold_mapping": "exact path + actual new-side visible line interval; no suffix matching",
+    "hunk_visibility_definition": "raw source hunk body comparison against actual rendered per-file patch; bare header stub is separately noted but included in omitted body count"
   },
   "versions": {
     "baseline": {
@@ -51,8 +52,8 @@
       "files_partial": 74,
       "files_omitted": 549,
       "hunks_total": 1771,
-      "hunks_visible_complete": 302,
-      "hunks_visible_partial": 74,
+      "hunks_visible_complete": 303,
+      "hunks_visible_partial": 73,
       "hunks_omitted": 1395,
       "gold": {
         "raw_tp_records": 352,
@@ -64,7 +65,8 @@
         "outside_diff": 37,
         "ambiguous": 3,
         "unknown": 9
-      }
+      },
+      "hunks_header_only_stub": 1
     },
     "current": {
       "files_total": 735,
@@ -72,8 +74,8 @@
       "files_partial": 74,
       "files_omitted": 549,
       "hunks_total": 1771,
-      "hunks_visible_complete": 302,
-      "hunks_visible_partial": 74,
+      "hunks_visible_complete": 303,
+      "hunks_visible_partial": 73,
       "hunks_omitted": 1395,
       "gold": {
         "raw_tp_records": 352,
@@ -85,7 +87,8 @@
         "outside_diff": 37,
         "ambiguous": 3,
         "unknown": 9
-      }
+      },
+      "hunks_header_only_stub": 1
     },
     "gold_files": 25,
     "gold_case_bundle_sha256": "b0623e08f3390859574d14e51b1268f3760faf66fdd858f01d222dd98db197bc",
@@ -122,7 +125,8 @@
             "unknown": 0
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.107011
+          "elapsed_seconds": 0.107011,
+          "hunks_header_only_stub": 0
         },
         "current": {
           "context_sha256": "b8ca989887bd8390eca226fbfa9def03d80e8bf7e8223b7748165949cf28993c",
@@ -147,7 +151,8 @@
             "unknown": 0
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.102288
+          "elapsed_seconds": 0.102288,
+          "hunks_header_only_stub": 0
         }
       },
       "gold_findings": [
@@ -672,7 +677,8 @@
             "unknown": 0
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.32321
+          "elapsed_seconds": 0.32321,
+          "hunks_header_only_stub": 0
         },
         "current": {
           "context_sha256": "f6e08e3c7383b94ea1b2ea8012cd2fae922c31978a7279a62209319db0ba08d0",
@@ -697,7 +703,8 @@
             "unknown": 0
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.322004
+          "elapsed_seconds": 0.322004,
+          "hunks_header_only_stub": 0
         }
       },
       "gold_findings": [
@@ -915,7 +922,8 @@
             "unknown": 0
           },
           "context_truncated": false,
-          "elapsed_seconds": 0.004906
+          "elapsed_seconds": 0.004906,
+          "hunks_header_only_stub": 0
         },
         "current": {
           "context_sha256": "cf7d003f39e6e2866ef80bd2db365a2f8b2f15445a50495ff080fc713735de4c",
@@ -940,7 +948,8 @@
             "unknown": 0
           },
           "context_truncated": false,
-          "elapsed_seconds": 0.005525
+          "elapsed_seconds": 0.005525,
+          "hunks_header_only_stub": 0
         }
       },
       "gold_findings": [
@@ -1710,7 +1719,8 @@
             "unknown": 1
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.077709
+          "elapsed_seconds": 0.077709,
+          "hunks_header_only_stub": 0
         },
         "current": {
           "context_sha256": "da968483e5e0705517dff45282cdb729023751b9a80244e5d1310ba8ae8ea864",
@@ -1735,7 +1745,8 @@
             "unknown": 1
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.078275
+          "elapsed_seconds": 0.078275,
+          "hunks_header_only_stub": 0
         }
       },
       "gold_findings": [
@@ -3593,7 +3604,8 @@
             "unknown": 0
           },
           "context_truncated": false,
-          "elapsed_seconds": 0.002509
+          "elapsed_seconds": 0.002509,
+          "hunks_header_only_stub": 0
         },
         "current": {
           "context_sha256": "bcece07bd6994e1839be45f8f5ad52a595c86008a318b4e27b84e5df3f373cc3",
@@ -3618,7 +3630,8 @@
             "unknown": 0
           },
           "context_truncated": false,
-          "elapsed_seconds": 0.002545
+          "elapsed_seconds": 0.002545,
+          "hunks_header_only_stub": 0
         }
       },
       "gold_findings": [
@@ -4653,7 +4666,8 @@
             "unknown": 0
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.087229
+          "elapsed_seconds": 0.087229,
+          "hunks_header_only_stub": 0
         },
         "current": {
           "context_sha256": "3889df8b2f36cfcce42f8d0356c1b104cfd7b4036c75c8d090e76404597ff77d",
@@ -4678,7 +4692,8 @@
             "unknown": 0
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.087163
+          "elapsed_seconds": 0.087163,
+          "hunks_header_only_stub": 0
         }
       },
       "gold_findings": [
@@ -6230,7 +6245,8 @@
             "unknown": 0
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.015573
+          "elapsed_seconds": 0.015573,
+          "hunks_header_only_stub": 0
         },
         "current": {
           "context_sha256": "13d319bd42d7f25337a0dfdb96e7133f52cab9485a9b50f10b03d17c6aca963a",
@@ -6255,7 +6271,8 @@
             "unknown": 0
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.01522
+          "elapsed_seconds": 0.01522,
+          "hunks_header_only_stub": 0
         }
       },
       "gold_findings": [
@@ -6981,7 +6998,8 @@
             "unknown": 0
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.019973
+          "elapsed_seconds": 0.019973,
+          "hunks_header_only_stub": 0
         },
         "current": {
           "context_sha256": "0cc6dc6ca48ca48cbb41b4fbf568a8a4756b8a3a2f3d1f5c40633d967f76693f",
@@ -7006,7 +7024,8 @@
             "unknown": 0
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.019982
+          "elapsed_seconds": 0.019982,
+          "hunks_header_only_stub": 0
         }
       },
       "gold_findings": [
@@ -7297,7 +7316,8 @@
             "unknown": 0
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.011974
+          "elapsed_seconds": 0.011974,
+          "hunks_header_only_stub": 0
         },
         "current": {
           "context_sha256": "c30fd900b4e2ce92bf0f20ba3492db6191d389890107514a096982142b48954d",
@@ -7322,7 +7342,8 @@
             "unknown": 0
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.012174
+          "elapsed_seconds": 0.012174,
+          "hunks_header_only_stub": 0
         }
       },
       "gold_findings": [
@@ -8422,7 +8443,8 @@
             "unknown": 0
           },
           "context_truncated": false,
-          "elapsed_seconds": 0.002116
+          "elapsed_seconds": 0.002116,
+          "hunks_header_only_stub": 0
         },
         "current": {
           "context_sha256": "94a342d1e5c6b8b47370c7432219e00dba9b1d0bc3aaaa358aed8f5b1d2d0b68",
@@ -8447,7 +8469,8 @@
             "unknown": 0
           },
           "context_truncated": false,
-          "elapsed_seconds": 0.002248
+          "elapsed_seconds": 0.002248,
+          "hunks_header_only_stub": 0
         }
       },
       "gold_findings": [
@@ -9202,7 +9225,8 @@
             "unknown": 1
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.022841
+          "elapsed_seconds": 0.022841,
+          "hunks_header_only_stub": 0
         },
         "current": {
           "context_sha256": "580d4c240d71d90407b0f5ef1172a6e4933daa8d59ac0e35c8273eed2965573b",
@@ -9227,7 +9251,8 @@
             "unknown": 1
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.022647
+          "elapsed_seconds": 0.022647,
+          "hunks_header_only_stub": 0
         }
       },
       "gold_findings": [
@@ -9755,7 +9780,8 @@
             "unknown": 0
           },
           "context_truncated": false,
-          "elapsed_seconds": 0.005466
+          "elapsed_seconds": 0.005466,
+          "hunks_header_only_stub": 0
         },
         "current": {
           "context_sha256": "7cbeb75346d6aa8ce1c9c92f441eaeb93ffff963a515ccb5cd6a9b65d1342570",
@@ -9780,7 +9806,8 @@
             "unknown": 0
           },
           "context_truncated": false,
-          "elapsed_seconds": 0.005541
+          "elapsed_seconds": 0.005541,
+          "hunks_header_only_stub": 0
         }
       },
       "gold_findings": [
@@ -10157,7 +10184,8 @@
             "unknown": 0
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.019814
+          "elapsed_seconds": 0.019814,
+          "hunks_header_only_stub": 0
         },
         "current": {
           "context_sha256": "490686788a7c437b4df95c12dc3decb5f369b13dbdfe313e7a550fc41fe5f860",
@@ -10182,7 +10210,8 @@
             "unknown": 0
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.019772
+          "elapsed_seconds": 0.019772,
+          "hunks_header_only_stub": 0
         }
       },
       "gold_findings": [
@@ -10746,7 +10775,8 @@
             "unknown": 2
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.094623
+          "elapsed_seconds": 0.094623,
+          "hunks_header_only_stub": 0
         },
         "current": {
           "context_sha256": "8672ed352862865de80a4d747edb644dced20f344441f00f9f86ffaef0573867",
@@ -10771,7 +10801,8 @@
             "unknown": 2
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.094497
+          "elapsed_seconds": 0.094497,
+          "hunks_header_only_stub": 0
         }
       },
       "gold_findings": [
@@ -11058,7 +11089,8 @@
             "unknown": 1
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.029064
+          "elapsed_seconds": 0.029064,
+          "hunks_header_only_stub": 0
         },
         "current": {
           "context_sha256": "b363e345a3e40b94ae248eafd3a1d877a29d824a7f4321f98e31c11877cfaf01",
@@ -11083,7 +11115,8 @@
             "unknown": 1
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.029267
+          "elapsed_seconds": 0.029267,
+          "hunks_header_only_stub": 0
         }
       },
       "gold_findings": [
@@ -11661,7 +11694,8 @@
             "unknown": 0
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.042226
+          "elapsed_seconds": 0.042226,
+          "hunks_header_only_stub": 0
         },
         "current": {
           "context_sha256": "c1bee4345a17739ba7d06f56d88102d1f77a03cae0e77a619e191964467dc26b",
@@ -11686,7 +11720,8 @@
             "unknown": 0
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.042326
+          "elapsed_seconds": 0.042326,
+          "hunks_header_only_stub": 0
         }
       },
       "gold_findings": [
@@ -12240,7 +12275,8 @@
             "unknown": 1
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.026732
+          "elapsed_seconds": 0.026732,
+          "hunks_header_only_stub": 0
         },
         "current": {
           "context_sha256": "c51645539405a08972ab09203348897f786e36f32370a083f5195198fe5cb8fc",
@@ -12265,7 +12301,8 @@
             "unknown": 1
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.026493
+          "elapsed_seconds": 0.026493,
+          "hunks_header_only_stub": 0
         }
       },
       "gold_findings": [
@@ -12983,7 +13020,8 @@
             "unknown": 0
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.07196
+          "elapsed_seconds": 0.07196,
+          "hunks_header_only_stub": 0
         },
         "current": {
           "context_sha256": "50e9c0bf6eeeda82d5186c5a9c0fb1a465fb845a521ab6b46d2c679e9b4f417a",
@@ -13008,7 +13046,8 @@
             "unknown": 0
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.071855
+          "elapsed_seconds": 0.071855,
+          "hunks_header_only_stub": 0
         }
       },
       "gold_findings": [
@@ -14042,7 +14081,8 @@
             "unknown": 0
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.008267
+          "elapsed_seconds": 0.008267,
+          "hunks_header_only_stub": 0
         },
         "current": {
           "context_sha256": "bcf5502ecb6474d8a36e0de88e2730c632b95f8e034e30c688b9b6815a2a5de0",
@@ -14067,7 +14107,8 @@
             "unknown": 0
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.008797
+          "elapsed_seconds": 0.008797,
+          "hunks_header_only_stub": 0
         }
       },
       "gold_findings": [
@@ -14319,7 +14360,8 @@
             "unknown": 0
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.010885
+          "elapsed_seconds": 0.010885,
+          "hunks_header_only_stub": 0
         },
         "current": {
           "context_sha256": "1b27b69be7af78c677238608d54ba3e73491fc7c07ae397f7399a0b3b9be2799",
@@ -14344,7 +14386,8 @@
             "unknown": 0
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.01069
+          "elapsed_seconds": 0.01069,
+          "hunks_header_only_stub": 0
         }
       },
       "gold_findings": [
@@ -15084,7 +15127,8 @@
             "unknown": 1
           },
           "context_truncated": false,
-          "elapsed_seconds": 0.002095
+          "elapsed_seconds": 0.002095,
+          "hunks_header_only_stub": 0
         },
         "current": {
           "context_sha256": "39288eadc120ec94b7768e70ed4f42e92247bf16b926731c8ecc93c28fb62fa4",
@@ -15109,7 +15153,8 @@
             "unknown": 1
           },
           "context_truncated": false,
-          "elapsed_seconds": 0.002179
+          "elapsed_seconds": 0.002179,
+          "hunks_header_only_stub": 0
         }
       },
       "gold_findings": [
@@ -15333,7 +15378,8 @@
             "unknown": 0
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.018548
+          "elapsed_seconds": 0.018548,
+          "hunks_header_only_stub": 0
         },
         "current": {
           "context_sha256": "0c58346f58106e796454dda160ff517b0949f1f55b1ba45aa3cddbd6eb6b7363",
@@ -15358,7 +15404,8 @@
             "unknown": 0
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.018182
+          "elapsed_seconds": 0.018182,
+          "hunks_header_only_stub": 0
         }
       },
       "gold_findings": [
@@ -17033,7 +17080,8 @@
             "unknown": 1
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.029685
+          "elapsed_seconds": 0.029685,
+          "hunks_header_only_stub": 0
         },
         "current": {
           "context_sha256": "f7b314b3ea1b6848aaeafea4319eb14bfdaddee18256233ae097bc98bb2f5460",
@@ -17058,7 +17106,8 @@
             "unknown": 1
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.029655
+          "elapsed_seconds": 0.029655,
+          "hunks_header_only_stub": 0
         }
       },
       "gold_findings": [
@@ -17567,8 +17616,8 @@
           "files_partial": 3,
           "files_omitted": 3,
           "hunks_total": 19,
-          "hunks_visible_complete": 10,
-          "hunks_visible_partial": 3,
+          "hunks_visible_complete": 11,
+          "hunks_visible_partial": 2,
           "hunks_omitted": 6,
           "gold": {
             "raw_tp_records": 14,
@@ -17582,7 +17631,8 @@
             "unknown": 0
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.015321
+          "elapsed_seconds": 0.015321,
+          "hunks_header_only_stub": 1
         },
         "current": {
           "context_sha256": "07fa5add78e027cda97d80fd95bd8a3aa174e2f5b62ab1adb3fd015649c0d5b7",
@@ -17592,8 +17642,8 @@
           "files_partial": 3,
           "files_omitted": 3,
           "hunks_total": 19,
-          "hunks_visible_complete": 10,
-          "hunks_visible_partial": 3,
+          "hunks_visible_complete": 11,
+          "hunks_visible_partial": 2,
           "hunks_omitted": 6,
           "gold": {
             "raw_tp_records": 14,
@@ -17607,7 +17657,8 @@
             "unknown": 0
           },
           "context_truncated": true,
-          "elapsed_seconds": 0.015631
+          "elapsed_seconds": 0.015631,
+          "hunks_header_only_stub": 1
         }
       },
       "gold_findings": [
@@ -18331,7 +18382,8 @@
             "unknown": 1
           },
           "context_truncated": false,
-          "elapsed_seconds": 0.002657
+          "elapsed_seconds": 0.002657,
+          "hunks_header_only_stub": 0
         },
         "current": {
           "context_sha256": "06f05a9effca3a3dc548bd34a31b94070807513d5cd5edab471cee4a4bd42504",
@@ -18356,7 +18408,8 @@
             "unknown": 1
           },
           "context_truncated": false,
-          "elapsed_seconds": 0.002764
+          "elapsed_seconds": 0.002764,
+          "hunks_header_only_stub": 0
         }
       },
       "gold_findings": [
