@@ -240,6 +240,12 @@ reachable; that is introduced/worsened, not not_introduced.
 Before dismissing as unreachable, account for every producer of the value: its declaration and each
 place that constructs or sends it (stores, events, streams, caches), not only the path in the diff.
 If you have not seen them, return needs_context with a context_request for them.
+Judge the code, not the candidate's wording: a candidate's own hedge or self-assessment is never
+evidence. Repeated I/O or fetches, redundant work, inconsistent return types across paths, a changed
+branch with no test, and similar performance, maintainability or test-coverage problems introduced by
+the PR are defects: confirm them and say the impact is low in `reason`. When the code does what the
+candidate says and the only open question is whether it matters, confirm; needs_context is only for
+code facts you could not see.
 Return dismissed only with exact counter-evidence that disproves the scenario. Missing context is
 needs_context, not dismissed. A dismissal says the failure cannot happen. If it can happen but you
 judge it intended, documented, benign, minor, low impact or self-correcting, do not dismiss: return
@@ -331,8 +337,10 @@ def _repair_closed_containers(raw):
 
 RAW_DISCOVERY_SYSTEM = """You are a senior code reviewer. Review the supplied diff and frozen repository evidence.
 Report real defects introduced or worsened by this pull request. Return a JSON object only:
-{"findings":[{"file":"relative/path","line":123,"title":"short title","reason":"why it is a defect and how it is triggered","evidence":["exact code line"]}]}
-At most 20 findings, most severe first. Do not report style nits. A finding must name a
+{"findings":[{"file":"relative/path","line":123,"title":"short title","reason":"the failure: what goes wrong and how it is triggered","evidence":["exact code line"],"doubts":"what you are unsure about, or empty"}]}
+At most 20 findings, most severe first. Do not report style nits. `reason` states the defect only;
+put any hedge ("may be acceptable", "probably fine", "not a bug per se") in `doubts`, never in `reason`.
+If you do not believe it is a defect, leave it out. A finding must name a
 changed file and a positive line number in the new version. A line that is only nearby,
 or a defect that is different from the call chain you describe, is not a finding.
 """
@@ -343,7 +351,8 @@ _DISMISSAL_BASES = {"unreachable", "incorrect", "not_introduced"}
 # The verifier has paired these with a false factual basis ("not_introduced"
 # for a documented default), so they override any declared basis.
 _STRONG_JUDGEMENT = re.compile(
-    r"\b(intended|intentional(ly)?|by design|documented|self[- ]correcting|benign|"
+    r"\b(intended|intentional(ly)?|by design|design choice|documented|self[- ]correcting|benign|"
+    r"concedes?|candidate itself|inefficien\w*|performance[- ]only|not a correctness|"
     r"not (a )?(correctness |functional |real )?(bug|defect)( per se)?)\b",
     re.IGNORECASE,
 )
@@ -431,6 +440,8 @@ def _raw_findings_payload(response, max_suggestions):
     for item in (findings or [])[:max_suggestions]:
         if not isinstance(item, dict):
             continue
+        # Doubts stay out of the reason the verifier reads: it had dismissed
+        # gold findings because "the candidate itself concedes" a hedge.
         reason = str(item.get("reason") or "").strip()
         suggestions.append({
             "file_path": item.get("file") or item.get("file_path"),
@@ -556,6 +567,43 @@ def _add_serialization_contract(bundle, snapshot, suggestion) -> None:
                 # pressure; without it the tag line was silently dropped as
                 # evidence_budget_exhausted on CrabTrap. A short window is enough.
                 bundle.add(path, line, kind="candidate_serialization_contract", max_lines=12)
+                break
+
+
+VERIFY_EVIDENCE_EXTRA_TOKENS = 4000
+_CAMEL_SYMBOL = re.compile(r"\b[A-Z][A-Za-z0-9]*[a-z][A-Za-z0-9]*\b|\b[A-Z]{2,}[a-z]\w*\b")
+
+
+def _fallback_missing_reads(bundle, snapshot, outcomes) -> None:
+    """A read of a guessed path that does not exist falls back to a symbol search.
+
+    The verifier asks for files by name ("io_stream.rb") when the class lives
+    elsewhere; the class name in its stated purpose ("IOStream#read") is a
+    better key. Only definitions (class/def/func/fun/struct/interface) are added.
+    """
+    for outcome in outcomes:
+        request = outcome.get("request") if isinstance(outcome.get("request"), dict) else {}
+        if request.get("tool", "read") != "read" or outcome.get("status") == "executed_with_evidence":
+            continue
+        if outcome.get("omission_reason") not in (None, "source_unavailable"):
+            continue
+        purpose = str(request.get("purpose") or "")
+        for symbol in dict.fromkeys(_CAMEL_SYMBOL.findall(purpose)):
+            try:
+                hits = snapshot.search(symbol, side=request.get("side", "head"), limit=6)
+            except Exception:  # a search backend must not break the review
+                return
+            added = None
+            for path, line in hits:
+                text = (snapshot.read(path, request.get("side", "head")) or "").splitlines()
+                current = text[line - 1] if 0 < line <= len(text) else ""
+                if re.search(rf"\b(class|module|def|func|fun|struct|interface|type)\s+{re.escape(symbol)}\b",
+                             current):
+                    added = bundle.add(path, line, request.get("side", "head"),
+                                       "requested_definition_fallback")
+                    break
+            if added:
+                outcome["fallback"] = {"symbol": symbol, "evidence_ref": added}
                 break
 
 
@@ -1007,6 +1055,9 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
         })
         discovery_trace.append({
             "mode": "dedupe", "pool": len(pool), "kept": len(union), "merges": merges,
+            "doubts": [{"file": item.get("file"), "line": item.get("line"),
+                        "doubts": str(item.get("doubts"))[:300]}
+                       for item in union if str(item.get("doubts") or "").strip()],
         })
         payload = parse_model_payload(json.dumps(
             _raw_findings_payload({"findings": union}, max(max_suggestions, len(union))),
@@ -1203,6 +1254,11 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
         seen.add(identity); candidates.append(item)
 
     verification_calls, failed = 0, False
+    # Verification gets its own headroom: candidate definitions, callers and
+    # requested reads were being dropped as evidence_budget_exhausted because
+    # discovery's initial windows had already filled the shared budget.
+    if raw_discovery:
+        bundle.budget += VERIFY_EVIDENCE_EXTRA_TOKENS
     if eligible and verify_behavior:
         verdicts = {}
         assessment_errors = []
@@ -1371,6 +1427,7 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
                     )
                     if legacy_requests:
                         outcomes = bundle.execute(requested[:6])
+                        _fallback_missing_reads(bundle, snapshot, outcomes)
                         for outcome in outcomes:
                             outcome["scope"] = "legacy_candidate_verification"
                         if len(requested) > 6:

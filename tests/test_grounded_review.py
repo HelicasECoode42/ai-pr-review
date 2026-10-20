@@ -1927,3 +1927,59 @@ def test_verify_system_states_intent_worsened_and_producer_rules():
     assert "not counter-evidence" in VERIFY_SYSTEM
     assert "not not_introduced" in VERIFY_SYSTEM
     assert "every producer of the value" in VERIFY_SYSTEM
+
+
+def test_discovery_doubts_stay_out_of_the_verified_reason(repo):
+    finding = {"file": "users.py", "line": 2, "title": "Caller still expects positional values",
+               "reason": "Dictionary iteration returns keys", "doubts": "may be acceptable"}
+    result = _raw_run(repo, [finding], [verdict()["items"][0]])
+    assert "acceptable" not in result.candidates[0]["suggestion"]["reason"]
+    dedupe = [entry for entry in result.bundle["discovery_trace"] if entry.get("mode") == "dedupe"][0]
+    assert dedupe["doubts"][0]["doubts"] == "may be acceptable"
+
+
+@pytest.mark.parametrize("reason", [
+    "The candidate itself concedes this is not a correctness bug.",
+    "Re-fetch on failure is a minor inefficiency only.",
+    "Preferring JFIF over EXIF is a design choice.",
+])
+def test_dismissal_on_the_candidates_own_hedge_or_on_impact_is_kept(repo, reason):
+    report, _ = run(repo, [candidate(), _dismissal(reason=reason, dismissal_basis="incorrect")])
+    assert report.behavior_verifications[0]["validation_reason"] == "dismissal_rests_on_intent_or_impact"
+
+
+def test_missing_read_falls_back_to_the_symbol_named_in_its_purpose():
+    from src.reviewer.grounded_review import _fallback_missing_reads
+
+    class Snap:
+        files = {"lib/jpeg.rb": "module X\n  class IOStream\n    def read(n)\n    end\n  end\nend\n"}
+
+        def read(self, path, side="head"):
+            return self.files.get(path)
+
+        def search(self, symbol, side="head", limit=6):
+            return [(p, n) for p, t in self.files.items()
+                    for n, line in enumerate(t.splitlines(), 1) if symbol in line]
+
+    added = []
+
+    class Bundle:
+        def add(self, path, line=1, side="head", kind="related_code", max_lines=None):
+            added.append((path, line, kind))
+            return "ref"
+
+    outcomes = [{"request": {"tool": "read", "path": "lib/io_stream.rb",
+                             "purpose": "Determine IOStream#read semantics"},
+                 "status": "no_evidence", "omission_reason": "source_unavailable"}]
+    _fallback_missing_reads(Bundle(), Snap(), outcomes)
+    assert added == [("lib/jpeg.rb", 2, "requested_definition_fallback")]
+    assert outcomes[0]["fallback"]["symbol"] == "IOStream"
+
+
+def test_raw_verification_gets_extra_evidence_headroom(repo):
+    from src.reviewer.grounded_review import VERIFY_EVIDENCE_EXTRA_TOKENS
+
+    result = _raw_run(repo, [{"file": "users.py", "line": 2, "title": "t", "reason": "r"}],
+                      [verdict()["items"][0]])
+    limits = [line.limit for line in result.evidence_budget.lines if line.limit]
+    assert max(limits) >= 6000 + VERIFY_EVIDENCE_EXTRA_TOKENS
