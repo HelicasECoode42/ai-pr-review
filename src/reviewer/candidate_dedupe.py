@@ -14,8 +14,9 @@ Rules, all within one file:
 * rule vs model: a nearby model candidate whose title uses the rule's own
   vocabulary is the same issue.
 
-The first candidate of a group is kept (model order is most severe first), and
-every merge is reported so nothing silently disappears from the audit.
+The first candidate of a group is kept (model order is most severe first),
+except that a rule finding replaces a model candidate it merges with. Every
+merge is reported so nothing silently disappears from the audit.
 """
 
 from __future__ import annotations
@@ -116,6 +117,10 @@ def dedupe_candidates(findings: list[dict]) -> tuple[list[dict], list[dict]]:
         if match is None:
             kept.append(item)
             continue
+        if item.get("rule_id") and not kept[match].get("rule_id"):
+            # A rule finding is a proven fact and is accepted as such downstream;
+            # it represents the group, and the model wording is the merged one.
+            kept[match], item = item, kept[match]
         merges.append({
             "kept_index": match,
             "kept_title": kept[match].get("title"),

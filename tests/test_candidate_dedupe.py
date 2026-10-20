@@ -52,8 +52,9 @@ def test_rule_merges_with_a_nearby_model_candidate_using_its_vocabulary():
         item(28, "Mocked loader is bypassed by direct import"),
         item(33, "[TQ002] Test calls the function it mocked", "TQ002"),
     ])
-    assert [found["line"] for found in kept] == [6, 28, 33]
-    assert merges[0]["merged"]["rule_id"] == "TQ003"
+    assert [found["line"] for found in kept] == [8, 28, 33]
+    assert kept[0]["rule_id"] == "TQ003"  # the rule fact represents the group
+    assert merges[0]["merged"]["line"] == 6
 
 
 def test_other_files_never_merge():
