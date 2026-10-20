@@ -115,6 +115,7 @@ def run_review(
     patch_and_repository_tokens=12000,
     repository_evidence_tokens=6000,
     documentation_patch_tokens=0,
+    raw_discovery=False,
     trace_input_identity: dict | None = None,
     strategy_policy_id: str = "baseline",
     strategy_policy_status: str = "baseline",
@@ -175,6 +176,7 @@ def run_review(
         strategy_policy_status=strategy_policy_status,
         strategy_policy_content_sha256=strategy_policy_content_sha256,
         grounded_missing_evidence_followup=grounded_missing_evidence_followup,
+        raw_discovery=raw_discovery,
         review_meta=ReviewMeta(reviewed_commit=metadata["head"]),
     )
     if observed.errors:
@@ -282,6 +284,7 @@ def run_review(
             "min_confidence": min_confidence,
             "follow_changes": follow_changes,
             "grounded_missing_evidence_followup": grounded_missing_evidence_followup,
+            "raw_discovery": raw_discovery,
             "patch_and_repository_tokens": patch_and_repository_tokens,
             "repository_evidence_tokens": repository_evidence_tokens if follow_changes else 0,
             "prompt_sha256": hashlib.sha256(prompt_addendum.encode()).hexdigest(),

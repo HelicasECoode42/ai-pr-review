@@ -552,6 +552,7 @@ def review_with_ai(
     strategy_policy_content_sha256: str | None = None,
     trace_input_identity: dict | None = None,
     grounded_missing_evidence_followup: bool = False,
+    raw_discovery: bool = False,
 ) -> ReviewReport:
     try:
         grounded_route = follow_changes and not two_stage and (
@@ -601,6 +602,7 @@ def review_with_ai(
                         prompt_addendum=prompt_addendum,
                         missing_evidence_followup=grounded_missing_evidence_followup,
                         missing_evidence_followup_only=grounded_missing_evidence_followup,
+                        raw_discovery=raw_discovery,
                     )
                 finally:
                     if unit_provider_factory is not None:
@@ -768,7 +770,8 @@ def review_with_ai(
                                          max_suggestions_per_file=max_suggestions_per_file,
                                          contract_domains=contract_domains,
                                          prompt_addendum=prompt_addendum,
-                                         missing_evidence_followup=grounded_missing_evidence_followup)
+                                         missing_evidence_followup=grounded_missing_evidence_followup,
+                                         raw_discovery=raw_discovery)
                 result.bundle["missing_evidence_followup_enabled"] = bool(
                     grounded_missing_evidence_followup
                 )

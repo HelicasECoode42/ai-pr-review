@@ -284,6 +284,7 @@ class ReviewApplication:
                 "grounded_missing_evidence_followup": s.grounded_missing_evidence_followup,
                 "repository_evidence_tokens": s.repository_evidence_tokens,
                 "documentation_patch_tokens": s.documentation_patch_tokens,
+                "raw_discovery": s.raw_discovery,
                 "max_input_tokens": s.max_review_input_tokens,
                 "min_confidence": s.min_comment_confidence,
                 "max_suggestions_per_file": s.max_suggestions_per_file,

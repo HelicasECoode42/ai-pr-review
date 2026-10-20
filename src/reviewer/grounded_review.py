@@ -311,6 +311,41 @@ def _repair_closed_containers(raw):
     return "".join(output)
 
 
+RAW_DISCOVERY_SYSTEM = """You are a senior code reviewer. Review the supplied diff and frozen repository evidence.
+Report real defects introduced or worsened by this pull request. Return a JSON object only:
+{"findings":[{"file":"relative/path","line":123,"title":"short title","reason":"why it is a defect and how it is triggered","evidence":["exact code line"]}]}
+At most 20 findings, most severe first. Do not report style nits. A finding must name a
+changed file and a positive line number in the new version. A line that is only nearby,
+or a defect that is different from the call chain you describe, is not a finding.
+"""
+
+
+def _raw_findings_payload(response, max_suggestions):
+    """Normalise the single-call discovery response into the review payload shape."""
+    findings = response.get("findings") if isinstance(response, dict) else None
+    suggestions = []
+    for item in (findings or [])[:max_suggestions]:
+        if not isinstance(item, dict):
+            continue
+        reason = str(item.get("reason") or "").strip()
+        suggestions.append({
+            "file_path": item.get("file") or item.get("file_path"),
+            "line": item.get("line"),
+            "severity": "medium",
+            "confidence": 0.6,
+            "title": str(item.get("title") or "Possible defect"),
+            "reason": reason or "Raw discovery candidate",
+            "recommendation": str(item.get("recommendation") or ""),
+            "evidence": [str(entry) for entry in (item.get("evidence") or [])],
+            "failure_scenario": str(item.get("failure_scenario") or reason),
+        })
+    return {
+        "summary": str(response.get("summary") or "Raw single-call discovery"),
+        "risk_level": "medium",
+        "suggestions": suggestions,
+    }
+
+
 def _json(provider, system, prompt):
     raw = provider.complete_json(system, prompt)
     notice = None
@@ -745,7 +780,8 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
                     discovery_rounds: int = 3, verify_rounds: int = 2,
                     prompt_addendum: str = "",
                     missing_evidence_followup: bool = False,
-                    missing_evidence_followup_only: bool = False) -> GroundedResult:
+                    missing_evidence_followup_only: bool = False,
+                    raw_discovery: bool = False) -> GroundedResult:
     """Ground discovery and verification in a frozen snapshot.
 
     Publication here is decided by proof, not by the model's self-reported
@@ -775,7 +811,24 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
     # Round budgets are parameters because each round re-sends the whole prompt
     # and the evidence bundle: on a small unit one round each is enough, and the
     # saved re-sends are the difference between 62k and ~20k tokens per unit.
-    discovery_budget = max(1, discovery_rounds)
+    # Raw discovery is the single-call lane: no hypotheses, no tool loop, one
+    # minimal prompt. It is an experiment flag; verification/criteria still run.
+    discovery_budget = 0 if raw_discovery else max(1, discovery_rounds)
+    if raw_discovery:
+        prompt = (prompt_addendum + "\n" if prompt_addendum else "")
+        prompt += "## Changed diff\n" + context.text
+        prompt += "\n## Frozen repository evidence\n" + bundle.render()
+        response = _json(provider, RAW_DISCOVERY_SYSTEM, prompt)
+        discovery_calls = 1
+        payload = parse_model_payload(json.dumps(
+            _raw_findings_payload(response, max_suggestions), ensure_ascii=False
+        ))
+        discovery_trace.append({
+            "round": 0,
+            "mode": "raw",
+            "response_format_notice": response.get("response_format_notice"),
+            "suggestions": len(response.get("findings") or []),
+        })
     for round_index in range(discovery_budget):
         available_sources.update(item["evidence_ref"] for item in bundle.excerpts)
         # Cross-file evidence changes the constraints; the prompt module owns
@@ -1285,6 +1338,7 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
     except Exception as exc:  # a metric must never take a review down
         audit["impact_closure_error"] = f"{type(exc).__name__}: {exc}"
     audit["discovery_trace"] = discovery_trace
+    audit["discovery_mode"] = "raw" if raw_discovery else "intent"
     return GroundedResult(payload.summary, kept, pending, candidates, decisions, audit,
                           discovery_calls, verification_calls, failed,
                           evidence_budget=bundle.budget_report,
@@ -1505,6 +1559,7 @@ def _review_trace(pr, files, result, context, reviewer_version):
         "missing_evidence_followup_enabled": bool(
             result.bundle.get("missing_evidence_followup_enabled", False)
         ),
+        "discovery_mode": result.bundle.get("discovery_mode", "intent"),
         "candidate_counts": {
             "raw": len(result.candidates),
             "confirmed": sum(status == "confirmed" for status in statuses),

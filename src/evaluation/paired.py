@@ -124,7 +124,8 @@ def _usage_status(usage_records, http_attempts):
 
 def paired(prepared, mirrors, output, *, arms=("control", "grounded"), concurrency=3, limit=None,
            max_attempts=2, max_output_tokens=DEFAULT_OUTPUT_TOKENS,
-           max_http_attempts=None, trace_manifest=None, prompt_addendum="") :
+           max_http_attempts=None, trace_manifest=None, prompt_addendum="",
+           raw_discovery=False):
     if trace_manifest is not None:
         from src.evaluation.improvement import _validate_manifest
 
@@ -158,6 +159,7 @@ def paired(prepared, mirrors, output, *, arms=("control", "grounded"), concurren
                     prompt_addendum.encode("utf-8")
                 ).hexdigest(),
                 "prompt_addendum_chars": len(prompt_addendum),
+                "raw_discovery": bool(raw_discovery),
                 "http_attempt_semantics": "HTTP attempts started; billing may differ",
                 "read_timeout_seconds": 180, "total_timeout_per_call_seconds": 300,
                 "reasoning_effort": None if thinking_enabled is False else "low",
@@ -252,6 +254,7 @@ def paired(prepared, mirrors, output, *, arms=("control", "grounded"), concurren
                     repository_snapshot=GitSnapshot(root, meta["base"], meta["head"]) if arm == "grounded" else None,
                     patch_and_repository_tokens=12000, repository_evidence_tokens=6000,
                     prompt_addendum=prompt_addendum,
+                    raw_discovery=raw_discovery,
                     trace_input_identity=trace_input_identity(task, trace_manifest))
                 audit.update(identity)
                 trace_link = persist_review_trace(output / arm, task["case_id"], audit)
@@ -336,6 +339,10 @@ def main():
         "--prompt-addendum-file", type=Path,
         help="Experiment-only prompt addendum; its hash is recorded in the protocol",
     )
+    parser.add_argument(
+        "--raw-discovery", action="store_true",
+        help="Experiment-only single-call discovery lane (no hypotheses/tool loop)",
+    )
     args = parser.parse_args()
     result = paired(json.loads(args.prepared.read_text()), args.mirrors, args.output,
                     arms=args.arms, concurrency=args.concurrency, limit=args.limit,
@@ -343,6 +350,7 @@ def main():
                     max_http_attempts=args.max_http_attempts,
                     prompt_addendum=(args.prompt_addendum_file.read_text(encoding="utf-8")
                                      if args.prompt_addendum_file else ""),
+                    raw_discovery=args.raw_discovery,
                     trace_manifest=(json.loads(args.trace_manifest.read_text())
                                     if args.trace_manifest else None))
     if any(r["status"] != "success" for arm in result.values() for r in arm.values()):

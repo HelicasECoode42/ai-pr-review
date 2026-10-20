@@ -68,7 +68,7 @@ def verdict(**updates):
 
 
 def run(repo, responses, *, description="", trace_input_identity=None, evidence_tokens=6000,
-        missing_evidence_followup=False):
+        missing_evidence_followup=False, raw_discovery=False):
     root, base, head = repo
     snapshot = GitSnapshot(root, base, head)
     files = parse_diff(git(root, "diff", base, head))
@@ -81,7 +81,8 @@ def run(repo, responses, *, description="", trace_input_identity=None, evidence_
                             repository_evidence_tokens=evidence_tokens,
                             review_context=context,
                             trace_input_identity=trace_input_identity,
-                            grounded_missing_evidence_followup=missing_evidence_followup)
+                            grounded_missing_evidence_followup=missing_evidence_followup,
+                            raw_discovery=raw_discovery)
     return report, provider
 
 
@@ -1604,3 +1605,23 @@ def test_review_trace_records_rendered_head_ranges_for_the_patch(repo):
     assert any(start <= 2 <= end for start, end in ranges["users.py"])
     # caller.py is unchanged in this fixture, so it has no rendered patch lines.
     assert "caller.py" not in ranges
+
+
+def test_raw_discovery_is_one_call_and_still_passes_the_verification_gate(repo):
+    report, provider = run(repo, [
+        {"findings": [{
+            "file": "users.py", "line": 2,
+            "title": "Caller still expects positional values",
+            "reason": "Dictionary iteration returns keys, not the former values",
+            "evidence": ['return {"name": "name", "age": 42}'],
+        }]},
+        verdict(),
+    ], raw_discovery=True)
+
+    assert len(provider.calls) == 2  # one raw discovery + one verification
+    assert provider.calls[0][0].startswith("You are a senior code reviewer")
+    assert provider.calls[1][0].startswith("You verify code-review candidates")
+    trace = report.repository_context["review_trace"]
+    assert trace["discovery_mode"] == "raw"
+    assert trace["intent"]["status"] == "not_reported"
+    assert len(report.suggestions) == 1

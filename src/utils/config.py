@@ -28,6 +28,13 @@ class Settings(BaseSettings):
         ),
     )
     repository_evidence_tokens: int = 6000
+    # Experiment lane: one minimal discovery call (no hypotheses/tools) whose
+    # candidates still go through verification and the publication gate. Off by
+    # default until a gated evaluation shows D up and P unchanged.
+    raw_discovery: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("RAW_DISCOVERY", "raw_discovery"),
+    )
     # Additive budget for documentation-only changes. Measured on the dev set:
     # 1200 tokens recovered 3 more gold lines (S 72.55% -> 75.49%). Off by default
     # because it grows the prompt without a paid D/P run proving the trade is
