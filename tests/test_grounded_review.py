@@ -1621,6 +1621,10 @@ def test_raw_discovery_is_one_call_and_still_passes_the_verification_gate(repo):
     assert len(provider.calls) == 2  # one raw discovery + one verification
     assert provider.calls[0][0].startswith("You are a senior code reviewer")
     assert provider.calls[1][0].startswith("You verify code-review candidates")
+    raw_prompt = provider.calls[0][1]
+    assert "## Diff\n--- a/users.py\n+++ b/users.py\n" in raw_prompt
+    assert '+    return {"name": "name", "age": 42}' in raw_prompt
+    assert "## Changed diff" not in raw_prompt  # budgeted context.text is bypassed
     trace = report.repository_context["review_trace"]
     assert trace["discovery_mode"] == "raw"
     assert trace["intent"]["status"] == "not_reported"

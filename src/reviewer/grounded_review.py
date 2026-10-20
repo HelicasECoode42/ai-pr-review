@@ -320,6 +320,28 @@ or a defect that is different from the call chain you describe, is not a finding
 """
 
 
+def _raw_discovery_prompt(pr, files):
+    """PR metadata plus every file's full patch, matching the raw-model baseline.
+
+    The raw lane deliberately bypasses `context.text`: its patch budget clips and
+    reorders hunks, and on CrabTrap that clipped form cut candidates from 6-9 to
+    1-5 with the same model and evidence. No budget is applied here.
+    """
+    parts = [
+        f"# Pull request {getattr(pr, 'repo', '')}#{getattr(pr, 'number', '')}",
+        f"Title: {getattr(pr, 'title', '') or ''}",
+        "## Description",
+        str(getattr(pr, "body", None) or "(empty)"),
+        "## Diff",
+    ]
+    for file in files:
+        if not file.patch:
+            continue
+        old = file.previous_filename or file.filename
+        parts.append(f"--- a/{old}\n+++ b/{file.filename}\n{file.patch}")
+    return "\n".join(parts)
+
+
 def _raw_findings_payload(response, max_suggestions):
     """Normalise the single-call discovery response into the review payload shape."""
     findings = response.get("findings") if isinstance(response, dict) else None
@@ -816,7 +838,7 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
     discovery_budget = 0 if raw_discovery else max(1, discovery_rounds)
     if raw_discovery:
         prompt = (prompt_addendum + "\n" if prompt_addendum else "")
-        prompt += "## Changed diff\n" + context.text
+        prompt += _raw_discovery_prompt(pr, files)
         prompt += "\n## Frozen repository evidence\n" + bundle.render()
         response = _json(provider, RAW_DISCOVERY_SYSTEM, prompt)
         discovery_calls = 1
