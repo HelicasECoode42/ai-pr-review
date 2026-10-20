@@ -1,0 +1,170 @@
+{
+  "experiment": "raw-model-baseline",
+  "model": "deepseek-v4-flash",
+  "thinking_enabled": false,
+  "http_attempts": 4,
+  "rows": [
+    {
+      "case_id": "AA-Factory_aafactory-prototype_17-a1978cb7[diff]",
+      "gold_pr_scope": 9,
+      "s_fully_visible": 9,
+      "s_any_visible": 9,
+      "d_identified": 4,
+      "d_semantic": 4,
+      "discovery_basis": "semantic",
+      "p_published": 0,
+      "published_findings": 0,
+      "pending_findings": 5,
+      "d_matched_indexes": [
+        0,
+        4,
+        5,
+        6
+      ],
+      "p_matched_indexes": [],
+      "d_semantic_indexes": [
+        1,
+        5,
+        6,
+        7
+      ],
+      "losses": {
+        "not_selected": 0,
+        "selected_not_identified": 5,
+        "identified_not_published": 4
+      },
+      "mode": "diff",
+      "candidate_count": 5,
+      "prompt_tokens": 993,
+      "completion_tokens": 559
+    },
+    {
+      "case_id": "AA-Factory_aafactory-prototype_17-a1978cb7[diff+evidence]",
+      "gold_pr_scope": 9,
+      "s_fully_visible": 9,
+      "s_any_visible": 9,
+      "d_identified": 4,
+      "d_semantic": 3,
+      "discovery_basis": "semantic",
+      "p_published": 0,
+      "published_findings": 0,
+      "pending_findings": 5,
+      "d_matched_indexes": [
+        0,
+        1,
+        5,
+        6
+      ],
+      "p_matched_indexes": [],
+      "d_semantic_indexes": [
+        1,
+        5,
+        6
+      ],
+      "losses": {
+        "not_selected": 0,
+        "selected_not_identified": 6,
+        "identified_not_published": 3
+      },
+      "mode": "diff+evidence",
+      "candidate_count": 5,
+      "prompt_tokens": 1029,
+      "completion_tokens": 569
+    },
+    {
+      "case_id": "brexhq_CrabTrap_15-5ef0884c[diff]",
+      "gold_pr_scope": 14,
+      "s_fully_visible": 13,
+      "s_any_visible": 13,
+      "d_identified": 2,
+      "d_semantic": 0,
+      "discovery_basis": "semantic",
+      "p_published": 0,
+      "published_findings": 0,
+      "pending_findings": 5,
+      "d_matched_indexes": [
+        0,
+        1
+      ],
+      "p_matched_indexes": [],
+      "d_semantic_indexes": [],
+      "losses": {
+        "not_selected": 1,
+        "selected_not_identified": 13,
+        "identified_not_published": 0
+      },
+      "mode": "diff",
+      "candidate_count": 5,
+      "prompt_tokens": 6411,
+      "completion_tokens": 658
+    },
+    {
+      "case_id": "brexhq_CrabTrap_15-5ef0884c[diff+evidence]",
+      "gold_pr_scope": 14,
+      "s_fully_visible": 13,
+      "s_any_visible": 13,
+      "d_identified": 6,
+      "d_semantic": 3,
+      "discovery_basis": "semantic",
+      "p_published": 0,
+      "published_findings": 0,
+      "pending_findings": 7,
+      "d_matched_indexes": [
+        0,
+        1,
+        2,
+        3,
+        6,
+        21
+      ],
+      "p_matched_indexes": [],
+      "d_semantic_indexes": [
+        3,
+        23,
+        24
+      ],
+      "losses": {
+        "not_selected": 1,
+        "selected_not_identified": 10,
+        "identified_not_published": 3
+      },
+      "mode": "diff+evidence",
+      "candidate_count": 7,
+      "prompt_tokens": 11892,
+      "completion_tokens": 856
+    }
+  ],
+  "by_mode": {
+    "diff": {
+      "cases": 2,
+      "N": 23,
+      "D_sem": 4,
+      "D_sem_recall": 0.1739
+    },
+    "diff+evidence": {
+      "cases": 2,
+      "N": 23,
+      "D_sem": 6,
+      "D_sem_recall": 0.2609
+    }
+  },
+  "union": {
+    "N": 23,
+    "D_sem": 7,
+    "D_sem_recall": 0.3043,
+    "by_case": {
+      "AA-Factory_aafactory-prototype_17-a1978cb7": [
+        1,
+        5,
+        6,
+        7
+      ],
+      "brexhq_CrabTrap_15-5ef0884c": [
+        3,
+        23,
+        24
+      ]
+    }
+  },
+  "cost_upper_bound_cny": 0.061786
+}

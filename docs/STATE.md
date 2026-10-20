@@ -115,3 +115,13 @@
 - **噪声**：同一 commit 上 CrabTrap 两次 baseline 候选数 3 vs 4，单次运行有 ±1 候选噪声；n=2 只排除大幅提升，不能估计小效应。非盲裁决，已暴露 dev，不晋升/不泛化。
 - **产物**：报告 [`d-forced-checks-2026-10-20.md`](evaluation/d-forced-checks-2026-10-20.md)、裁决 JSON、A/B funnel JSON；addendum 文件 [`prompts/d-forced-checks-2026-10-20.txt`](evaluation/prompts/d-forced-checks-2026-10-20.txt)。
 - **下一步**：① raw-model 基线（同 diff+证据、最小 prompt、无 schema/工具）回答"harness 是否拖累能力"；② 确定性测试质量规则（AA 类 gold 零模型成本）；③ 跨文件检索/调用链扩展（Crab 类 gold）；④ 候选精读（P 层把已识别 TP 变 confirmed）。
+
+## Raw-model 基线：harness 正在压制 D（2026-10-20，已授权 ≤¥0.2）
+
+- **问题**：同一模型、同一份冻结 diff/自动证据，去掉 harness（无 hypotheses/工具循环/verification/criteria）后能发现多少？
+- **协议**：`scripts/evaluation/raw_model_baseline.py` 单次调用、最小 JSON（file/line/title/reason），`deepseek-flash` thinking disabled、4096；两 case × 两变体（diff / diff+evidence）共 4 HTTP；成本 **¥0.061786**（prompt 20,325 + completion 2,642 tokens）。
+- **结果**：raw 并集语义 D = **7/23（30.4%）**；harness 同 case 两臂 = 2/23（8.7%）。按变体：raw diff 4/23（17.4%）、raw diff+evidence 6/23（26.1%）。AA-Factory raw 命中 gold 1/5/6/7，CrabTrap raw 命中 gold 3/23/24（harness 完全没找到这些）。evidence 对跨文件 case 是必需（Crab 0→3），对局部 case 是稀释（AA 4→3）。
+- **确定性通道**：新增 `src/analyzer/test_quality_rules.py`（TQ001 import 绑定 vs patch、TQ002 调用被 mock 的函数、TQ003 全局状态无 teardown、TQ004 测试依赖未声明），零模型成本；AA-Factory head 上 5 条 finding 语义覆盖 gold 0/1/2/5 = 4/9，候选级 precision 4/5。raw ∪ 确定性 = **9/23 = 39.1%**。
+- **解读**：D 的主要损失在 harness 而不是选材/模型；最可疑的压制点是多阶段 + schema + verification。但 raw 候选是 surfaced、未核验，D 与 P 必须分开；raw 通道需后接现有 verification/criteria 才能发布。
+- **边界**：n=2、每变体单次运行、非盲裁决；raw findings 未核验，不能宣称 precision/晋升；已暴露 dev。
+- **产物**：报告 [`raw-model-baseline-2026-10-20.md`](evaluation/raw-model-baseline-2026-10-20.md)、[`raw-model-baseline-2026-10-20.json`](evaluation/raw-model-baseline-2026-10-20.json)（含逐候选 gold 对照）、[`adjudication.json`](evaluation/raw-model-baseline-2026-10-20-adjudication.json)。**下一步**：把 raw 发现通道接进生产（默认关闭）→ 现有 verification/criteria 严出；补剩余确定性规则（mock 形状/返回类型/magic index）；P 层候选精读。
