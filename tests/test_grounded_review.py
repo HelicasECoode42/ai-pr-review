@@ -1905,3 +1905,25 @@ def test_non_serialization_claim_adds_nothing():
         "Loop skips the last request_body", "Off by one in the loop bound.",
     ))
     assert bundle.added == []
+
+
+def test_rule_fact_is_published_even_when_the_verifier_dismisses_it(repo):
+    rule = {"file": "users.py", "line": 1, "title": "[TQ007] Structural rule fact", "reason": "r"}
+    dismissed = {**verdict()["items"][0], "decision": "dismissed",
+                 "reason": "style nit, not a failure", "dismissal_basis": "incorrect"}
+    result = _raw_run(repo, [rule], [dismissed])
+    assert [suggestion.title for suggestion in result.suggestions] == [rule["title"]]
+    published = result.suggestions[0]
+    assert published.source == "rule_test_quality"
+    assert published.severity.value == "low"
+    decision = result.decisions[0]
+    assert decision["validation_reason"] == "deterministic_rule_fact"
+    assert decision["verifier_decision"] == "dismissed"
+
+
+def test_verify_system_states_intent_worsened_and_producer_rules():
+    from src.reviewer.grounded_review import VERIFY_SYSTEM
+
+    assert "not counter-evidence" in VERIFY_SYSTEM
+    assert "not not_introduced" in VERIFY_SYSTEM
+    assert "every producer of the value" in VERIFY_SYSTEM

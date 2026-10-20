@@ -11,6 +11,7 @@ verification and criteria as model candidates.
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import PurePosixPath
 
 from src.analyzer.test_quality_rules import scan_test_file
@@ -90,6 +91,17 @@ def _known_sources(snapshot, test_path: str, tree: ast.Module) -> dict[str, str]
     return sources
 
 
+_TARGET_RULES = {"TQ001", "TQ005", "TQ006"}
+
+
+def _definition(sources: dict[str, str], name: str) -> tuple[str, int] | None:
+    for path, text in sources.items():
+        for number, line in enumerate(text.splitlines(), 1):
+            if re.match(rf"\s*(async\s+)?def {re.escape(name)}\(", line):
+                return path, number
+    return None
+
+
 def collect_test_quality_candidates(snapshot, files) -> list[dict]:
     """Raw-discovery shaped findings for every changed Python test file."""
     findings = []
@@ -103,14 +115,22 @@ def collect_test_quality_candidates(snapshot, files) -> list[dict]:
             tree = ast.parse(text)
         except SyntaxError:
             continue
+        known = _known_sources(snapshot, file.filename, tree)
         for item in scan_test_file(
             file.filename, text,
             project_text=_project_text(snapshot, file.filename),
-            known_sources=_known_sources(snapshot, file.filename, tree),
+            known_sources=known,
         ):
             source_lines = text.splitlines()
             quote = source_lines[item.line - 1] if 0 < item.line <= len(source_lines) else ""
+            target = None
+            if item.rule_id in _TARGET_RULES:
+                for name in re.findall(r"`([A-Za-z_]\w*)`", item.reason):
+                    target = _definition(known, name)
+                    if target:
+                        break
             findings.append({
+                "target": target,
                 "file": item.path, "line": item.line,
                 "title": f"[{item.rule_id}] {item.title}",
                 "reason": item.reason,

@@ -39,6 +39,11 @@ def test_changed_python_tests_become_candidates_with_resolved_sources():
     # `send` is re-exported by the patched module; one import hop resolves its
     # real one-argument signature, so the three-argument call is reported.
     assert "TQ005" in rules
+    by_rule = {item["rule_id"]: item for item in found}
+    # The real function behind the patched or mis-called name is located, so
+    # review can show what an un-mocked call would actually do.
+    assert by_rule["TQ001"]["target"] == ("app/src/pkg/chat/interface.py", 3)
+    assert by_rule["TQ005"]["target"] == ("app/src/pkg/fetch.py", 1)
     for item in found:
         assert item["title"].startswith(f"[{item['rule_id']}]")
         assert item["line"] >= 1

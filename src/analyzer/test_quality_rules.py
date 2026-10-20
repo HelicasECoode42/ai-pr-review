@@ -222,7 +222,8 @@ def _side_effect_return(
                 rule_id="TQ006", path=path, line=node.lineno,
                 title="Mock side_effect return shape does not match the real function",
                 reason=(
-                    f"`{node.name}` returns a tuple but the real target returns `{expected[1]}`; "
+                    f"`{node.name}` returns a tuple but the real `{target.split('.')[-1]}` "
+                    f"returns `{expected[1]}`; "
                     "if the production path ran against this mock, the result would be "
                     "the wrong type."
                 ),
