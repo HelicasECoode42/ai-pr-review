@@ -237,6 +237,8 @@ judge it intended, documented, benign, minor, low impact or self-correcting, do 
 confirmed with that judgement in `reason`, or needs_context. Every dismissed item sets
 `dismissal_basis` to unreachable (the trigger cannot occur), incorrect (the code does not behave as
 claimed) or not_introduced (the PR did not cause or worsen it). Absence of a check in a short excerpt does not prove absence in the repository.
+If a candidate has the same root cause as another candidate, set `duplicate_of` to that other
+candidate_id (point every duplicate at the one you would keep); otherwise leave it null.
 Do not suppress a candidate merely for low discovery confidence. Do not use majority votes as evidence.
 You may request read/search context in the same format as discovery. Do not create new findings.
 When an item is `needs_context` because a declared hypothesis missing_evidence obligation remains
@@ -250,7 +252,7 @@ instead of restating the definition you were already given.
 Return JSON {items:[{candidate_id,decision:confirmed|dismissed|needs_context,confidence,
 trigger,call_path,expected_behavior,actual_behavior,introduced_by,reason,
 evidence:[{path,side:head|base,line,quote}],counter_evidence:[{path,side,line,quote}],
-dismissal_basis}],
+dismissal_basis,duplicate_of}],
 intent_assessments:[{hypothesis_id,status:supported|refuted|revised|unknown,
 evidence_refs:[actual evidence_ref ids shown in the prompt],rationale,unknowns,revision}],
 context_requests:[],missing_evidence_requests:[
@@ -356,6 +358,37 @@ def _dismissal_rests_on_judgement(item) -> bool:
 
 
 _RULE_TITLE = re.compile(r"^\[TQ\d{3}\] ")
+_MOCK_CLAIM = re.compile(r"\b(mock(ed|s)?|patch(ed|es)?)\b", re.IGNORECASE)
+_AGREES_PATCH_MISSES = re.compile(
+    r"\b(bypass(ed|es)?|real function|local (binding|import|name)|imported by name|"
+    r"not (replaced|patched|mocked)|still (runs|calls|invokes)|direct import)\b",
+    re.IGNORECASE,
+)
+
+
+def _rule_rebuttals(rule_candidates) -> dict[str, set[str]]:
+    """Names TQ001 proved are NOT replaced by the patch, per file."""
+    rebutted: dict[str, set[str]] = {}
+    for item in rule_candidates:
+        if item.get("rule_id") != "TQ001":
+            continue
+        match = re.search(r"`([^`]+)`", str(item.get("reason") or ""))
+        if match:
+            rebutted.setdefault(item.get("file"), set()).add(match.group(1))
+    return rebutted
+
+
+def _contradicted_by_rule(suggestion, rebutted) -> str | None:
+    """A model claim that a name is mocked, where TQ001 proved the patch misses it."""
+    if _RULE_TITLE.match(suggestion.title):
+        return None
+    text = suggestion.title + "\n" + suggestion.reason
+    for name in rebutted.get(suggestion.file_path, ()):
+        if name in text and _MOCK_CLAIM.search(text) and not _AGREES_PATCH_MISSES.search(text):
+            return name
+    return None
+
+
 
 
 def _raw_discovery_prompt(pr, files):
@@ -874,6 +907,7 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
     # Raw discovery is the single-call lane: no hypotheses, no tool loop, one
     # minimal prompt. It is an experiment flag; verification/criteria still run.
     discovery_budget = 0 if raw_discovery else max(1, discovery_rounds)
+    rule_rebuttals: dict[str, set[str]] = {}
     # The diff text the model sees. In the raw lane discovery, verification and
     # the citation check all use the same full diff, so a line discovery quoted
     # is never judged "not shown" because the budgeted context clipped it.
@@ -902,6 +936,7 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
         from src.analyzer.test_quality_lane import collect_test_quality_candidates
         from src.reviewer.candidate_dedupe import dedupe_candidates
         rule_candidates = collect_test_quality_candidates(snapshot, files)
+        rule_rebuttals = _rule_rebuttals(rule_candidates)
         pool.extend({**item, "origin": "test_quality_rules"} for item in rule_candidates)
         union, merges = dedupe_candidates(pool)
         discovery_trace.append({
@@ -1339,6 +1374,7 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
             intent_plan["status"] = (
                 "assessed" if all_assessed and not intent_plan["errors"] else "partial"
             )
+        kept_ids, duplicate_of = [], {}
         for index, suggestion in eligible:
             item = verdicts.get(index, {"candidate_id": index, "decision": "needs_context", "reason": "No verdict returned"})
             decision = item.get("decision")
@@ -1362,7 +1398,17 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
             witness_block = blocked_by_witness(filters)
             if witness_block is not None:
                 witness_blocked += 1
-            if decision == "confirmed" and witness_block is not None:
+            contradicted = (
+                _contradicted_by_rule(suggestion, rule_rebuttals) if decision == "confirmed" else None
+            )
+            if contradicted is not None:
+                # Deterministic fact beats model reasoning: the claimed mock does
+                # not reach this local binding, so the stated mechanism is wrong.
+                item = {**item, "decision": "needs_context",
+                        "validation_reason": "contradicted_by_deterministic_rule",
+                        "contradicted_name": contradicted}
+                decision = "needs_context"
+            elif decision == "confirmed" and witness_block is not None:
                 item = {**item, "decision": "needs_context",
                         "validation_reason": f"witness_eval: {witness_block.reason}"}
                 decision = "needs_context"
@@ -1391,11 +1437,26 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
             if decision == "confirmed":
                 reason = (suggestion.reason + "\nTrigger: " + item["trigger"] + "\nExpected: " + item["expected_behavior"]
                           + "\nActual: " + item["actual_behavior"] + "\nPR change: " + item["introduced_by"])
+                kept_ids.append(index)
+                duplicate_of[index] = item.get("duplicate_of")
                 kept.append(suggestion.model_copy(update={"source": "ai_behavior_verified", "confidence": confidence,
                             "reason": reason, "evidence": [c["quote"] for c in evidence],
                             "failure_scenario": item["trigger"] + " -> " + item["actual_behavior"]}))
             elif decision == "needs_context":
                 pending.append(suggestion.model_copy(update={"source": "ai_needs_context"}))
+        # The verifier sees every candidate at once, so it can say which ones
+        # share a root cause; a confirmed duplicate of another confirmed
+        # candidate is folded into it instead of becoming a second comment.
+        confirmed = set(kept_ids)
+        folded = set()
+        for index in kept_ids:
+            target = duplicate_of.get(index)
+            if (isinstance(target, int) and not isinstance(target, bool) and target != index
+                    and target in confirmed and target not in folded):
+                folded.add(index)
+                candidates[index].update(status="filtered", reason="duplicate_of_confirmed_candidate",
+                                         duplicate_of=target)
+        kept = [suggestion for index, suggestion in zip(kept_ids, kept) if index not in folded]
     else:
         kept = [s for _, s in eligible]
         for index, _ in eligible:

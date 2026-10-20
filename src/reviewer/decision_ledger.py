@@ -51,6 +51,8 @@ _REASONS = frozenset(
         "invalid_decision",
         "dismissal_has_no_valid_counter_evidence",
         "dismissal_rests_on_intent_or_impact",
+        "contradicted_by_deterministic_rule",
+        "duplicate_of_confirmed_candidate",
         "insufficient_behavior_chain_or_source_evidence",
         "model_review_unavailable",
         "legacy_candidate_inventory_incomplete",

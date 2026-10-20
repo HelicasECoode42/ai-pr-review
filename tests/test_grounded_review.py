@@ -1755,3 +1755,91 @@ def test_rule_candidates_do_not_use_the_per_file_publication_cap(repo):
                              max_suggestions_per_file=1, raw_discovery=True)
     titles = [suggestion.title for suggestion in result.suggestions]
     assert titles == [model["title"], rule["title"]]
+
+
+def test_rule_rebuttal_helpers():
+    from src.models import ReviewSuggestion
+    from src.reviewer.grounded_review import _contradicted_by_rule, _rule_rebuttals
+
+    rebutted = _rule_rebuttals([{
+        "rule_id": "TQ001", "file": "t.py",
+        "reason": "`load_info` is imported by name, so a patch on the module attribute ...",
+    }])
+    assert rebutted == {"t.py": {"load_info"}}
+
+    def suggestion(title, reason="r", path="t.py"):
+        return ReviewSuggestion(file_path=path, line=3, severity="medium", confidence=.6,
+                                title=title, reason=reason, recommendation="")
+
+    wrong = suggestion("load_info is mocked then called, so the test reads the mocked tuple")
+    assert _contradicted_by_rule(wrong, rebutted) == "load_info"
+    agrees = suggestion("Patch on load_info is bypassed by the direct import")
+    assert _contradicted_by_rule(agrees, rebutted) is None
+    unrelated = suggestion("send is mocked, so the test verifies nothing")
+    assert _contradicted_by_rule(unrelated, rebutted) is None
+    other_file = suggestion("load_info is mocked then called", path="u.py")
+    assert _contradicted_by_rule(other_file, rebutted) is None
+    rule = suggestion("[TQ001] load_info is mocked")
+    assert _contradicted_by_rule(rule, rebutted) is None
+
+
+def _raw_run(repo, discovery, verdict_items):
+    root, base, head = repo
+    snapshot = GitSnapshot(root, base, head)
+    files = parse_diff(git(root, "diff", base, head))
+    pr = PullRequest(repo="fixture/repo", number=1, title="t", base_sha=base, head_sha=head)
+    context = build_review_context(pr, files, include_context_pack=False,
+                                   allow_remote_file_fetch=False)
+    provider = Provider([{"findings": discovery}, {"findings": []}, {"items": verdict_items}])
+    return review_grounded(pr, files, provider, snapshot, context, raw_discovery=True)
+
+
+def test_confirmed_duplicate_is_folded_into_its_confirmed_target(repo):
+    first = {"file": "users.py", "line": 2, "title": "Caller still expects positional values",
+             "reason": "r"}
+    second = {"file": "users.py", "line": 1, "title": "Return shape changed for get_profile",
+              "reason": "r"}
+    confirmed = verdict()["items"][0]
+    result = _raw_run(repo, [first, second], [
+        {**confirmed, "duplicate_of": None},
+        {**confirmed, "candidate_id": 1, "duplicate_of": 0},
+    ])
+    assert [suggestion.title for suggestion in result.suggestions] == [first["title"]]
+    folded = result.candidates[1]
+    assert folded["status"] == "filtered"
+    assert folded["reason"] == "duplicate_of_confirmed_candidate"
+    assert folded["duplicate_of"] == 0
+    assert result.pending == []
+
+
+def test_duplicate_of_an_unconfirmed_candidate_is_still_published(repo):
+    first = {"file": "users.py", "line": 2, "title": "Caller still expects positional values",
+             "reason": "r"}
+    second = {"file": "users.py", "line": 1, "title": "Return shape changed for get_profile",
+              "reason": "r"}
+    confirmed = verdict()["items"][0]
+    result = _raw_run(repo, [first, second], [
+        {**confirmed, "decision": "needs_context"},
+        {**confirmed, "candidate_id": 1, "duplicate_of": 0},
+    ])
+    assert [suggestion.title for suggestion in result.suggestions] == [second["title"]]
+
+
+def test_confirmed_mock_claim_contradicted_by_tq001_is_held_back(repo, monkeypatch):
+    import src.analyzer.test_quality_lane as lane
+
+    monkeypatch.setattr(lane, "collect_test_quality_candidates", lambda snapshot, files: [{
+        "file": "users.py", "line": 1, "rule_id": "TQ001",
+        "title": "[TQ001] Patched target is bound locally before the patch is applied",
+        "reason": "`get_profile` is imported by name, so a patch on the module attribute ...",
+    }])
+    claim = {"file": "users.py", "line": 2,
+             "title": "get_profile is mocked, so the test only reads the mocked tuple",
+             "reason": "r"}
+    confirmed = verdict()["items"][0]
+    result = _raw_run(repo, [claim], [confirmed, {**confirmed, "candidate_id": 1}])
+    titles = [suggestion.title for suggestion in result.suggestions]
+    assert claim["title"] not in titles
+    assert any(title.startswith("[TQ001]") for title in titles)
+    held = [item for item in result.decisions if item["candidate_id"] == 0][0]
+    assert held["validation_reason"] == "contradicted_by_deterministic_rule"
