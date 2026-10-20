@@ -5,6 +5,7 @@
 其余文档按用途分类：
 
 - **优势与依据**：[`ADVANTAGES.md`](ADVANTAGES.md)——我们强在哪、为什么，带实测与外部对照
+- **问题与方案总览**：[`review-problems-and-solutions.md`](review-problems-and-solutions.md)——目标/漏斗/已证实的问题/已落地修复/待做方案与权衡（2026-10-20）
 - **实现与证据文档**（用于说明代码、数据或接口，不另立规范）：`architecture.md`、`DFD-STD.md`（非规范架构图）、`sse-review-stream.md`（仍维护的 Web SSE 接口）、`evaluation/identification-baseline.md`、`graph-planning-dataflow.md`、`evaluation/`、`code-review-practices-and-prompt-design.md`、`error-handling-policy.md`、`review-guide.md`、`functions-index.md`、`contribution-guide.md`
 - **归档**（历史，不再维护）：`archive/`
 
