@@ -123,3 +123,15 @@ def test_semantic_adjudication_rejects_a_wrong_length_or_unknown_gold():
             published=[], pending=[_candidate("a.py", 10)],
             adjudication={"published": [], "pending": [7]},
         )
+
+
+def test_one_candidate_may_adjudicate_multiple_gold_findings():
+    gold = [_gold(0, "a.py", 10, 12), _gold(1, "a.py", 14, 16)]
+    visibility = gold_visibility(gold, rendered_ranges={"a.py": [(10, 12), (14, 16)]})
+    row = funnel_row(
+        "case", gold, visibility=visibility,
+        published=[], pending=[_candidate("a.py", 10)],
+        adjudication={"published": [], "pending": [[0, 1]]},
+    )
+    assert row.d_semantic == 2
+    assert row.d_semantic_indexes == (0, 1)

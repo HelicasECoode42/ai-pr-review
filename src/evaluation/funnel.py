@@ -202,7 +202,8 @@ def _semantic_indexes(
 
     Format: ``{"published": [gold_index|null, ...], "pending": [...]}``, aligned
     with the candidate order passed to ``funnel_row``. A ``null`` means the
-    candidate does not describe any PR-scope gold finding.
+    candidate does not describe any PR-scope gold finding; a list means it covers
+    several.
     """
     pr_scope = {
         index for index, item in enumerate(findings)
@@ -220,13 +221,20 @@ def _semantic_indexes(
         for value in values:
             if value is None:
                 continue
-            if isinstance(value, bool) or not isinstance(value, int):
-                raise GoldContractError("adjudicated gold ids must be integers or null")
-            if value not in pr_scope:
-                raise GoldContractError(
-                    f"adjudicated gold id {value} is not a PR-scope true positive"
-                )
-            identified.add(value)
+            # One candidate may describe two distinct gold findings (for example a
+            # test-coverage comment covering both a cap and a has_more case), so a
+            # list of gold ids is accepted as well as a single id.
+            selected = value if isinstance(value, list) else [value]
+            for gold_id in selected:
+                if isinstance(gold_id, bool) or not isinstance(gold_id, int):
+                    raise GoldContractError(
+                        "adjudicated gold ids must be integers, lists, or null"
+                    )
+                if gold_id not in pr_scope:
+                    raise GoldContractError(
+                        f"adjudicated gold id {gold_id} is not a PR-scope true positive"
+                    )
+                identified.add(gold_id)
     return identified
 
 
