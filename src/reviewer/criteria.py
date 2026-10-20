@@ -64,8 +64,18 @@ def quote_was_shown(quote: str, sent_text: str) -> bool:
     return False
 
 
+def _quote_lines(quote: str) -> list[str]:
+    return [line for line in quote.splitlines() if line.strip()]
+
+
 def valid_citation(citation, snapshot, bundle, sent_text=None) -> bool:
-    """Provenance first, then an exact match against the frozen snapshot."""
+    """Provenance first, then an exact match against the frozen snapshot.
+
+    A quote may span several lines. Each non-blank quoted line must then match
+    the next non-blank snapshot line from `line` on, in order, and each matched
+    line must itself have been shown (an excerpt range or the sent diff). A
+    multi-line quote is held to the same per-line standard, not a looser one.
+    """
     try:
         path = citation["path"]
         side = citation["side"]
@@ -75,20 +85,45 @@ def valid_citation(citation, snapshot, bundle, sent_text=None) -> bool:
             return False
         if not isinstance(quote, str) or not quote.strip():
             return False
-        seen = any(
-            e["path"] == path and e["side"] == side and e["start_line"] <= line <= e["end_line"]
-            for e in bundle.excerpts
-        )
-        if not seen and sent_text is not None:
-            seen = quote_was_shown(quote, sent_text)
-        if not seen:
-            return False
         text = snapshot.read(path, side)
-        if not text or line > len(text.splitlines()):
+        source = text.splitlines() if text else []
+        if line > len(source):
             return False
-        return "".join(quote.split()) in "".join(text.splitlines()[line - 1].split())
+        wanted = _quote_lines(quote)
+        cursor = line - 1
+        for index, quoted in enumerate(wanted):
+            if index:
+                while cursor < len(source) and not source[cursor].strip():
+                    cursor += 1
+            if cursor >= len(source):
+                return False
+            needle = "".join(quoted.split())
+            actual = "".join(source[cursor].split())
+            # The first line may be a fragment of its source line (historic
+            # behaviour); continuation lines must be the whole line.
+            if (needle not in actual) if index == 0 else (needle != actual):
+                return False
+            number = cursor + 1
+            seen = any(
+                e["path"] == path and e["side"] == side
+                and e["start_line"] <= number <= e["end_line"]
+                for e in bundle.excerpts
+            )
+            if not seen and sent_text is not None:
+                seen = quote_was_shown(source[cursor] if index else quoted, sent_text)
+            if not seen:
+                return False
+            cursor += 1
+        return True
     except (KeyError, TypeError, ValueError):
         return False
+
+
+def _citation_key(citation) -> tuple | None:
+    try:
+        return (citation["path"], citation["side"], int(citation["line"]))
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def _evaluable(evidence: list[dict], side: str) -> list[tuple[str, str]]:
@@ -220,6 +255,10 @@ def confirmation_verdicts(
     counter_ok = bool(counter) and all(
         valid_citation(c, snapshot, bundle, sent_text) for c in counter
     )
+    # Counter-evidence has to add something: re-citing a line the defect claim
+    # already rests on (often the defective line itself) disproves nothing.
+    supporting = {_citation_key(c) for c in evidence}
+    fresh_counter = [c for c in counter if _citation_key(c) not in supporting]
     # Only a dismissal needs counter-evidence: it claims the scenario cannot
     # happen, so it must cite what disproves it. A confirmation needs none, and
     # "no counter-evidence offered" must not count as a passing check for one.
@@ -227,6 +266,9 @@ def confirmation_verdicts(
         counter_passed, counter_reason = True, "not required for this decision"
     elif not counter:
         counter_passed, counter_reason = False, "dismissal has no counter-evidence"
+    elif counter_ok and not fresh_counter:
+        counter_passed = False
+        counter_reason = "counter-evidence only repeats the supporting evidence"
     elif counter_ok:
         counter_passed, counter_reason = True, "counter-evidence is valid"
     else:

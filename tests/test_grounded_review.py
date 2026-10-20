@@ -1629,3 +1629,62 @@ def test_raw_discovery_is_one_call_and_still_passes_the_verification_gate(repo):
     assert trace["discovery_mode"] == "raw"
     assert trace["intent"]["status"] == "not_reported"
     assert len(report.suggestions) == 1
+
+
+MULTI_SOURCE = (
+    "def f():\n"
+    "    mocker.patch(\n"
+    '        "pkg.mod.fn",\n'
+    "        side_effect=fake,\n"
+    "    )\n"
+)
+MULTI_SENT = "@@ -0,0 +1,5 @@\n" + "".join("+" + line + "\n" for line in MULTI_SOURCE.splitlines())
+
+
+def test_multi_line_citation_is_matched_line_by_line():
+    from src.reviewer.grounded_review import _valid_citation
+
+    snapshot = _SnapshotWith(MULTI_SOURCE)
+    quote = '    mocker.patch(\n        "pkg.mod.fn",\n        side_effect=fake,'
+    citation = {"path": "t.py", "side": "head", "line": 2, "quote": quote}
+    assert _valid_citation(citation, snapshot, _Bundle([]), MULTI_SENT) is True
+    # One continuation line that is not in the source rejects the whole quote.
+    wrong = {**citation, "quote": '    mocker.patch(\n        "pkg.other.fn",'}
+    assert _valid_citation(wrong, snapshot, _Bundle([]), MULTI_SENT) is False
+    # Anchored at the wrong line, the run of lines does not line up.
+    shifted = {**citation, "line": 3}
+    assert _valid_citation(shifted, snapshot, _Bundle([]), MULTI_SENT) is False
+
+
+def test_multi_line_citation_needs_every_line_to_have_been_shown():
+    from src.reviewer.grounded_review import _valid_citation
+
+    snapshot = _SnapshotWith(MULTI_SOURCE)
+    sent_first_two = "\n".join(MULTI_SENT.splitlines()[:3])  # header + lines 1-2
+    quote = '    mocker.patch(\n        "pkg.mod.fn",'
+    citation = {"path": "t.py", "side": "head", "line": 2, "quote": quote}
+    assert _valid_citation(citation, snapshot, _Bundle([]), sent_first_two) is False
+    excerpts = [{"path": "t.py", "side": "head", "start_line": 2, "end_line": 3}]
+    assert _valid_citation(citation, snapshot, _Bundle(excerpts), "") is True
+
+
+def test_dismissal_whose_counter_evidence_repeats_the_evidence_is_not_accepted(repo):
+    defective = {"path": "users.py", "side": "head", "line": 2,
+                 "quote": 'return {"name": "name", "age": 42}'}
+    report, _ = run(repo, [candidate(), verdict(
+        decision="dismissed", reason="minor inconsistency, not a functional defect",
+        evidence=[defective], counter_evidence=[defective],
+    )])
+    assert report.suggestions == []
+    verification = report.behavior_verifications[0]
+    assert verification["decision"] == "needs_context"
+    assert verification["validation_reason"] == "dismissal_has_no_valid_counter_evidence"
+
+
+def test_raw_verification_sees_the_same_full_diff_as_discovery(repo):
+    _, provider = run(repo, [
+        {"findings": [{"file": "users.py", "line": 2, "title": "t", "reason": "r"}]},
+        verdict(),
+    ], raw_discovery=True)
+    verify_prompt = provider.calls[1][1]
+    assert "--- a/users.py\n+++ b/users.py\n" in verify_prompt

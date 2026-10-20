@@ -836,9 +836,13 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
     # Raw discovery is the single-call lane: no hypotheses, no tool loop, one
     # minimal prompt. It is an experiment flag; verification/criteria still run.
     discovery_budget = 0 if raw_discovery else max(1, discovery_rounds)
+    # The diff text the model sees. In the raw lane discovery, verification and
+    # the citation check all use the same full diff, so a line discovery quoted
+    # is never judged "not shown" because the budgeted context clipped it.
+    diff_text = _raw_discovery_prompt(pr, files) if raw_discovery else context.text
     if raw_discovery:
         prompt = (prompt_addendum + "\n" if prompt_addendum else "")
-        prompt += _raw_discovery_prompt(pr, files)
+        prompt += diff_text
         prompt += "\n## Frozen repository evidence\n" + bundle.render()
         response = _json(provider, RAW_DISCOVERY_SYSTEM, prompt)
         discovery_calls = 1
@@ -1050,7 +1054,7 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
             prompt = (prompt_addendum + "\n" if prompt_addendum else "")
             prompt += json.dumps({"candidates": [{"candidate_id": index,
                       "candidate": s.model_dump(mode="json")} for index, s in eligible]}, ensure_ascii=False)
-            prompt += "\n## Changed diff\n" + context.text + "\n## Frozen repository evidence\n" + bundle.render()
+            prompt += "\n## Changed diff\n" + diff_text + "\n## Frozen repository evidence\n" + bundle.render()
             prompt += (
                 "\n## Intent hypotheses (untrusted, evidence-linked annotations only)\n"
                 + json.dumps(intent_plan, ensure_ascii=False)
@@ -1289,7 +1293,7 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
             # every rejection carries a reason and can be reported (H7).
             filters = confirmation_verdicts(
                 decision=decision, item=item, evidence=evidence, counter=counter,
-                snapshot=snapshot, bundle=bundle, files=files, sent_text=context.text,
+                snapshot=snapshot, bundle=bundle, files=files, sent_text=diff_text,
                 contract_domains=contract_domains,
             )
             by_name = {verdict.name: verdict for verdict in filters}
