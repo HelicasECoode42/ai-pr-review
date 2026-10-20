@@ -97,8 +97,13 @@ def _artifact_payload(path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
         report.get("repository_context", {}).get("review_trace")
         if isinstance(report, dict) else None
     )
+    if not isinstance(trace, dict):
+        # The paired runner persists traces beside the audit directory.
+        sibling = path.parent.parent / "traces" / path.name
+        if sibling.exists():
+            trace = json.loads(sibling.read_text(encoding="utf-8"))
     identity = trace.get("identity", {}) if isinstance(trace, dict) else {}
-    return payload, {"report": report or {}, "identity": identity}
+    return payload, {"report": report or {}, "identity": identity, "trace": trace or {}}
 
 
 def _published_candidates(payload: dict[str, Any], report: dict[str, Any]) -> list[dict[str, Any]]:

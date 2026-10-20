@@ -1,0 +1,50 @@
+{
+  "brexhq_CrabTrap_15-5ef0884c": {
+    "published": [],
+    "pending": [
+      null,
+      null,
+      null
+    ],
+    "notes": {
+      "case_id": "brexhq_CrabTrap_15-5ef0884c",
+      "adjudicator": "non-blind manual review against official gold messages and fixed head",
+      "scope": "PR-scope true positives only; positional matches are reported separately",
+      "candidates": [
+        {
+          "source": "pending",
+          "index": 0,
+          "title": "ORDER BY al.id DESC added to shared query may change pagination stability semantics",
+          "positional_gold": [
+            0
+          ],
+          "verdict": "not_a_gold_match",
+          "reason": "Gold 0 is about the helper dropping the caller context (context.Background) and pool exhaustion; this candidate is about UUID tie-breakers in ORDER BY. Different defect and unrelated causal chain."
+        },
+        {
+          "source": "pending",
+          "index": 1,
+          "title": "has_more computed from len(entries) may be wrong if scan drops rows",
+          "positional_gold": [
+            1,
+            2,
+            20,
+            24
+          ],
+          "verdict": "not_a_gold_match",
+          "reason": "Gold 1 is the non-transactional Count/Query race, gold 2 is nil-on-error returning 200, gold 20/24 are the limit+1 and missing test coverage. This candidate claims dropped scan rows make has_more false, but dropping rows makes len smaller so has_more becomes more likely true; the stated failure mode is inverted. Not gold."
+        },
+        {
+          "source": "pending",
+          "index": 2,
+          "title": "Detail fetch errors stored but may not be surfaced to the user",
+          "positional_gold": [
+            3
+          ],
+          "verdict": "partial_root_cause_overlap_only",
+          "reason": "Gold 3's trigger is the entry.id guard running after setExpandedId, so no fetch and no loading/error UI. This candidate notices error surfacing but never identifies the missing-id early return, so it is not a strict match."
+        }
+      ]
+    }
+  }
+}

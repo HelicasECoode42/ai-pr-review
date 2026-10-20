@@ -95,3 +95,12 @@
 - **边界**：本轮无真实模型调用，D/P 来自已保存 artifact 的位置匹配；不能据此声称语义 precision/recall。
 - **付费 D 实验当前被工作区阻塞**：`src/evaluation/paired.py` 在 `working_tree_dirty` 时直接拒绝运行（"Paired evaluation requires a clean committed reviewer"）。当前工作区 57 个已修改 + 25 个未跟踪文件，必须先拆成独立 commit 才能跑可归因的 D 实验；这也是把"数据契约"落到可复现实验上的前置条件。
 - 下一步：提交工作区（按证据修复 / 评测产物 / 历史文档拆分）→ 预批预算的 D 实验：固定 dev case、先算 S、只改一个 D 变量，报 D/N、P/N、cost/case。漏斗链路说明见 [`funnel-2026-10-20.md`](evaluation/funnel-2026-10-20.md)。
+
+## D 基线真实运行（2026-10-20，已授权单 case）
+
+- **问题**：证据窗口修复后，Gold #0 的 helper（`pg_audit_reader.go` 370–413，含 371 `context.Background()`、395 `pool.Query`/nil 分支）已真实进入 prompt（trace evidence refs 可核）。模型会不会识别？
+- **协议**：`brexhq_CrabTrap_15-5ef0884c`，commit `ff55ecc`、`working_tree_dirty=false`、reviewer source SHA-256 `b231b8b7…`；模型 `deepseek-flash`、thinking disabled、`max_tokens=4096`、HTTP cap 8（实际 2：1 discovery + 1 verification）、无重试、concurrency 1；输入为固定 prepared + mirror，未读 holdout。
+- **结果**：0 confirmed / 0 published，3 条 pending；位置匹配 D=3（21.4%），**人工语义裁决 D=0**。三条候选分别谈 ORDER BY 分页稳定性、`has_more`/scan 丢行（失败方向反）、detail 错误展示（只与 Gold #3 部分重合），都不描述 gold 的缺陷。
+- **漏斗**：N=14、S=13（92.9%）、D_pos=3、D_sem=0、P=0；损失 = 未选中 1 + 看见了没识别 13。成本 2 HTTP / 15.98s / 25,939 prompt + 2,661 completion tokens，峰价上界 **¥0.073166**（输入按 cache-miss 计）。
+- **结论**：S 修复在真实 prompt 里生效，但没有换来 D；CrabTrap 的瓶颈是"看见了没识别"。位置匹配严重高估 D（3 vs 0），后续质量结论只用语义裁决。报告与裁决见 [`d-baseline-crabtrap-2026-10-20.md`](evaluation/d-baseline-crabtrap-2026-10-20.md)、[`adjudication.json`](evaluation/d-baseline-crabtrap-2026-10-20-adjudication.json)、[`funnel JSON`](evaluation/d-baseline-crabtrap-2026-10-20.json)。n=1 已暴露 dev，非盲裁决，只作机制观察，不作泛化或晋升。
+- **下一步 D 实验**：prompt 强制三问（零额外调用）→ 候选精读（+1–2 调用）→ host 侧 call-graph 扩展；每轮报 D_sem/N、P/N、cost，一次只改一个变量。
