@@ -1,8 +1,10 @@
-# HARNESS：本项目的唯一规范
+# HARNESS：本项目的规范约束
 
-**这份文档是本项目唯一的规范。** 所有 `*-plan.md`、`*-design.md`、`*-review.md`、`*-summary.md` 一律**不作废即归档**，与本文冲突时以本文为准。要改规矩，改这里。
+**本文是规范约束的唯一来源**：维护质量、安全与判定边界。当前执行顺序和验收计划见 [`review-v2-development.md`](review-v2-development.md)，带日期的状态与测量结果见 [`STATE.md`](STATE.md)。历史计划、设计和复盘保留其背景与证据，不因文件名自动作废或归档。
 
-章节：**1 好 harness 的规范** · **2 现状对照** · **3 能力差的根因** · **4 架构规范** · **5 判据规范** · **6 计划** · **7 RSI 规范** · **8 改动量** · **9 非目标** · **10 文档规则**
+章节：**1 好 harness 的规范** · **2 历史现状对照** · **3 历史诊断** · **4 架构规范** · **5 判据规范** · **6 历史路线框架** · **7 RSI 规范** · **7.5 Runtime 能力快照** · **8 历史改动量估算** · **9 非目标** · **10 文档规则**
+
+为保留来源脉络，本文部分章节包含实现状态、历史测量和旧方案估算；这些内容不是现行状态或执行排期。现行状态与测量边界以 STATE 为准，当前执行顺序与验收以 Review V2 计划为准。
 
 ---
 
@@ -12,7 +14,7 @@
 
 | # | 条款 | 为什么 | 怎么检查 |
 |---|---|---|---|
-| **H1** | **单主线**：只有一条审查链路；其它路径只能是它的降级，不得并行演进 | 两条 prompt 家族 × 两条链路 × 四个入口 = 组合爆炸，改动无法归因 | 代码里只存在一条产生建议的路径；`pytest` 只覆盖它 |
+| **H1** | **单一默认主线**：CLI/Web 默认经 Runner 和策略编排；显式兼容或受控实验路径可保留，但不得成为第二条默认生产路线 | 多条默认链路会扩大组合并使改动难以归因；显式 legacy 路径用于兼容和对照时须有独立边界 | 自动模式路由唯一；显式 `two_stage` 与 direct `off` 按各自契约维护并测试，不要求删除 |
 | **H2** | **输入诚实**：模型看到什么**必须可枚举**；任何截断都要显式记账 | 真实 187 文件 PR 默认只送 11% 的 hunk，而模型不知道 | 覆盖率账本：`hunks_complete/total` + `omissions` 可逐条查 |
 | **H3** | **来源可证**：任何引文必须来自**已发给模型的文本** | 实测：模型对没看过的文件编造结论并被"验证通过" | 来源校验（已实现）+ 回归测试 |
 | **H4** | **能证伪**：核验优先使用**可执行检查**（求值/跑测试），而非模型自述 | "跑一下"是最强证伪手段；我们的模型完全不能执行 | `witness_eval` / `run_tests` 存在且被核验调用 |
@@ -32,11 +34,13 @@
 
 ---
 
-## 2. 现状对照（H1–H15）
+## 2. 历史现状对照（2026-10-15 快照；当前状态见 STATE）
+
+本节、§3 的诊断和指标、§6 的旧阶段框架、§7.5/§8 的实现与规模记录均保留为当时的背景证据，不是当前状态台账或执行计划。当前事实与测量边界以 [`STATE.md`](STATE.md) 为准；当前执行与验收以 [`review-v2-development.md`](review-v2-development.md) 为准。
 
 | # | 条款 | 现状 | 缺什么 |
 |---|---|---|---|
-| H1 | 单主线 | ❌ 两条 prompt 家族 + 两条链路 | 删 legacy（202 行） |
+| H1 | 单一默认主线 | ✅ 默认路径经 Runner 策略编排 | 显式 `two_stage` 为 CLI/Web 兼容与 ReviewBench 对照入口；不得将其误写成 auto 大 PR 策略或据此删除 |
 | H2 | 输入诚实 | ✅ 覆盖率账本 + `omissions` + 单元缺口账目 | — |
 | H3 | 来源可证 | ✅ 已实现（本轮修的真漏洞） | — |
 | H4 | 能证伪 | ✅ `witness_eval` 对纯表达式实际求值（AST 白名单，无 exec） | `run_tests`（沙箱子进程）未做 |
@@ -52,7 +56,7 @@
 | H14 | 发布幂等 | ⚠️ summary 去重已做；行内去重与驳回记忆未做 | 哈希去重 + 驳回记忆 |
 | H15 | 安全边界 | ⚠️ 不可信数据声明 + 密钥邻近跳过 + IDE/Workflow 文档已写 | 执行沙箱、密钥输出扫描 |
 
-**一句话现状（2026-10-15 执行 P1–P5 后）**：**H2/H3/H4/H5/H6/H7/H8/H9/H10 已立住**；H1（单主线）、H11（RSI 门禁）、H12（自动回滚）、H13（成本预检）、H14（行内去重与驳回记忆）仍未完成；`run_tests` 沙箱与采纳采集未做。
+**一句话历史记录（2026-10-15）**：当时记录为 **H2/H3/H4/H5/H6/H7/H8/H9/H10 已立住**；H11（RSI 门禁）、H12（自动回滚）、H13（成本预检）、H14（行内去重与驳回记忆）仍未完成；`run_tests` 沙箱与采纳采集未做。不要把这段当作当前完成状态。
 
 **已知成效（合成 gold 集，同一模型同一协议）**：精确率 **0.50 → 1.00**，假阳 **2 → 0**，召回保持 2/2，成本 18.7k → 17.9k tokens。详见 `docs/evaluation/identification-baseline.md` 第六节。
 
@@ -120,11 +124,13 @@ Transport(CLI / GitHub Actions / Web / IDE冻存)
 
 **闭环**：`冻结输入 → 发现 → 取证 → 核验 → 判定 → 发布 → 事后学习`
 
-**核验过滤器链（顺序固定，每环留痕）**：
+**候选判定链（顺序固定，每环留痕）**：
 
 ```
-provenance(引文来自已发送文本) → witness(求值/执行) → static(AST) → re-location(行号回定位) → dedupe → threshold
+chain_completeness → source_provenance → witness_eval（符合条件的 confirmed）→ counter_evidence → decision_vocabulary
 ```
+
+其中 `witness_eval` 仅在候选为 `confirmed` 且行为链与来源检查通过时追加；`counter_evidence` 只对 `dismissed` 要求有效反证。契约域检查包含在 witness 结果判定内。报告层的行号、去重与发布限制属于后续输出处理，不计入 `CRITERIA_VERSION` 的判定链；具体实现顺序以 `src/reviewer/criteria.py` 和对应发布代码为准。
 
 **三类检查**：
 
@@ -150,7 +156,9 @@ provenance(引文来自已发送文本) → witness(求值/执行) → static(AS
 
 ---
 
-## 6. 计划：6 个阶段 + 1 个循环
+## 6. 历史路线框架：6 个阶段 + 1 个循环（不是当前排期）
+
+以下 P0–P5 表格保留早期拆解与验收思路，不定义当前优先级、进度或排期。当前执行计划及验收条件以 [`review-v2-development.md`](review-v2-development.md) 为准。
 
 **共 6 个阶段（P0–P5）+ RSI 循环（不是阶段：P1 之后贯穿 P3–P5）。**
 
@@ -161,7 +169,7 @@ P0 收口 ─► P1 装手 ─► P2 核验过滤器链 ─► P3 知识层 ─�
 
 | # | 目标 | 验收（机械可查） | 成本 | 依赖 | 状态 |
 |---|---|---|---|---|---|
-| **P0** | 收口：单一主路径、文档收敛、版本契约、IDE 冻存、打 tag | `pytest` 只覆盖一条链路；文档只剩本文为规范；报告含版本字段（已做）；`git tag` 非空 | 0 | — | ⚠️ 一半 |
+| **P0** | 收口：单一默认主线、文档分工、版本契约、IDE 冻存、打 tag | 自动模式沿默认 Runner 路径；显式兼容/实验路径按独立契约维护；报告含版本字段；文档分工清楚 | 0 | — | 历史状态，见 STATE |
 | **P1** | **让 harness 能动手**（最高杠杆） | `safe-index` 类等价改写**机械上无法 confirmed** ✅；越权/超时/联网用例被拒（`run_tests` 未做） | 低 | P0 | ⚠️ `witness_eval` 已完成 |
 | **P2** | 核验过滤器链 + 判定记录 | 任取候选能回答"为什么没发布"；关闭任一过滤器可复现差异 | 0 | P1 | ⚠️ provenance 已做 |
 | **P3** | 知识层 playbook（agent 自维护） | 注入 Top-K 后 `needs_context` 下降且误报不增；符号消失条目自动 expired ✅ | 0.2 元/轮 | P1,P2 | ⚠️ 存储/召回/过期/契约域已完成；RSI 写入未做 |
@@ -174,6 +182,8 @@ P0 收口 ─► P1 装手 ─► P2 核验过滤器链 ─► P3 知识层 ─�
 
 ## 7. RSI 规范
 
+**当前落地边界**：[`strategy_policy.py`](../src/application/strategy_policy.py) 只接受白名单固定模板的 `prompt_addendum`，`playbook_recall_k` 固定为 5；任意提示文本、代码、工具权限和评分规则变更均被拒绝。候选经独立评估与门禁后，还需人工显式 `promote`；这不是自主反思或自动晋升。完整生命周期及证据边界见 [`constrained-improvement.md`](evaluation/constrained-improvement.md)。下述研究循环及 playbook 增量方案包含后续设计，不代表当前全部接通。
+
 **采用**：`AgentDevel 的发布工程循环`（[arXiv 2601.04620](https://ar5iv.labs.arxiv.org/html/2601.04620)）× `ACE 的 playbook 增量维护`（[arXiv 2510.04618](https://arxiv.org/abs/2510.04618)）× `DGM 的沙箱与人工监督`（[ICLR 2026](https://proceedings.iclr.cc/paper_files/paper/2026/hash/aa5f5e6eb6f613ec412f1d948dfa21a5-Abstract-Conference.html)）。
 
 **循环**：`Run → Score → Critic(实现盲) → Diagnose(执行脚本) → RC → Gate(P2F/F2P) → Promote|Discard`
@@ -185,7 +195,7 @@ P0 收口 ─► P1 装手 ─► P2 核验过滤器链 ─► P3 知识层 ─�
 4. **翻转门禁**：`P2F = 0（或≤阈值）且 F2P > 0 且修复集中在声明的症状` 才晋升。
 5. **playbook 只准增量**（防 context collapse）；条目保细节（防 brevity bias）。
 6. **held-out 只在最后用一次**；迭代期间模型/预算/工具**冻结**。
-7. **v1 只改两类对象**：playbook 条目 + 检索策略。**不改 prompt、不改代码。**
+7. **当前 v1 只允许固定模板的提示增量**：不得改 system prompt 或任意提示正文，不得改代码、工具权限和评分规则；检索数量固定为 5。playbook 条目增量与可变检索策略仍是后续设计，不能据此宣称当前支持晋升这些对象。
 8. **停止条件提前定义**：F2P 连续两轮过小 / P2F 上升 / RC 连续被拒 / 收益集中在缩小子集。
 9. **沙箱 + 人工闸门**：`candidate → authoritative` 需人工确认；发现路径不得读 gold。
 
@@ -210,13 +220,13 @@ P0 收口 ─► P1 装手 ─► P2 核验过滤器链 ─► P3 知识层 ─�
 
 **"审核到需要审核的全部"** 现在的口径是：**计划内的每个单元都有可查终态**（`units_planned / reviewed / failed / resumed / cancelled / skipped_*` 之和守恒），中断可续跑，不重复付费；**但"要不要审这个单元"仍受上限与成本闸约束**——这两者都会**显式记账**，不是静默丢弃。
 
-## 8. 改动量（回答"要改的多吗"）
+## 8. 历史改动量估算（非当前工作量承诺）
 
 **不大：P0–P2 合计约 600 行 / 12,161 行（≈5%），不引入新依赖。**
 
 | 阶段 | 改动 | 规模 |
 |---|---|---|
-| P0 | 删 legacy 路径（`two_stage.py` 89 行 + `prompt.py` 113 行）+ 调整约 15 处引用 + 文档归档 | **删 ~200 行**，改 ~15 处 |
+| P0 | 旧方案曾估算收敛 legacy 路径和整理文档；当前保留显式 `two_stage` 兼容/对照入口，不按此估算执行删除 | 历史估算，不是当前工作量 |
 | P1 | 新增 `src/reviewer/witness.py`（求值 + 沙箱）+ 作为证据类型接入 `EvidenceBundle` | **新增 ~250 行**，接入 ~50 行 |
 | P2 | 把 `grounded_review.py`（513 行）中的核验拆成过滤器链 + 判定记录 | **重组 ~150 行** |
 | P3 | playbook 存储 + `recall` + 过期机械校验 | 新增 ~200 行 |
@@ -230,7 +240,7 @@ P0 收口 ─► P1 装手 ─► P2 核验过滤器链 ─► P3 知识层 ─�
 ## 9. 非目标
 
 - ❌ population/evolutionary 搜索；❌ LLM 自评当门禁；❌ 整体重写 prompt/playbook。
-- ❌ v1 让 RSI 改 prompt 或改代码。
+- ❌ v1 任意改写 prompt、system prompt 或代码；仅允许上节所述白名单模板增量。
 - ❌ IDE 扩展维护（已冻存，产物保留）；❌ Web Console 作为对外承诺（降级为演示）。
 - ❌ 在核验修好前做分片。
 
@@ -241,14 +251,16 @@ P0 收口 ─► P1 装手 ─► P2 核验过滤器链 ─► P3 知识层 ─�
 **状态页**：[`STATE.md`](STATE.md)（给新会话/压缩后接手，只放当前事实与下一步）。
 
 
-**规范只允许一份——本文。** 其它文档只能是两类：
+**规范约束只有一份——本文。** 执行计划和状态分别由当前 V2 计划与 STATE 维护；其它文档不得另立规范：
 
 **优势文档**：`ADVANTAGES.md`（我们强在哪、为什么；主张必须带实测或可核对来源）。
 
-**证据文档**（数据为准，不得写规范；与本文冲突时以本文为准）：
+**实现、接口与证据文档**（用于描述代码、接口或数据，不另立规范）：
 `evaluation/identification-baseline.md`（识别基线实测）、`graph-planning-dataflow.md`（预算/覆盖实测）、`evaluation/` 下的结果与协议、`code-review-practices-and-prompt-design.md`（外部实践调研）、`error-handling-policy.md`、`review-guide.md`、`architecture.md`、`functions-index.md`、`contribution-guide.md`。
 
-**归档**（`docs/archive/`，历史记录，不再维护）：本次已归档 13 份。**待归档**：`agent-refactor-execution-plan.md`、`agent-refactor-review-and-refined-plan.md`、`rules-agent-synergy-plan.md`、`current-development-plan.md`、`review-capability-improvement-plan.md`、`web-console-demo-first-plan.md`、`sse-review-stream.md`、`video-product-brief.md`、`2026-05-29-summary.md`、`evaluation-driven-review.md`、`review-v2-development.md`、`PRD-review-capability-v2.md`、`review-research-and-development-standard.md`、`grouping-boundaries-and-options.md`、`review-slicing-and-boundaries.md`。
+Web SSE 事件与 payload 契约见 [`sse-review-stream.md`](sse-review-stream.md)，该接口文档继续维护，不在待归档清单中。
+
+**归档**（`docs/archive/`，历史记录，不再维护）：本次已归档 13 份。仍待逐项评估的旧材料包括 `agent-refactor-execution-plan.md`、`agent-refactor-review-and-refined-plan.md`、`rules-agent-synergy-plan.md`、`current-development-plan.md`、`review-capability-improvement-plan.md`、`web-console-demo-first-plan.md`、`video-product-brief.md`、`2026-05-29-summary.md`、`evaluation-driven-review.md`、`review-research-and-development-standard.md`、`grouping-boundaries-and-options.md`、`review-slicing-and-boundaries.md` 等。当前 [`review-v2-development.md`](review-v2-development.md) 与 [`PRD-review-capability-v2.md`](PRD-review-capability-v2.md) 是现行文档，不在待归档范围；`sse-review-stream.md` 是仍维护的接口契约，也不归档。
 
 归档标准：① 是否已被本文取代；② 是否仍被引用（引用者先改指向）；③ 是否含唯一实验数据（有则先并入证据文档）。
 

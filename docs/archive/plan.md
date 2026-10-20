@@ -1,6 +1,6 @@
-# 唯一的计划
+# 早期 Harness 路线计划（历史快照）
 
-**本文是本项目唯一的计划。** 其它任何 `*-plan.md`、`*-development*.md`、`*-summary.md` 一律作废（哪些保留、哪些归档见 [`docs/README.md`](README.md)）。改动计划请改本文。
+> 本文保留早期 P0–P5 路线、当时的验收和进度原貌，仅用于理解历史决策，不是当前计划或状态。现行执行顺序与验收见 [`../review-v2-development.md`](../review-v2-development.md)，当前状态与测量边界见 [`../STATE.md`](../STATE.md)，文档分工见 [`docs/README.md`](../README.md)。
 
 ---
 

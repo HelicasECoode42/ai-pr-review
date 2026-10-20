@@ -1,6 +1,6 @@
 # 异常处理与降级策略
 
-日期：2026-10-15。本文件回答一个具体问题：**什么异常可以吞，什么必须留痕**。它同时是当前实现的清单，便于后续 review 时对照。
+日期：2026-10-15。本文件回答一个具体问题：**什么异常可以吞，什么必须留痕**。以下数量是该日期的实现清单快照；具体当前状态与近期变更见 [`STATE.md`](STATE.md)。
 
 背景：项目此前有 74 处宽泛的 `except Exception`，其中一部分是 `pass` / `continue`。它们让"没报错"与"没找到"变得不可区分——最典型的后果是**变更文件集、规则命中或分析结果被静默缩小，而所有下游计数都看起来正常**。
 
@@ -52,7 +52,9 @@
 | `reraise` / wrap 成 `GitHubApiError` | 4 | 类别 C/A |
 | `pass` | **1** | 见下 |
 
-唯一剩下的 `pass` 是 `ast_rules.py` 的 `_node_source()`：源码片段提取失败时 `pass`，紧接着 `return f"Line {node.lineno}"`——**返回值本身就是降级标记**，属于类别 A，不是静默吞。
+这份产物相关清单里，`pass` 计数为 1：`ast_rules.py` 的 `_node_source()` 在源码片段提取失败时 `pass`，紧接着 `return f"Line {node.lineno}"`——**返回值本身就是降级标记**，属于类别 A，不是静默吞。
+
+另有一个有意限定的可选观察回调：`ReviewAgentRunner._emit_progress()` 捕获 progress sink 异常后 `pass`。该回调只用于发送进度摘要；失败不得中断审查，也不参与报告内容构造，因此不属于上面的产物相关清单。不能据本表推断整个仓库恰好只有一个 `except` 后的 `pass`。
 
 全仓（含 `src/evaluation/`）共 71 处宽泛 `except Exception`；`src/evaluation/` 的 6 处属离线实验代码，不在本轮范围。
 

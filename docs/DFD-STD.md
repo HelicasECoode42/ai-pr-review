@@ -1,6 +1,6 @@
-# 数据流（DFD）与状态转换（STD）
+# 数据流（DFD）与状态转换（STD）实现快照
 
-本文用图固定**所有功能的走向与状态**。任何功能都必须能在这两张图里指出位置；**图上没有的东西 = 不该存在**；**图上有但代码没接 = 接缝 bug**（由 `scripts/interface_audit.py` 在 CI 里查）。
+> **非规范说明图。** 本文按代码实现展示数据流和状态，不决定功能是否允许存在，也不替代规范、执行计划或状态页。约束见 [`HARNESS.md`](HARNESS.md)，当前执行与验收见 [`review-v2-development.md`](review-v2-development.md)，带日期的状态与测量见 [`STATE.md`](STATE.md)。图可能滞后于实现，具体行为以代码及对应接口契约为准。
 
 ---
 
@@ -61,7 +61,7 @@ flowchart TD
 
 ---
 
-## 3. DFD Level 2：核验过滤器链（唯一的"允许发布"路径）
+## 3. DFD Level 2：核验过滤器链（实现顺序示意）
 
 ```mermaid
 flowchart LR
@@ -69,18 +69,20 @@ flowchart LR
     F1 -- 否 --> X[needs_context]
     F1 -- 是 --> F2{source_provenance<br/>引文来自已发送文本<br/>且与快照一致}
     F2 -- 否 --> X
-    F2 -- 是 --> F3{counter_evidence<br/>仅 dismissed 时要求}
-    F3 -- 否 --> X
-    F3 -- 是 --> F4{witness_eval<br/>求值 base vs head}
-    F4 -- 域内无差异 --> X
-    F4 -- 有见证 --> F5{契约域检查}
-    F5 -- 越界 --> X
-    F5 -- 合法 --> F6{decision_vocabulary}
-    F6 -- 是 --> P[发布]
-    F6 -- 否 --> X
+    F2 -- 是 --> D{模型判定}
+    D -- confirmed --> F3{witness_eval<br/>仅完整且来源有效的 confirmed<br/>有可求值表达式对时运行}
+    F3 -- 无见证/不支持/契约越界 --> X
+    F3 -- 有效见证或不适用 --> F4{counter_evidence<br/>仅 dismissed 时要求}
+    D -- dismissed / needs_context / 其他值 --> F4
+    F4 -- dismissed 缺少有效反证 --> X
+    F4 -- 通过或不要求 --> F5{decision_vocabulary}
+    F5 -- 有效 --> R[按判定与发布策略路由]
+    F5 -- 无效 --> X
 ```
 
-**判据版本**：`CRITERIA_VERSION`（当前 `grounded-v3: chain+provenance+witness+contract`）。改判据必须能解释"哪些条目因此改判"。
+实际顺序为 `chain_completeness → source_provenance → witness_eval（仅满足条件的 confirmed）→ counter_evidence → decision_vocabulary`。`witness_eval` 在 confirmed 且前置链完整、来源有效时追加；没有可求值表达式对时记录 `not_applicable`。`counter_evidence` 对 dismissed 必须有有效反证，对其他决策为不要求。
+
+**判据版本**：`CRITERIA_VERSION` 当前为 `grounded-v4: bounded-witness+chain+provenance+contract`。版本与过滤器行为以 [`src/reviewer/criteria.py`](../src/reviewer/criteria.py) 为准；本文图仅作说明。
 
 ---
 
@@ -108,7 +110,7 @@ stateDiagram-v2
     pending --> [*]
 ```
 
-**不变式**：任何状态都必须能在 `filter_verdicts` / `candidate_audit` 里查到**原因**；没有"无声消失"。
+**实现说明**：候选去向可通过报告中的相应审计字段追踪；具体覆盖范围随生产路径而异，不由本图保证。
 
 ---
 
@@ -165,18 +167,18 @@ stateDiagram-v2
 
 ---
 
-## 8. 图从哪来、怎么保证不脱节
+## 8. 图的维护
 
 **手画的图会漂移**——本项目已经踩过：图上写着"逐单元已接引擎"，实测只覆盖 9/146 单元；图上写着"playbook 注入"，而 grounded 路径根本没收到 `prompt_addendum`。
 
-所以：
+所以，维护者应在相关实现变更后核对这些说明图；本节不构成第二份规范，也不表示每张图都由 CI 自动验证：
 
 1. **清单与调用边由代码生成**：`scripts/module_map.py` 用 AST 产出每个模块的公开函数、调用的 src 模块、**触及的账目**、接缝参数 → [`module-map.generated.md`](module-map.generated.md)（**请勿手改**）。
-2. **本文的 L2 与 STD 必须与 `src/reviewer/criteria.py` 的过滤器顺序逐字一致**；改判据必须同时改本文与 `CRITERIA_VERSION`。
-3. **接缝由 CI 强制**：`scripts/interface_audit.py`（惰性开关 / 未知关键字 / 收了不用）+ `scripts/criteria_gate.py`（判据回归）。
-4. **未接线的东西必须在这里标注**，不允许只在代码里悄悄存在。
+2. L2 的过滤器顺序以 `src/reviewer/criteria.py` 为准，并尽量与代码保持一致；判据版本由实现维护。
+3. `scripts/interface_audit.py` 和 `scripts/criteria_gate.py` 检查各自覆盖的代码契约，不应解读为它们验证本文所有图或所有功能。
+4. 未接线功能的执行状态见当前计划与 STATE；本实现快照不作为功能准入清单。
 
-## 9. 实现状态（诚实版，2026-10-16）
+## 9. 历史实现状态快照（2026-10-16；当前状态见 STATE）
 
 | 功能 | 状态 | 证据 |
 |---|---|---|

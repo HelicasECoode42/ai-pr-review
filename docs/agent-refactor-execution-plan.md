@@ -1,6 +1,8 @@
 # AI PR Review Agent 改造计划
 
-## 1. 当前事实
+> **历史执行方案，已被当前实现取代。** 文中“CLI/Web 默认 `agent_mode=off`”只描述早期阶段；当前 CLI 与 Web 默认使用 `auto`，显式 `agent_mode=off` 仍作为兼容入口保留。显式 `two_stage` 仍由 CLI/Web 和 ReviewBench 实验配置可选，auto 大 PR 选择 `one_shot_ai`，不是 `two_stage`。现行执行与验收见 [`review-v2-development.md`](review-v2-development.md)，当前状态见 [`STATE.md`](STATE.md)。以下内容保留早期设计和验收历史。
+
+## 1. 当时的实现事实（历史记录）
 
 ### 已有的 pipeline（不变）
 

@@ -1,5 +1,7 @@
 # Rules & Agent 协同改进方案
 
+> **历史提案，相关确认策略已被现行实现取代。** 本文方案未作为当前执行计划；规则严重度本身不构成语义确认。当前 rule-only 或 AI/provider 不可用时，规则信号保持未验证状态，不进入 confirmed findings；provider 失败也不会把信号升级为 confirmed。当前执行与判定边界见 [`review-v2-development.md`](review-v2-development.md)、[`HARNESS.md`](HARNESS.md) 与 [`STATE.md`](STATE.md)。以下内容保留为设计历史。
+
 > 当前核心问题：规则太重、Agent 太轻，两者各说各话。本文档描述如何将规则降级为信号层，Agent 升级为决策层。
 
 ---

@@ -1,6 +1,6 @@
 # 架构设计
 
-本文描述 AI PR Review Assistant 当前的核心架构、数据流、降级策略和 CI 运行模型。
+本文描述 AI PR Review Assistant 当前的入口编排、共享审查流水线、降级策略和 CI 运行模型。执行顺序与验收见 [Review V2 计划](review-v2-development.md)，带日期的运行状态与测量结果见 [STATE](STATE.md)。
 
 ## 设计目标
 
@@ -13,7 +13,40 @@
 - PR 分支代码即使坏掉，也不能阻止 reviewer 产出诊断报告。
 - 报告生成和合并门禁分离：坏 PR 可以出报告，但不能被标成可合并。
 
-## 核心流程
+## 入口与策略编排
+
+CLI 默认使用 `agent_mode=auto`；Web 的 `/api/analyze` 和 `/api/analyze/stream` 也默认使用 `auto`，流式入口通过 SSE 传递进度。`ReviewAgentRunner` 获取 PR 与变更文件、扫描规则和跨文件信号，再由策略选择器选出 `rule_only`、`one_shot_ai` 或显式请求的 `two_stage`。
+
+自动路由的大 PR 选择 `one_shot_ai`。当仓库证据审查启用且 base/head SHA 可用时，`ReviewApplication` 将该请求送入 grounded review；条件不满足时会沿普通 one-shot 路径运行或报告 partial 边界。`two_stage` 是 CLI、Web 和 ReviewBench 可显式请求的 legacy 兼容/对照路径，不是 auto 大 PR 的默认策略。CLI 的 `--two-stage` 会显式选择该策略；ReviewBench 通过 `RB_CONFIG_TWO_STAGE` 控制对照实验。
+
+CLI 和 Web 仍保留显式 `agent_mode=off` 的 direct compatibility 路径。它们绕过 Runner 编排，但复用下方的 GitHub、分析、应用和报告模块；在 CLI 该 direct 路径中，`--two-stage` 也会传入 legacy engine。显式兼容入口与默认 Runner 路径都应按各自接口契约维护。
+
+```mermaid
+flowchart TD
+    CLI[CLI: auto 默认] --> RUNNER[ReviewAgentRunner]
+    WEB[Web: analyze / analyze-stream] --> RUNNER
+    WEB -->|SSE progress| CLIENT[Web client]
+    RUNNER --> FETCH[获取 PR 与 changed files]
+    FETCH --> SCAN[规则与跨文件扫描]
+    SCAN --> POLICY[选择 review strategy]
+    POLICY -->|rule_only| RULE[规则报告]
+    POLICY -->|one_shot_ai| APP[ReviewApplication]
+    POLICY -->|显式 two_stage| APP
+    APP --> ENGINE[review_with_ai]
+    ENGINE -->|one_shot + repository review + SHAs| GROUNDED[Grounded review]
+    ENGINE -->|显式 two_stage| LEGACY[Legacy two-stage]
+    CLI -->|agent_mode=off| DIRECT[Direct compatibility path]
+    WEB -->|agent_mode=off| DIRECT
+    DIRECT --> SHARED[共享分析 / 应用 / 报告模块]
+    RULE --> OUT[Markdown / JSON]
+    GROUNDED --> OUT
+    LEGACY --> OUT
+    SHARED --> OUT
+```
+
+## 共享的下层审查流水线
+
+下面的流水线图展示共享分析与审查模块，不是完整入口图：Runner 默认路径和 `agent_mode=off` 兼容路径都使用其中的下层组件。
 
 ```text
 CLI / GitHub Action
@@ -165,7 +198,7 @@ Markdown / JSON Report
 - `CompletenessItem`
 - `ReviewReport`
 
-这些模型让 CLI、GitHub Action、未来 Web UI、GitHub App 和 VS Code 扩展可以复用同一套分析结果。
+这些模型供 CLI、GitHub Action 和 Web 复用同一套分析结果。JSON schema 可作为后续集成边界；VS Code 扩展目前冻结且不受支持。
 
 ## GitHub Actions 运行模型
 
@@ -334,11 +367,11 @@ AI 审查最大的挑战不是「找到问题」，而是「不说废话」。�
 
 ## 扩展接口
 
-当前 JSON 报告已经适合作为后续集成边界：
+当前 JSON 报告可以作为后续集成边界：
 
 - GitHub Action inline comments。
 - Web UI / Dashboard。
-- VS Code Problems 面板。
+- VS Code Problems 面板（扩展目前冻结且不受支持）。
 - 本地交互式 review 工具。
 
 未来扩展应优先保持 `ReviewReport` schema 稳定，避免每个前端重复解析 Markdown。

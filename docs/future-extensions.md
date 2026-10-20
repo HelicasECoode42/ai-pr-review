@@ -1,8 +1,9 @@
-# 未来扩展
+# 未来扩展（历史路线草案）
 
-本文记录 AI PR Review Assistant 的产品和工程路线图。当前项目已经具备 CLI、GitHub Action、规则扫描、AI review、Markdown / JSON 报告和基础失败门禁；下一步重点是提升交互体验、稳定性和组织级可维护性。
+> **状态更新（2026-10-19）**：本文是早期未排期的扩展构想，不构成当前优先级或交付承诺。VS Code 扩展目前冻结且不受支持；本路线图中的“高优先级”、MVP 和时间阶段均为历史状态，保留以供追溯。现行执行顺序见 [`review-v2-development.md`](review-v2-development.md)，当前状态与测量边界见 [`STATE.md`](STATE.md)。
 
-当前阶段的具体分工、文件改动范围和验收方式见 [当前开发计划与分工](current-development-plan.md)。
+本文曾记录 AI PR Review Assistant 的产品和工程路线图。当前阶段的具体分工、文件改动范围和验收方式见 [当前开发计划与分工](current-development-plan.md)（该早期计划现已作为历史快照保留）。
+
 
 ## 1. VS Code 扩展：把 Review 带回编辑器
 

@@ -1,5 +1,7 @@
 # Web Console Demo-First 改造方案
 
+> **状态更新（2026-10-19，按当前前后端代码核对）**：离线 Try Demo 路径已实现。页面按钮调用 `loadDemoReport()`，请求 `GET /api/demo-report`；后端从本地 `src/service/demo/openclaw_80419_full.json` 读取报告，不调用 GitHub 或模型。真实 Analyze 是独立的 `/api/analyze/stream` 路径。配置口径仍有区别：`GET /api/config` 返回 `default_agent_mode: "auto"`；前端的 **AI Review** 选项默认 Rule-only，**Engine** 选项默认 Agent Auto，且当前页面未读取 `/api/config`。因此不要把 API 字段解释为 AI 开关，也不要将本方案里的示例 `rule_only` 写成 API 当前值。下文保留原始背景、设计理由与验收记录，未逐项重新验证。
+
 ## 1. 背景问题
 
 当前 Web Console 的“Try Demo”并不是离线演示模式。

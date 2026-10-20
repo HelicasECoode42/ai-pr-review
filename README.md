@@ -3,7 +3,9 @@
 把 PR diff 变成**可追溯**的审查结论：发现候选 → 取证 → **机械核验** → 判定 → 发布。
 本地优先，CI 用影子模式。**AI 辅助人工 Review，不替代人。**
 
-- **规范**（唯一的）：[docs/HARNESS.md](docs/HARNESS.md)
+- **规范约束**（唯一来源）：[docs/HARNESS.md](docs/HARNESS.md)
+- **当前执行与验收**：[docs/review-v2-development.md](docs/review-v2-development.md)
+- **带日期的状态与实测边界**：[docs/STATE.md](docs/STATE.md)
 - **我们强在哪、为什么**：[docs/ADVANTAGES.md](docs/ADVANTAGES.md)
 - **开发过程记录**：[HANDOFF.md](HANDOFF.md)（非规范）
 
@@ -173,7 +175,7 @@ flowchart LR
     C -- 是 --> E[CI 通过]
 ```
 
-- `pytest` — 317 个测试（判据链、证据来源、单元并发、playbook）
+- 测试、门禁与离线实测结果及适用边界见 [docs/STATE.md](docs/STATE.md)
 - `scripts/criteria_gate.py` — **判据回归门禁**，已进 CI，零成本
 - `ruff --select E9,F63,F7,F82` — CI 门禁
 - 真实评测：`scripts/gold_identification.py`、`scripts/agent_flow_identification.py`
@@ -193,7 +195,8 @@ flowchart LR
 |---|---|
 | [docs/HARNESS.md](docs/HARNESS.md) | 审查规则与安全边界（规范；不作为项目排期） |
 | [docs/PRD-review-capability-v2.md](docs/PRD-review-capability-v2.md) | V2 能力目标与非目标 |
-| [docs/review-v2-development.md](docs/review-v2-development.md) | 唯一执行计划：三阶段任务、Done 条件与实验协议 |
+| [docs/review-v2-development.md](docs/review-v2-development.md) | 当前执行顺序、验收条件与实验协议 |
+| [docs/STATE.md](docs/STATE.md) | 带日期、版本和边界说明的当前状态与测量结果 |
 | [docs/ADVANTAGES.md](docs/ADVANTAGES.md) | 我们强在哪、为什么 |
 | [docs/evaluation/identification-baseline.md](docs/evaluation/identification-baseline.md) | 错误识别基线：0.50 → 1.00 |
 | [docs/graph-planning-dataflow.md](docs/graph-planning-dataflow.md) | 预算/覆盖/缓存实测 |
