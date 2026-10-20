@@ -50,6 +50,7 @@ _REASONS = frozenset(
         "no_verdict_returned",
         "invalid_decision",
         "dismissal_has_no_valid_counter_evidence",
+        "dismissal_rests_on_intent_or_impact",
         "insufficient_behavior_chain_or_source_evidence",
         "model_review_unavailable",
         "legacy_candidate_inventory_incomplete",

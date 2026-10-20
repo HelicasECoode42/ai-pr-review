@@ -1677,7 +1677,7 @@ def test_dismissal_whose_counter_evidence_repeats_the_evidence_is_not_accepted(r
     defective = {"path": "users.py", "side": "head", "line": 2,
                  "quote": 'return {"name": "name", "age": 42}'}
     report, _ = run(repo, [candidate(), verdict(
-        decision="dismissed", reason="minor inconsistency, not a functional defect",
+        decision="dismissed", reason="the caller already handles the dictionary",
         evidence=[defective], counter_evidence=[defective],
     )])
     assert report.suggestions == []
@@ -1694,3 +1694,33 @@ def test_raw_verification_sees_the_same_full_diff_as_discovery(repo):
     ], raw_discovery=True)
     verify_prompt = provider.calls[2][1]
     assert "--- a/users.py\n+++ b/users.py\n" in verify_prompt
+
+
+def _dismissal(**updates):
+    return verdict(
+        decision="dismissed",
+        counter_evidence=[{"path": "caller.py", "side": "head", "line": 4,
+                           "quote": "return age + 1"}],
+        **updates,
+    )
+
+
+@pytest.mark.parametrize("updates", [
+    {"reason": "A single spurious reset is benign and self-correcting; the PR documents it."},
+    {"reason": "This is intended behaviour.", "dismissal_basis": "intended"},
+    {"reason": "Real but low impact.", "dismissal_basis": "low_impact"},
+])
+def test_dismissal_on_intent_or_impact_becomes_needs_context(repo, updates):
+    report, _ = run(repo, [candidate(), _dismissal(**updates)])
+    verification = report.behavior_verifications[0]
+    assert verification["decision"] == "needs_context"
+    assert verification["validation_reason"] == "dismissal_rests_on_intent_or_impact"
+
+
+def test_dismissal_with_a_factual_basis_still_dismisses(repo):
+    report, _ = run(repo, [candidate(), _dismissal(
+        reason="The caller never reaches this path; it is harmless.",
+        dismissal_basis="unreachable",
+    )])
+    item = report.behavior_verifications[0]
+    assert item["decision"] == "dismissed", item.get("validation_reason")

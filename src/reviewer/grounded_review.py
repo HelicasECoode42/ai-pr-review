@@ -232,7 +232,11 @@ For each candidate establish trigger -> reachable call path -> expected behavior
 and explain how the PR introduces the failure. Try to find code that contradicts the candidate.
 Return confirmed only with sufficient exact source citations AND a concrete causal explanation.
 Return dismissed only with exact counter-evidence that disproves the scenario. Missing context is
-needs_context, not dismissed. Absence of a check in a short excerpt does not prove absence in the repository.
+needs_context, not dismissed. A dismissal says the failure cannot happen. If it can happen but you
+judge it intended, documented, benign, minor, low impact or self-correcting, do not dismiss: return
+confirmed with that judgement in `reason`, or needs_context. Every dismissed item sets
+`dismissal_basis` to unreachable (the trigger cannot occur), incorrect (the code does not behave as
+claimed) or not_introduced (the PR did not cause or worsen it). Absence of a check in a short excerpt does not prove absence in the repository.
 Do not suppress a candidate merely for low discovery confidence. Do not use majority votes as evidence.
 You may request read/search context in the same format as discovery. Do not create new findings.
 When an item is `needs_context` because a declared hypothesis missing_evidence obligation remains
@@ -245,7 +249,8 @@ When a candidate rests on how a changed symbol is used, request that caller or c
 instead of restating the definition you were already given.
 Return JSON {items:[{candidate_id,decision:confirmed|dismissed|needs_context,confidence,
 trigger,call_path,expected_behavior,actual_behavior,introduced_by,reason,
-evidence:[{path,side:head|base,line,quote}],counter_evidence:[{path,side,line,quote}]}],
+evidence:[{path,side:head|base,line,quote}],counter_evidence:[{path,side,line,quote}],
+dismissal_basis}],
 intent_assessments:[{hypothesis_id,status:supported|refuted|revised|unknown,
 evidence_refs:[actual evidence_ref ids shown in the prompt],rationale,unknowns,revision}],
 context_requests:[],missing_evidence_requests:[
@@ -318,6 +323,29 @@ At most 20 findings, most severe first. Do not report style nits. A finding must
 changed file and a positive line number in the new version. A line that is only nearby,
 or a defect that is different from the call chain you describe, is not a finding.
 """
+
+
+_DISMISSAL_BASES = {"unreachable", "incorrect", "not_introduced"}
+_JUDGEMENT_DISMISSAL = re.compile(
+    r"\b(benign|minor|harmless|cosmetic|intended|intentional|by design|documented|"
+    r"self[- ]correcting|low[- ](impact|severity|risk)|not (a )?(functional |real )?(bug|defect)|"
+    r"expected behaviou?r|acceptable|edge case only|nitpick|style)\b",
+    re.IGNORECASE,
+)
+
+
+def _dismissal_rests_on_judgement(item) -> bool:
+    """A dismissal needs a factual basis; intent or impact is not one.
+
+    A declared factual basis is trusted. Without one, wording that concedes the
+    scenario (benign, intended, minor ...) marks a judgement call.
+    """
+    basis = str(item.get("dismissal_basis") or "").strip().lower()
+    if basis in _DISMISSAL_BASES:
+        return False
+    if basis:
+        return True  # any other declared basis (intended, low_impact ...) is a judgement
+    return bool(_JUDGEMENT_DISMISSAL.search(str(item.get("reason") or "")))
 
 
 def _raw_discovery_prompt(pr, files):
@@ -1331,6 +1359,12 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
             elif decision == "confirmed" and not (validated and by_name["chain_completeness"].passed):
                 item = {**item, "decision": "needs_context",
                         "validation_reason": "insufficient_behavior_chain_or_source_evidence"}
+                decision = "needs_context"
+            elif decision == "dismissed" and _dismissal_rests_on_judgement(item):
+                # An "intended / minor / benign" verdict concedes the failure can
+                # happen: it may lower severity, never remove the finding.
+                item = {**item, "decision": "needs_context",
+                        "validation_reason": "dismissal_rests_on_intent_or_impact"}
                 decision = "needs_context"
             elif decision == "dismissed" and not counter_valid:
                 item = {**item, "decision": "needs_context", "validation_reason": "dismissal_has_no_valid_counter_evidence"}
