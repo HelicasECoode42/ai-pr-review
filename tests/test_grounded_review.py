@@ -1724,3 +1724,34 @@ def test_dismissal_with_a_factual_basis_still_dismisses(repo):
     )])
     item = report.behavior_verifications[0]
     assert item["decision"] == "dismissed", item.get("validation_reason")
+
+
+def test_strong_judgement_overrides_a_declared_factual_basis(repo):
+    report, _ = run(repo, [candidate(), _dismissal(
+        reason="Explicitly intended and documented in the PR; the reset is self-correcting.",
+        dismissal_basis="not_introduced",
+    )])
+    verification = report.behavior_verifications[0]
+    assert verification["decision"] == "needs_context"
+    assert verification["validation_reason"] == "dismissal_rests_on_intent_or_impact"
+
+
+def test_rule_candidates_do_not_use_the_per_file_publication_cap(repo):
+    root, base, head = repo
+    snapshot = GitSnapshot(root, base, head)
+    files = parse_diff(git(root, "diff", base, head))
+    pr = PullRequest(repo="fixture/repo", number=1, title="t", base_sha=base, head_sha=head)
+    context = build_review_context(pr, files, include_context_pack=False,
+                                   allow_remote_file_fetch=False)
+    model = {"file": "users.py", "line": 2, "title": "Caller still expects positional values",
+             "reason": "r"}
+    rule = {"file": "users.py", "line": 1, "title": "[TQ001] Structural rule fact", "reason": "r"}
+    confirmed = verdict()["items"][0]
+    provider = Provider([
+        {"findings": [model]}, {"findings": [rule]},
+        {"items": [confirmed, {**confirmed, "candidate_id": 1}]},
+    ])
+    result = review_grounded(pr, files, provider, snapshot, context,
+                             max_suggestions_per_file=1, raw_discovery=True)
+    titles = [suggestion.title for suggestion in result.suggestions]
+    assert titles == [model["title"], rule["title"]]

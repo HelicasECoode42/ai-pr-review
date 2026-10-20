@@ -326,26 +326,36 @@ or a defect that is different from the call chain you describe, is not a finding
 
 
 _DISMISSAL_BASES = {"unreachable", "incorrect", "not_introduced"}
-_JUDGEMENT_DISMISSAL = re.compile(
-    r"\b(benign|minor|harmless|cosmetic|intended|intentional|by design|documented|"
-    r"self[- ]correcting|low[- ](impact|severity|risk)|not (a )?(functional |real )?(bug|defect)|"
-    r"expected behaviou?r|acceptable|edge case only|nitpick|style)\b",
+# Wording that concedes the failure happens and only argues it is acceptable.
+# The verifier has paired these with a false factual basis ("not_introduced"
+# for a documented default), so they override any declared basis.
+_STRONG_JUDGEMENT = re.compile(
+    r"\b(intended|intentional(ly)?|by design|documented|self[- ]correcting|benign|"
+    r"not (a )?(correctness |functional |real )?(bug|defect)( per se)?)\b",
+    re.IGNORECASE,
+)
+# Weaker wording: a judgement only when no factual basis is declared.
+_WEAK_JUDGEMENT = re.compile(
+    r"\b(minor|harmless|cosmetic|low[- ](impact|severity|risk)|expected behaviou?r|"
+    r"acceptable|edge case only|nitpick|style)\b",
     re.IGNORECASE,
 )
 
 
 def _dismissal_rests_on_judgement(item) -> bool:
-    """A dismissal needs a factual basis; intent or impact is not one.
-
-    A declared factual basis is trusted. Without one, wording that concedes the
-    scenario (benign, intended, minor ...) marks a judgement call.
-    """
+    """A dismissal needs a factual basis; intent or impact is not one."""
+    reason = str(item.get("reason") or "")
+    if _STRONG_JUDGEMENT.search(reason):
+        return True
     basis = str(item.get("dismissal_basis") or "").strip().lower()
     if basis in _DISMISSAL_BASES:
         return False
     if basis:
         return True  # any other declared basis (intended, low_impact ...) is a judgement
-    return bool(_JUDGEMENT_DISMISSAL.search(str(item.get("reason") or "")))
+    return bool(_WEAK_JUDGEMENT.search(reason))
+
+
+_RULE_TITLE = re.compile(r"^\[TQ\d{3}\] ")
 
 
 def _raw_discovery_prompt(pr, files):
@@ -1393,6 +1403,11 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
     published = []
     counts = {}
     for suggestion in kept:
+        # Deterministic rule findings are separate structural facts; they do
+        # not compete with model findings for the per-file comment budget.
+        if _RULE_TITLE.match(suggestion.title):
+            published.append(suggestion)
+            continue
         count = counts.get(suggestion.file_path, 0)
         if count >= max_suggestions_per_file:
             pending.append(suggestion.model_copy(update={"source": "ai_publication_deferred"}))
