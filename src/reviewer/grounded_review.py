@@ -1023,11 +1023,18 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
         # Deterministic test-quality candidates join the same pool; every one
         # still has to pass verification and criteria to be published.
         prefix = (prompt_addendum + "\n" if prompt_addendum else "") + diff_text
-        samples = (("diff", prefix),
-                   ("diff+evidence", prefix + "\n## Frozen repository evidence\n" + bundle.render()))
+        from src.reviewer.discovery_lenses import LENS_DISCOVERY_SYSTEM, lens_facts
+        evidence_text = "\n## Frozen repository evidence\n" + bundle.render()
+        # The third sample is a checklist pass over the kinds of defect the two
+        # generic samples missed on the dev set, with deterministic facts
+        # (declared runtimes, untested changed symbols, callers, changed docs).
+        samples = (("diff", RAW_DISCOVERY_SYSTEM, prefix),
+                   ("diff+evidence", RAW_DISCOVERY_SYSTEM, prefix + evidence_text),
+                   ("lenses", LENS_DISCOVERY_SYSTEM,
+                    prefix + "\n" + lens_facts(snapshot, files) + evidence_text))
         pool = []
-        for origin, sample_prompt in samples:
-            response = _json(provider, RAW_DISCOVERY_SYSTEM, sample_prompt)
+        for origin, system, sample_prompt in samples:
+            response = _json(provider, system, sample_prompt)
             discovery_calls += 1
             returned = response.get("findings") if isinstance(response, dict) else None
             returned = [item for item in returned or [] if isinstance(item, dict)]

@@ -21,7 +21,8 @@ SHA = re.compile(r"[0-9a-f]{40}")
 SOURCE_SUFFIXES = {".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".go", ".rs", ".c", ".h",
                    ".cpp", ".hpp", ".cs", ".rb", ".php", ".f", ".f90", ".swift", ".kt",
                    ".vue", ".yaml", ".yml", ".toml", ".json", ".md", ".sh", ".sql",
-                   ".ipynb", ".svelte", ".ex", ".exs", ".scala", ".dart", ".fs", ".r"}
+                   ".ipynb", ".svelte", ".ex", ".exs", ".scala", ".dart", ".fs", ".r",
+                   ".gemspec", ".gradle", ".kts"}
 SOURCE_MAX_BYTES = 500_000
 GIT_TREE_MAX_BYTES = 2_000_000
 GIT_SEARCH_MAX_BYTES = 1_000_000

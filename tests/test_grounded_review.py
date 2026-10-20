@@ -1617,12 +1617,16 @@ def test_raw_discovery_unions_two_samples_and_still_passes_the_verification_gate
     report, provider = run(repo, [
         {"findings": [finding]},
         {"findings": [{**finding, "title": "Same anchor, other words"}]},
+        {"findings": []},
         verdict(),
     ], raw_discovery=True)
 
-    assert len(provider.calls) == 3  # diff + diff/evidence discovery, one verification
+    # diff, diff+evidence and lens discovery, then one verification
+    assert len(provider.calls) == 4
     assert provider.calls[0][0].startswith("You are a senior code reviewer")
-    assert provider.calls[2][0].startswith("You verify code-review candidates")
+    assert provider.calls[2][0].startswith("You are a senior code reviewer doing a focused second pass")
+    assert "## Facts for the focused pass" in provider.calls[2][1]
+    assert provider.calls[3][0].startswith("You verify code-review candidates")
     diff_only, with_evidence = provider.calls[0][1], provider.calls[1][1]
     for raw_prompt in (diff_only, with_evidence):
         assert "## Diff\n--- a/users.py\n+++ b/users.py\n" in raw_prompt
@@ -1690,9 +1694,10 @@ def test_raw_verification_sees_the_same_full_diff_as_discovery(repo):
     _, provider = run(repo, [
         {"findings": [{"file": "users.py", "line": 2, "title": "t", "reason": "r"}]},
         {"findings": []},
+        {"findings": []},
         verdict(),
     ], raw_discovery=True)
-    verify_prompt = provider.calls[2][1]
+    verify_prompt = provider.calls[3][1]
     assert "--- a/users.py\n+++ b/users.py\n" in verify_prompt
 
 
@@ -1748,7 +1753,7 @@ def test_rule_candidates_do_not_use_the_per_file_publication_cap(repo):
     rule = {"file": "users.py", "line": 1, "title": "[TQ001] Structural rule fact", "reason": "r"}
     confirmed = verdict()["items"][0]
     provider = Provider([
-        {"findings": [model]}, {"findings": [rule]},
+        {"findings": [model]}, {"findings": [rule]}, {"findings": []},
         {"items": [confirmed, {**confirmed, "candidate_id": 1}]},
     ])
     result = review_grounded(pr, files, provider, snapshot, context,
@@ -1790,7 +1795,8 @@ def _raw_run(repo, discovery, verdict_items):
     pr = PullRequest(repo="fixture/repo", number=1, title="t", base_sha=base, head_sha=head)
     context = build_review_context(pr, files, include_context_pack=False,
                                    allow_remote_file_fetch=False)
-    provider = Provider([{"findings": discovery}, {"findings": []}, {"items": verdict_items}])
+    provider = Provider([{"findings": discovery}, {"findings": []}, {"findings": []},
+                         {"items": verdict_items}])
     return review_grounded(pr, files, provider, snapshot, context, raw_discovery=True)
 
 
