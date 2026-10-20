@@ -104,3 +104,14 @@
 - **漏斗**：N=14、S=13（92.9%）、D_pos=3、D_sem=0、P=0；损失 = 未选中 1 + 看见了没识别 13。成本 2 HTTP / 15.98s / 25,939 prompt + 2,661 completion tokens，峰价上界 **¥0.073166**（输入按 cache-miss 计）。
 - **结论**：S 修复在真实 prompt 里生效，但没有换来 D；CrabTrap 的瓶颈是"看见了没识别"。位置匹配严重高估 D（3 vs 0），后续质量结论只用语义裁决。报告与裁决见 [`d-baseline-crabtrap-2026-10-20.md`](evaluation/d-baseline-crabtrap-2026-10-20.md)、[`adjudication.json`](evaluation/d-baseline-crabtrap-2026-10-20-adjudication.json)、[`funnel JSON`](evaluation/d-baseline-crabtrap-2026-10-20.json)。n=1 已暴露 dev，非盲裁决，只作机制观察，不作泛化或晋升。
 - **下一步 D 实验**：prompt 强制三问（零额外调用）→ 候选精读（+1–2 调用）→ host 侧 call-graph 扩展；每轮报 D_sem/N、P/N、cost，一次只改一个变量。
+
+## D 实验 1：prompt 强制三问 A/B（2026-10-20，已授权两个 case）
+
+- **问题**：不增加调用、不改证据，用 prompt 强制候选回答"调用方/错误分支/生命周期"三问，能否提高 D？
+- **协议**：commit `062dcfd`（两 arm 同 commit、clean tree）；case=`brexhq_CrabTrap_15-5ef0884c`（14 gold，跨函数/DB 语义）+ `AA-Factory_aafactory-prototype_17-a1978cb7`（9 gold，测试质量）；`deepseek-flash`、thinking disabled、4096 max tokens、HTTP cap 8（实际每 arm 4）、无重试；唯一变量是 `--prompt-addendum-file`，addendum SHA-256 记录在 protocol。
+- **结果**：两臂 **D 语义完全相同（2/23 = 8.7%）**：AA-Factory 稳定命中 gold 1/5（mock 掉被测函数、全局状态无 teardown），CrabTrap 两臂都是 0；位置 D 都是 5（CrabTrap 位置 3、语义 0）。P 两臂都是 0。成本基线 ¥0.102634、addendum ¥0.113212（+10.3%），延迟 26.1s→28.3s。
+- **结论**：强制三问只改变了候选的表述结构与锚点，没有改变发现能力；D 缺口不是"没被要求交叉检查"，而是跨函数/运行时语义整合能力。D 是 case 类型相关的：同文件可模式化的测试反模式能稳定发现（AA 2/9），需要 DB/context 语义的发现不了（Crab 0/14）。
+- **额外发现**：AA-Factory 两条语义命中都是 pending、0 published —— P 层在丢已识别的 TP；CrabTrap 按位置匹配会高估 D（3 vs 0），质量结论只能用语义口径。
+- **噪声**：同一 commit 上 CrabTrap 两次 baseline 候选数 3 vs 4，单次运行有 ±1 候选噪声；n=2 只排除大幅提升，不能估计小效应。非盲裁决，已暴露 dev，不晋升/不泛化。
+- **产物**：报告 [`d-forced-checks-2026-10-20.md`](evaluation/d-forced-checks-2026-10-20.md)、裁决 JSON、A/B funnel JSON；addendum 文件 [`prompts/d-forced-checks-2026-10-20.txt`](evaluation/prompts/d-forced-checks-2026-10-20.txt)。
+- **下一步**：① raw-model 基线（同 diff+证据、最小 prompt、无 schema/工具）回答"harness 是否拖累能力"；② 确定性测试质量规则（AA 类 gold 零模型成本）；③ 跨文件检索/调用链扩展（Crab 类 gold）；④ 候选精读（P 层把已识别 TP 变 confirmed）。
