@@ -14,14 +14,14 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel
 
 from src.agent.policy import choose_agent_strategy
 from src.agent.registry import AgentTool, AgentToolRegistry
 from src.agent.state import AgentStep, ReviewAgentState
-from src.agent.trace import summarize_input, summarize_observation
+from src.agent.trace import redact_secrets, summarize_input, summarize_observation
 from src.models import ReviewReport, Severity
 from src.utils.config import Settings, get_settings
 from src.application.protocol import AgentContext
@@ -247,7 +247,7 @@ class ReviewAgentRunner:
         try:
             self._call_tool(state, ctx, "fetch_changed_files")
         except Exception as exc:
-            state.warnings.append(f"Failed to fetch changed files: {exc}")
+            state.warnings.append(str(redact_secrets(f"Failed to fetch changed files: {exc}")))
             ctx.files = []
         self._call_tool(state, ctx, "scan_risks")
         self._call_tool(state, ctx, "analyze_cross_file")
@@ -288,7 +288,7 @@ class ReviewAgentRunner:
             requested_mode=request.agent_mode,
         )
         state.strategy = strategy  # type: ignore[assignment]
-        state.strategy_reason = strategy_reason
+        state.strategy_reason = str(redact_secrets(strategy_reason))
         ctx.strategy = strategy
         auto_large_pr = (
             request.agent_mode == "auto"
@@ -309,7 +309,7 @@ class ReviewAgentRunner:
                 )
         self._emit_progress("strategy_selected", {
             "strategy": strategy,
-            "reason": strategy_reason,
+            "reason": state.strategy_reason,
             "files_count": files_count,
         })
 
@@ -345,7 +345,7 @@ class ReviewAgentRunner:
         self._call_tool(state, ctx, "render_json")
 
         # ── Build agent sidecar ─────────────────────────────
-        agent_sidecar: dict[str, Any] = {
+        agent_sidecar = cast(dict[str, Any], redact_secrets({
             "requested_mode": request.agent_mode,
             "strategy": state.strategy,
             "effective_mode": state.strategy,
@@ -353,7 +353,7 @@ class ReviewAgentRunner:
             "degradation_path": state.degradation_path,
             "warnings": state.warnings,
             "steps": [step.model_dump() for step in state.steps],
-        }
+        }))
 
         # render_json produces a string; convert to dict for the result
         json_report = ctx.json_report
@@ -389,9 +389,15 @@ class ReviewAgentRunner:
             step = AgentStep(
                 index=step_index,
                 tool=tool_name,
-                input_summary=summarize_input(vars(ctx), tool_name),
-                observation_summary=summarize_observation(
-                    getattr(ctx, self._observation_key(tool_name), ctx), tool_name
+                input_summary=cast(
+                    dict[str, Any],
+                    redact_secrets(summarize_input(vars(ctx), tool_name)),
+                ),
+                observation_summary=cast(
+                    dict[str, Any],
+                    redact_secrets(summarize_observation(
+                        getattr(ctx, self._observation_key(tool_name), ctx), tool_name
+                    )),
                 ),
                 status="success",
                 duration_ms=elapsed_ms,
@@ -402,10 +408,13 @@ class ReviewAgentRunner:
             step = AgentStep(
                 index=step_index,
                 tool=tool_name,
-                input_summary=summarize_input(vars(ctx), tool_name),
+                input_summary=cast(
+                    dict[str, Any],
+                    redact_secrets(summarize_input(vars(ctx), tool_name)),
+                ),
                 observation_summary={},
                 status="failed",
-                error=str(exc),
+                error=str(redact_secrets(str(exc))),
                 duration_ms=elapsed_ms,
             )
             state.steps.append(step)
@@ -418,7 +427,8 @@ class ReviewAgentRunner:
         """Notify an optional transport adapter without coupling the Runner to FastAPI."""
         if self._progress_sink is not None:
             try:
-                self._progress_sink(event, payload)
+                safe_payload = cast(dict[str, Any], redact_secrets(payload))
+                self._progress_sink(event, safe_payload)
             except Exception:
                 # Progress transport is observational; it must never break a review.
                 pass

@@ -29,6 +29,11 @@ def test_reusable_workflow_inline_publication_dedupes_and_remembers_author_dismi
         "confidence": 0.9, "title": "Broken contract", "reason": "The caller now fails.",
         "recommendation": "Keep the return shape stable.",
     }
+    unavailable_suggestion = {
+        "file_path": "src/other.py", "line": 9, "severity": "high",
+        "confidence": 0.95, "title": "Missing fingerprint", "reason": "A second candidate.",
+        "recommendation": "Keep its identity available.",
+    }
     criteria = "grounded-v3"
     fingerprint = review_publication_fingerprint(
         repo="owner/repo", pr_number=3, head_sha=head, criteria_version=criteria,
@@ -44,7 +49,7 @@ def test_reusable_workflow_inline_publication_dedupes_and_remembers_author_dismi
             "publish_min_confidence": 0.8,
             "publish_fingerprints": json.dumps({"0": fingerprint}),
         },
-        "suggestions": [suggestion],
+        "suggestions": [suggestion, unavailable_suggestion],
     }))
     script_path = tmp_path / "inline.js"
     script_path.write_text(script)
@@ -87,9 +92,14 @@ def test_reusable_workflow_inline_publication_dedupes_and_remembers_author_dismi
           comments.push({ id: 9, in_reply_to_id: 1, user: { login: "alice" },
             body: "/ai-review dismiss" });
           const dismissed = await run();
+          const reportPath = "reports/pr-review.json";
+          const terminalReport = JSON.parse(fs.readFileSync(reportPath, "utf8"));
+          terminalReport.suggestions = [terminalReport.suggestions[0]];
+          fs.writeFileSync(reportPath, JSON.stringify(terminalReport));
+          const terminal = await run();
           latestHead = "c".repeat(40);
           const stale = await run();
-          console.log(JSON.stringify({ first, second, dismissed, stale,
+          console.log(JSON.stringify({ first, second, dismissed, terminal, stale,
             posted: comments.filter(c => c.user?.login === "bot[bot]").length }));
         })().catch(error => { console.error(error); process.exit(1); });
     """))
@@ -99,7 +109,11 @@ def test_reusable_workflow_inline_publication_dedupes_and_remembers_author_dismi
     )
     result = json.loads(completed.stdout)
     assert result["first"]["candidates"][0]["status"] == "published"
+    assert result["first"]["candidates"][1]["status"] == "unavailable_fingerprint"
+    assert result["first"]["status"] == "partial"
     assert result["second"]["candidates"][0]["status"] == "already_published"
     assert result["dismissed"]["candidates"][0]["status"] == "dismissed_by_pr_author"
+    assert result["terminal"]["candidates"][0]["status"] == "dismissed_by_pr_author"
+    assert result["terminal"]["status"] == "complete"
     assert result["stale"]["status"] == "stale_head"
     assert result["posted"] == 1

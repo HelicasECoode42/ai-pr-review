@@ -1,0 +1,13 @@
+diff --git a/src/routes.py b/src/routes.py
+index 2d8f8aa..9217abc 100644
+--- a/src/routes.py
++++ b/src/routes.py
+@@ -1,7 +1,5 @@
+ from accounts import load_for_actor
+ 
+ def account_page(account_id, actor):
+-    account = accounts.get(account_id)
+-    if account.owner_id != actor.id:
+-        raise NotFound()
++    account = load_for_actor(account_id, actor)
+     return render(account)

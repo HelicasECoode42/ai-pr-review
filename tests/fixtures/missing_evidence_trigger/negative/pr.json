@@ -1,0 +1,9 @@
+{
+  "nwo": "synthetic/missing-evidence-negative",
+  "pr_number": 2,
+  "title": "Add a shared account loader",
+  "body": "Use a shared helper for account pages.",
+  "base": "0000000000000000000000000000000000000003",
+  "head": "0000000000000000000000000000000000000004",
+  "agent": "synthetic-trigger-check"
+}

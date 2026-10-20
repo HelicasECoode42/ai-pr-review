@@ -41,6 +41,28 @@ def test_shared_factory_and_critic_model_effort_follow_actual_model():
         p.close.assert_called_once()
 
 
+def test_missing_evidence_followup_setting_reaches_production_engine():
+    providers = []
+
+    def factory(**kwargs):
+        provider = Mock()
+        provider.config = kwargs
+        providers.append(provider)
+        return provider
+
+    engine = Mock(return_value="result")
+    application = ReviewApplication(
+        settings(grounded_missing_evidence_followup=True),
+        provider_factory=factory,
+        engine=engine,
+    )
+
+    assert application.review(PullRequest(repo="r", number=1, title="t"), [], []) == "result"
+    assert engine.call_args.kwargs["grounded_missing_evidence_followup"] is True
+    unit_provider = engine.call_args.kwargs["unit_provider_factory"]()
+    assert unit_provider.config["request_budget"] is providers[0].config["request_budget"]
+
+
 def test_primary_is_closed_if_critic_creation_fails():
     provider = Mock()
     factory = Mock(side_effect=[provider, RuntimeError("creation failed")])

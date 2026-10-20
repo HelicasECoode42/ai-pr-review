@@ -92,14 +92,10 @@ def select_hunks(
     policy = policy or SelectionPolicy()
     edges = import_edges or {}
     hits = rule_hits or set()
-    candidates: list[tuple[float, float, str, DiffHunk, int]] = []
+    candidates: list[tuple[float, float, str, DiffHunk]] = []
     result = SelectionResult()
     for file in files:
         for hunk in hunks.get(file.filename, []):
-            body = "\n".join(
-                line for line in (file.patch or "").splitlines()
-                if line[:1] in {"+", "-"} and not line.startswith(("+++", "---"))
-            )
             tokens = hunk.new_count + hunk.old_count
             value = policy.value(
                 lines_changed=tokens,
@@ -107,13 +103,13 @@ def select_hunks(
                 rule_hit=file.filename in hits,
                 public_interface=_public_interface(file.filename),
             )
-            candidates.append((value, tokens, file.filename, hunk, len(body)))
+            candidates.append((value, tokens, file.filename, hunk))
             result.total_tokens += tokens
             result.total_value += value
     # Value density first; ties break deterministically so two runs agree.
     candidates.sort(key=lambda item: (-(item[0] / max(item[1], 1)), item[2], item[3].new_start))
     remaining = budget
-    for value, tokens, path, hunk, _chars in candidates:
+    for value, tokens, path, hunk in candidates:
         if tokens <= remaining:
             result.selected.append((path, hunk, tokens))
             remaining -= tokens

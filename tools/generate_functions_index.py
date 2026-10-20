@@ -31,44 +31,19 @@ def extract_functions(filepath: str) -> list[dict[str, object]]:
     entries: list[dict[str, object]] = []
 
     for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef):
-            args_str = ", ".join(
-                arg.arg for arg in node.args.args
-            )
-            returns_str = (
-                ast.unparse(node.returns) if node.returns else ""
-            )
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            args_str = ", ".join(arg.arg for arg in node.args.args)
+            returns_str = ast.unparse(node.returns) if node.returns else ""
             doc = ast.get_docstring(node) or ""
-            entries.append(
-                {
-                    "file_path": filepath,
-                    "kind": "function",
-                    "name": node.name,
-                    "args": f"({args_str})",
-                    "returns": returns_str,
-                    "line": node.lineno,
-                    "docstring": doc[:200] if doc else "",
-                }
-            )
-        elif isinstance(node, ast.AsyncFunctionDef):
-            args_str = ", ".join(
-                arg.arg for arg in node.args.args
-            )
-            returns_str = (
-                ast.unparse(node.returns) if node.returns else ""
-            )
-            doc = ast.get_docstring(node) or ""
-            entries.append(
-                {
-                    "file_path": filepath,
-                    "kind": "async_function",
-                    "name": node.name,
-                    "args": f"({args_str})",
-                    "returns": returns_str,
-                    "line": node.lineno,
-                    "docstring": doc[:200] if doc else "",
-                }
-            )
+            entries.append({
+                "file_path": filepath,
+                "kind": "async_function" if isinstance(node, ast.AsyncFunctionDef) else "function",
+                "name": node.name,
+                "args": f"({args_str})",
+                "returns": returns_str,
+                "line": node.lineno,
+                "docstring": doc[:200] if doc else "",
+            })
         elif isinstance(node, ast.ClassDef):
             doc = ast.get_docstring(node) or ""
             entries.append(

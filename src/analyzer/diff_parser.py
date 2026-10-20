@@ -92,7 +92,6 @@ def _build_hunk(
     new_count: int,
     lines: list[str],
 ) -> DiffHunk:
-    old_line = old_start
     new_line = new_start
     added_lines: list[ChangedLine] = []
     removed_lines: list[str] = []
@@ -108,9 +107,7 @@ def _build_hunk(
                 new_line += 1
             elif raw_line.startswith("-") and not raw_line.startswith("---"):
                 removed_lines.append(raw_line[1:])
-                old_line += 1
             else:
-                old_line += 1
                 new_line += 1
         except Exception as e:
             logger.warning(f"Skipping malformed line in hunk: {e}")

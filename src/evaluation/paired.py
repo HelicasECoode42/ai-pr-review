@@ -14,7 +14,7 @@ from src.evaluation.corpus import persist_review_trace, trace_input_identity, wr
 from src.evaluation.reviewbench import _usage_total, run_review
 from src.evaluation.runtime import FATAL_HTTP_STATUSES, EvaluationFailure, source_identity
 from src.reviewer.provider import OpenAICompatibleProvider, ProviderError
-from src.utils.config import get_settings
+from src.utils.config import get_settings, is_deepseek_chat_model
 
 DEFAULT_OUTPUT_TOKENS = 32768
 MAX_REVIEW_MODEL_CALLS = 5  # three discovery rounds and two verification calls
@@ -136,6 +136,11 @@ def paired(prepared, mirrors, output, *, arms=("control", "grounded"), concurren
     if max_http_attempts is not None and max_http_attempts < 1:
         raise ValueError("max_http_attempts must be >= 1")
     settings = get_settings()
+    thinking_enabled = (
+        settings.review_thinking_enabled
+        if is_deepseek_chat_model(settings.review_model, settings.openai_base_url)
+        else None
+    )
     if not settings.openai_api_key:
         raise RuntimeError("Model credential required")
     identity = source_identity()
@@ -151,7 +156,9 @@ def paired(prepared, mirrors, output, *, arms=("control", "grounded"), concurren
                 "max_http_attempts_per_run": resolved_http_attempts,
                 "http_attempt_semantics": "HTTP attempts started; billing may differ",
                 "read_timeout_seconds": 180, "total_timeout_per_call_seconds": 300,
-                "reasoning_effort": "low", "temperature_requested": .1, "max_suggestions": 20, "control_min_confidence": .65,
+                "reasoning_effort": None if thinking_enabled is False else "low",
+                "thinking_enabled": thinking_enabled,
+                "temperature_requested": .1, "max_suggestions": 20, "control_min_confidence": .65,
                 "grounded_acceptance": "confirmed causal chain plus validated source citations; confidence is reported, not a calibrated probability",
                 "guidance": True, "concurrency": concurrency, "max_attempts_per_task": max_attempts,
                 "discovery_max_calls": 3, "verification_max_calls": 2,
@@ -218,10 +225,10 @@ def paired(prepared, mirrors, output, *, arms=("control", "grounded"), concurren
         for index in range(max_attempts):
             if stop.is_set():
                 break
-            provider = OpenAICompatibleProvider(
-                settings.openai_api_key,
-                settings.review_model,
-                settings.openai_base_url,
+            provider_options = dict(
+                api_key=settings.openai_api_key,
+                model=settings.review_model,
+                base_url=settings.openai_base_url,
                 timeout=180,
                 stream=True,
                 total_timeout=300,
@@ -229,6 +236,9 @@ def paired(prepared, mirrors, output, *, arms=("control", "grounded"), concurren
                 reasoning_effort="low",
                 request_attempt_hook=request_budget.begin_attempt,
             )
+            if thinking_enabled is not None:
+                provider_options["thinking_enabled"] = thinking_enabled
+            provider = OpenAICompatibleProvider(**provider_options)
             measured = MeasuredProvider(provider)
             started = time.monotonic()
             try:

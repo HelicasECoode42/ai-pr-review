@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from src.agent.trace import (
     redact_secrets,
     summarize_input,
@@ -156,13 +154,20 @@ class TestSummarizeObservation:
         import json
 
         raw = json.dumps({
-            "summary": "test",
-            "risk_level": "low",
-            "suggestions": [{"title": "X"}],
+            "summary": "Long model response: " + ("details " * 100),
+            "risk_level": "high",
+            "suggestions": [{"title": "First"}, {"title": "Second"}],
         })
+        assert len(raw) > 500
         result = summarize_observation(raw, tool_name="unknown")
-        # Long string (>500 chars) should be summarised as model output
-        assert "chars" in result or "parse_status" in result
+        assert result == {
+            "chars": len(raw),
+            "parse_status": "success",
+            "suggestions_count": 2,
+            "risk_level": "high",
+        }
+        assert raw not in str(result)
+        assert ("details " * 10) not in str(result)
 
     def test_render_markdown_observation(self) -> None:
         result = summarize_observation("# Report\n\nhello", tool_name="render_markdown")

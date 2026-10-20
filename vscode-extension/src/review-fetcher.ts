@@ -231,20 +231,6 @@ export async function fetchReview(
     if (parsed) suggestions.push(parsed);
   }
 
-  if (suggestions.length === 0 && summary) {
-    return {
-      pr,
-      suggestions,
-      summary,
-      workflowRunUrl: run?.url ?? null,
-      workflowStatus: run
-        ? (run.conclusion ?? run.status)
-        : null,
-      reviewMeta: parseReviewMeta(summary),
-      riskLevel: parseRiskLevel(summary),
-    };
-  }
-
   return {
     pr,
     suggestions,

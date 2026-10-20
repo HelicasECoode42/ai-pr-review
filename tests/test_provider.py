@@ -263,3 +263,63 @@ def test_explicit_reasoning_effort_is_sent_without_changing_model():
     body = json.loads(route.calls[0].request.content)
     assert body["reasoning_effort"] == "low"
     assert body["model"] == "deepseek-v4-flash"
+
+
+@respx.mock
+def test_explicit_disabled_thinking_is_sent_and_suppresses_reasoning_effort():
+    import json
+
+    route = respx.post("https://provider.test/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": '{"ok": true}'}}]},
+        )
+    )
+    with OpenAICompatibleProvider(
+        "test-key", "deepseek-flash", "https://provider.test/v1",
+        reasoning_effort="low", thinking_enabled=False,
+    ) as provider:
+        provider.complete_json("Return JSON", "Check")
+
+    body = json.loads(route.calls[0].request.content)
+    assert body["thinking"] == {"type": "disabled"}
+    assert "reasoning_effort" not in body
+    assert body["model"] == "deepseek-flash"
+
+
+@respx.mock
+def test_review_application_passes_explicit_thinking_setting_to_provider():
+    from src.application.review import ReviewApplication
+    from src.utils.config import Settings
+
+    captured = {}
+
+    def factory(**kwargs):
+        captured.update(kwargs)
+        return type("Provider", (), {"close": lambda self: None})()
+
+    settings = Settings(
+        openai_api_key="test-key",
+        openai_base_url="https://api.deepseek.com",
+        review_model="deepseek-flash",
+        review_thinking_enabled=False,
+        enable_repository_review=True,
+    )
+    application = ReviewApplication(settings, provider_factory=factory)
+    application._provider("deepseek-flash", ReviewRequestBudget(1000, 1, 5))
+
+    assert captured["thinking_enabled"] is False
+    assert captured["reasoning_effort"] == "low"
+
+    captured.clear()
+    other_settings = Settings(
+        openai_api_key="test-key",
+        openai_base_url="https://provider.test/v1",
+        review_model="deepseek-flash",
+        review_thinking_enabled=False,
+        enable_repository_review=True,
+    )
+    ReviewApplication(other_settings, provider_factory=factory)._provider(
+        "deepseek-flash", ReviewRequestBudget(1000, 1, 5)
+    )
+    assert "thinking_enabled" not in captured

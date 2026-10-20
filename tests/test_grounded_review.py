@@ -24,11 +24,14 @@ def repo(tmp_path):
     git(tmp_path, "config", "user.email", "fixture@example.invalid")
     git(tmp_path, "config", "user.name", "Fixture")
     (tmp_path / "users.py").write_text('def get_profile():\n    return ("name", 42)\n')
+    (tmp_path / "helper.py").write_text('def decision_helper():\n    return "frozen evidence"\n')
     (tmp_path / "caller.py").write_text('from users import get_profile\ndef render():\n    name, age = get_profile()\n    return age + 1\n')
-    git(tmp_path, "add", "."); git(tmp_path, "commit", "-m", "base")
+    git(tmp_path, "add", ".")
+    git(tmp_path, "commit", "-m", "base")
     base = git(tmp_path, "rev-parse", "HEAD")
     (tmp_path / "users.py").write_text('def get_profile():\n    return {"name": "name", "age": 42}\n')
-    git(tmp_path, "add", "."); git(tmp_path, "commit", "-m", "head")
+    git(tmp_path, "add", ".")
+    git(tmp_path, "commit", "-m", "head")
     head = git(tmp_path, "rev-parse", "HEAD")
     return tmp_path, base, head
 
@@ -64,7 +67,8 @@ def verdict(**updates):
     return {"items": [{**item, **updates}]}
 
 
-def run(repo, responses, *, description="", trace_input_identity=None, evidence_tokens=6000):
+def run(repo, responses, *, description="", trace_input_identity=None, evidence_tokens=6000,
+        missing_evidence_followup=False):
     root, base, head = repo
     snapshot = GitSnapshot(root, base, head)
     files = parse_diff(git(root, "diff", base, head))
@@ -76,7 +80,8 @@ def run(repo, responses, *, description="", trace_input_identity=None, evidence_
                             repository_snapshot=snapshot, follow_changes=True,
                             repository_evidence_tokens=evidence_tokens,
                             review_context=context,
-                            trace_input_identity=trace_input_identity)
+                            trace_input_identity=trace_input_identity,
+                            grounded_missing_evidence_followup=missing_evidence_followup)
     return report, provider
 
 
@@ -128,6 +133,341 @@ def test_intent_plan_executes_frozen_cross_file_task_and_verification_cites_it(r
     assert "name, age = get_profile()" in provider.calls[-1][1]
     assert intent["assessments"][0]["evidence_refs"] == intent["tasks"][0]["evidence_refs"]
     assert len(report.suggestions) == 1
+
+
+def test_declared_missing_evidence_uses_one_existing_bounded_followup_slot(repo):
+    hypothesis = {
+        **planned_hypotheses()[0],
+        "missing_evidence": [{"id": "helper", "description": "Read the helper implementation"}],
+    }
+
+    def final_assessment(system, prompt):
+        refs = task_evidence_refs(prompt)
+        assert "def decision_helper()" in prompt
+        return {**verdict(), "intent_assessments": [{
+            "hypothesis_id": "H1", "status": "supported", "evidence_refs": refs,
+            "rationale": "The declared helper source is visible in the frozen bundle.",
+            "unknowns": [],
+        }]}
+
+    report, provider = run(repo, [
+        {**candidate(), "intent_hypotheses": [hypothesis]},
+        {"items": [{**verdict()["items"][0], "decision": "needs_context"}],
+         "missing_evidence_requests": [{
+            "hypothesis_id": "H1", "missing_id": "helper",
+            "purpose": "Read the missing helper implementation",
+            "tool": "read", "path": "helper.py", "line": 1, "side": "head",
+        }]},
+        final_assessment,
+    ], missing_evidence_followup=True)
+
+    trace = report.repository_context["review_trace"]
+    assert len(provider.calls) == 3  # discovery + existing verify slots; no extra model round
+    assert trace["missing_evidence_followup_enabled"] is True
+    obligation = trace["intent"]["hypotheses"][0]["missing_evidence"][0]
+    assert obligation["status"] == "evidence_visible"
+    assert obligation["code_ranges"][0]["path"] == "helper.py"
+    assert obligation["code_ranges"][0]["start_line"] <= 1
+    task = next(task for task in trace["intent"]["tasks"] if task["followup"])
+    assert task["missing_id"] == "helper"
+    assert task["evidence_ref_ids"]
+    candidate_record = trace["intent"]["candidate_evidence"][0]
+    assert candidate_record["candidate_id"] == 0
+    assert candidate_record["code_ranges"]
+
+
+def test_needs_context_without_declared_obligation_does_not_invent_a_followup(repo):
+    missing_context = {**verdict()["items"][0], "decision": "needs_context"}
+    report, provider = run(repo, [
+        {**candidate(), "intent_hypotheses": planned_hypotheses()},
+        {"items": [missing_context]},
+    ],
+                           missing_evidence_followup=True)
+
+    assert len(provider.calls) == 2
+    assert report.pending_suggestions
+    assert report.repository_context["requests"] == []
+    trace = report.repository_context["review_trace"]
+    assert trace["intent"]["hypotheses"][0]["missing_evidence"] == []
+    assert trace["intent"]["tasks"] == []
+
+
+def test_duplicate_missing_evidence_obligation_request_is_recorded_without_second_read(repo):
+    hypothesis = {
+        **planned_hypotheses()[0],
+        "missing_evidence": [{"id": "helper", "description": "Read helper behavior"}],
+    }
+    request = {
+        "hypothesis_id": "H1", "missing_id": "helper",
+        "purpose": "Read the helper implementation",
+        "tool": "read", "path": "helper.py", "line": 1, "side": "head",
+    }
+    report, _ = run(repo, [
+        {**candidate(), "intent_hypotheses": [hypothesis]},
+        {"missing_evidence_requests": [request, request]},
+        verdict(),
+    ], missing_evidence_followup=True)
+
+    tasks = report.repository_context["review_trace"]["intent"]["tasks"]
+    assert sorted(task["status"] for task in tasks if task["followup"]) == sorted([
+        "executed_with_evidence", "duplicate_missing_evidence_request",
+    ])
+    executed_reads = [entry for entry in report.repository_context["requests"]
+                      if entry.get("normalized_query", {}).get("tool") == "read"]
+    assert len(executed_reads) == 1
+
+
+def test_second_missing_evidence_request_is_recorded_at_single_followup_limit(repo):
+    hypothesis = {
+        **planned_hypotheses()[0],
+        "missing_evidence": [
+            {"id": "helper", "description": "Read helper behavior"},
+            {"id": "caller", "description": "Read caller contract"},
+        ],
+    }
+    first_request = {
+        "hypothesis_id": "H1", "missing_id": "helper",
+        "purpose": "Read the helper implementation",
+        "tool": "read", "path": "helper.py", "line": 1, "side": "head",
+    }
+    second_request = {
+        "hypothesis_id": "H1", "missing_id": "caller",
+        "purpose": "Read the caller contract",
+        "tool": "read", "path": "caller.py", "line": 3, "side": "head",
+    }
+    second_verification = {
+        "items": [{**verdict()["items"][0], "decision": "needs_context"}],
+        "missing_evidence_requests": [second_request],
+    }
+    report, _ = run(repo, [
+        {**candidate(), "intent_hypotheses": [hypothesis]},
+        {"missing_evidence_requests": [first_request]},
+        second_verification,
+    ], missing_evidence_followup=True)
+
+    trace = report.repository_context["review_trace"]["intent"]
+    tasks = [task for task in trace["tasks"] if task["followup"]]
+    assert {task["status"] for task in tasks} == {
+        "executed_with_evidence", "not_executed_followup_limit",
+    }
+    caller_obligation = next(
+        obligation for hypothesis_trace in trace["hypotheses"]
+        for obligation in hypothesis_trace["missing_evidence"]
+        if obligation["missing_id"] == "caller"
+    )
+    assert caller_obligation["status"] == "followup_limit_rejected"
+    assert len(report.repository_context["requests"]) == 1
+
+
+def test_declared_missing_evidence_without_request_stays_not_requested(repo):
+    hypothesis = {
+        **planned_hypotheses()[0],
+        "missing_evidence": [{"id": "helper", "description": "Read helper behavior"}],
+    }
+    report, provider = run(repo, [
+        {**candidate(), "intent_hypotheses": [hypothesis]},
+        {**verdict(), "missing_evidence_requests": []},
+    ], missing_evidence_followup=True)
+
+    assert len(provider.calls) == 2
+    obligation = report.repository_context["review_trace"]["intent"]["hypotheses"][0][
+        "missing_evidence"
+    ][0]
+    assert obligation["status"] == "not_requested"
+    assert report.repository_context["requests"] == []
+
+
+def test_unbound_missing_id_cannot_execute_or_dismiss_without_counter_evidence(repo):
+    hypothesis = {
+        **planned_hypotheses()[0],
+        "missing_evidence": [{"id": "helper", "description": "Read helper behavior"}],
+    }
+    dismissal = verdict()["items"][0] | {"decision": "dismissed", "counter_evidence": []}
+    report, provider = run(repo, [
+        {**candidate(), "intent_hypotheses": [hypothesis]},
+        {"missing_evidence_requests": [{
+            "hypothesis_id": "H1", "missing_id": "invented",
+            "purpose": "Read the helper implementation",
+            "tool": "read", "path": "helper.py", "line": 1, "side": "head",
+        }]},
+        {"items": [dismissal]},
+    ], missing_evidence_followup=True)
+
+    assert "def decision_helper()" not in provider.calls[-1][1]
+    assert not report.suggestions
+    assert report.pending_suggestions
+    trace = report.repository_context["review_trace"]
+    obligation = trace["intent"]["hypotheses"][0]["missing_evidence"][0]
+    assert obligation["status"] == "not_requested"
+    task = next(task for task in trace["intent"]["tasks"] if task["followup"])
+    assert task["status"] == "unknown_missing_evidence_id"
+
+
+@pytest.mark.parametrize("invalid_missing_id", [["helper"], {"id": "helper"}])
+def test_unhashable_missing_id_is_rejected_without_aborting_verification(
+    repo, invalid_missing_id
+):
+    hypothesis = {
+        **planned_hypotheses()[0],
+        "missing_evidence": [{"id": "helper", "description": "Read helper behavior"}],
+    }
+    report, provider = run(repo, [
+        {**candidate(), "intent_hypotheses": [hypothesis]},
+        {"missing_evidence_requests": [{
+            "hypothesis_id": "H1", "missing_id": invalid_missing_id,
+            "purpose": "Read the helper implementation",
+            "tool": "read", "path": "helper.py", "line": 1, "side": "head",
+        }]},
+        verdict(),
+    ], missing_evidence_followup=True)
+
+    assert len(provider.calls) == 2
+    task = next(task for task in report.repository_context["review_trace"]["intent"]["tasks"]
+                if task.get("followup"))
+    assert task["status"] == "missing_evidence_id_required"
+
+
+def test_missing_evidence_followup_budget_omission_is_not_called_failed_read(repo):
+    hypothesis = {
+        **planned_hypotheses()[0],
+        "missing_evidence": [{"id": "helper", "description": "Read helper behavior"}],
+    }
+    report, provider = run(repo, [
+        {**candidate(), "intent_hypotheses": [hypothesis]},
+        {"missing_evidence_requests": [{
+            "hypothesis_id": "H1", "missing_id": "helper",
+            "purpose": "Read the helper implementation",
+            "tool": "read", "path": "helper.py", "line": 1, "side": "head",
+        }]},
+        verdict(),
+    ], evidence_tokens=1, missing_evidence_followup=True)
+
+    assert len(provider.calls) == 3
+    obligation = report.repository_context["review_trace"]["intent"]["hypotheses"][0][
+        "missing_evidence"
+    ][0]
+    assert obligation["status"] == "budget_rejected"
+
+
+def test_same_visible_query_reuses_refs_for_another_hypothesis_obligation(repo):
+    hypotheses = [
+        {**planned_hypotheses()[0], "missing_evidence": [
+            {"id": "first", "description": "Read helper implementation"},
+        ]},
+        {"id": "H2", "goal": "Check helper contract", "source_refs": ["diff:users.py"],
+         "missing_evidence": [
+             {"id": "second", "description": "Read helper implementation"},
+         ]},
+    ]
+    report, _ = run(repo, [
+        {**candidate(), "intent_hypotheses": hypotheses, "context_requests": [{
+            "hypothesis_id": "H1", "missing_id": "first",
+            "purpose": "Read helper source", "tool": "read",
+            "path": "helper.py", "line": 1, "side": "head",
+        }]},
+        {**candidate(), "intent_hypotheses": hypotheses},
+        {"missing_evidence_requests": [{
+            "hypothesis_id": "H2", "missing_id": "second",
+            "purpose": "Read the same helper source for the second hypothesis",
+            "tool": "read", "path": "helper.py", "line": 1, "side": "head",
+        }]},
+        verdict(),
+    ], missing_evidence_followup=True)
+
+    trace = report.repository_context["review_trace"]
+    tasks = trace["intent"]["tasks"]
+    second = next(task for task in tasks if task["missing_id"] == "second")
+    assert second["reused"] is True
+    assert second["evidence_ref_ids"]
+    second_obligation = next(
+        item for item in trace["intent"]["hypotheses"][1]["missing_evidence"]
+        if item["missing_id"] == "second"
+    )
+    assert second_obligation["status"] == "evidence_visible"
+
+
+def test_same_empty_query_reuses_no_evidence_outcome_for_another_obligation(repo):
+    hypotheses = [
+        {**planned_hypotheses()[0], "missing_evidence": [
+            {"id": "first", "description": "Find helper by name"},
+        ]},
+        {"id": "H2", "goal": "Check the same helper contract", "source_refs": ["diff:users.py"],
+         "missing_evidence": [
+             {"id": "second", "description": "Find helper by name"},
+         ]},
+    ]
+    request = {
+        "purpose": "Search for the absent helper",
+        "tool": "search", "symbol": "absent_helper_xyz", "side": "head",
+    }
+    report, _ = run(repo, [
+        {**candidate(), "intent_hypotheses": hypotheses,
+         "context_requests": [{**request, "hypothesis_id": "H1", "missing_id": "first"}]},
+        {**candidate(), "intent_hypotheses": hypotheses},
+        {"missing_evidence_requests": [{
+            **request, "hypothesis_id": "H2", "missing_id": "second",
+        }]},
+        verdict(),
+    ], missing_evidence_followup=True)
+
+    trace = report.repository_context["review_trace"]
+    second = next(task for task in trace["intent"]["tasks"]
+                  if task.get("missing_id") == "second")
+    first = next(task for task in trace["intent"]["tasks"]
+                 if task.get("missing_id") == "first")
+    assert first["status"] == "executed_no_evidence"
+    assert second["status"] == "executed_no_evidence"
+    assert second["reused"] is True
+    assert second["evidence_ref_ids"] == []
+
+
+def test_missing_request_overflow_is_aggregated_and_bounded(repo):
+    hypothesis = {**planned_hypotheses()[0], "missing_evidence": [
+        {"id": f"missing_{index}", "description": f"Read source {index}"}
+        for index in range(4)
+    ]}
+    requests = [{
+        "hypothesis_id": "H1", "missing_id": f"missing_{index}",
+        "purpose": f"Read source {index}", "tool": "read",
+        "path": "helper.py", "line": 1, "side": "head",
+    } for index in range(9)]
+    report, _ = run(repo, [
+        {**candidate(), "intent_hypotheses": [hypothesis]},
+        {"missing_evidence_requests": requests},
+        verdict(),
+    ], missing_evidence_followup=True)
+
+    intent = report.repository_context["review_trace"]["intent"]
+    assert len(intent["tasks"]) <= 4
+    assert intent["request_overflow_count"] == 5
+    assert intent["error_counts"]["request_limit_exceeded"] == 1
+
+
+def test_mixed_verification_requests_are_both_accounted_in_one_bounded_batch(repo):
+    hypothesis = {
+        **planned_hypotheses()[0],
+        "missing_evidence": [{"id": "helper", "description": "Read helper implementation"}],
+    }
+    report, _ = run(repo, [
+        {**candidate(), "intent_hypotheses": [hypothesis]},
+        {"missing_evidence_requests": [{
+            "hypothesis_id": "H1", "missing_id": "helper",
+            "purpose": "Read the helper implementation",
+            "tool": "read", "path": "helper.py", "line": 1, "side": "head",
+        }], "context_requests": [{
+            "hypothesis_id": "H1", "purpose": "Check the changed caller",
+            "tool": "read", "path": "caller.py", "line": 3, "side": "head",
+        }]},
+        verdict(),
+    ], missing_evidence_followup=True)
+
+    tasks = report.repository_context["review_trace"]["intent"]["tasks"]
+    assert len(tasks) == 2
+    assert {task["status"] for task in tasks} <= {
+        "executed_with_evidence", "executed_no_evidence",
+        "evidence_not_visible_after_prior_request",
+    }
+    assert all("task_id" in task for task in tasks)
 
 
 def test_grounded_trace_is_versioned_and_valid_focus_prioritizes_bounded_tasks(repo):
@@ -407,6 +747,74 @@ def test_verification_request_for_unknown_hypothesis_is_not_executed(repo):
     ]
 
 
+@pytest.mark.parametrize("entrypoint", ["discovery", "verification"])
+def test_intent_host_rejections_are_stable_across_request_entrypoints(repo, entrypoint):
+    requests = [
+        {"hypothesis_id": "H1", "purpose": "Read a source file", "tool": "read",
+         "path": "../outside.py", "line": 1},
+        {"hypothesis_id": "H1", "purpose": "Run a command", "tool": "exec",
+         "command": "touch sentinel"},
+        {"hypothesis_id": "H2", "purpose": "Use an unplanned hypothesis",
+         "tool": "search", "symbol": "render"},
+    ]
+    if entrypoint == "discovery":
+        responses = [
+            {"intent_hypotheses": planned_hypotheses(), "context_requests": requests},
+            {**candidate(), "intent_hypotheses": planned_hypotheses()},
+            verdict(),
+        ]
+    else:
+        responses = [
+            {**candidate(), "intent_hypotheses": planned_hypotheses()},
+            {"context_requests": requests},
+            verdict(),
+        ]
+
+    report, _ = run(repo, responses)
+
+    assert [task["status"] for task in report.repository_context["intent_plan"]["tasks"]] == [
+        "invalid_read_query", "unsupported_tool", "unknown_hypothesis_id",
+    ]
+    assert report.repository_context["requests"] == []
+
+
+def test_budget_omission_uses_same_host_validation_and_cross_file_scope():
+    from src.reviewer.grounded_review import (
+        _new_intent_plan,
+        _record_omitted_intent_task,
+    )
+
+    plan = _new_intent_plan("planning")
+    plan["hypotheses"] = [{
+        "id": "H1", "source_refs": ["diff:users.py"], "priority_eligible": True,
+    }]
+    changed_paths = {"users.py"}
+    invalid = [
+        {"hypothesis_id": "H1", "purpose": "unsafe read", "tool": "read",
+         "path": "../outside.py", "line": 1},
+        {"hypothesis_id": "H1", "purpose": "unsupported action", "tool": "exec"},
+        {"hypothesis_id": "H2", "purpose": "out of scope", "tool": "search",
+         "symbol": "render"},
+    ]
+    for request in invalid:
+        _record_omitted_intent_task(plan, request, "task_limit", changed_paths)
+    assert plan["omitted_tasks"] == []
+
+    _record_omitted_intent_task(
+        plan,
+        {"hypothesis_id": "H1", "purpose": "read unchanged caller", "tool": "read",
+         "path": "caller.py", "line": 3},
+        "task_limit",
+        changed_paths,
+    )
+    assert len(plan["omitted_tasks"]) == 1
+    assert plan["omitted_tasks"][0]["status"] == "not_executed_budget"
+    assert plan["omitted_tasks"][0]["reason"] == "task_limit"
+    assert plan["omitted_tasks"][0]["query"] == {
+        "tool": "read", "path": "caller.py", "line": 3, "side": "head",
+    }
+
+
 def test_follows_unchanged_caller_and_verifies_low_confidence_candidate(repo):
     report, provider = run(repo, [candidate(), verdict()])
     assert report.used_ai
@@ -485,6 +893,28 @@ def test_explicit_unknown_verification_hypothesis_is_rejected_without_a_plan(rep
     assert report.repository_context["intent_plan"]["tasks"][0]["status"] == (
         "unknown_hypothesis_id"
     )
+
+
+def test_archived_negative_identity_replay_rejects_ids_from_invalid_hypotheses(repo):
+    replay_path = (Path(__file__).parent / "fixtures" / "missing_evidence_trigger"
+                   / "negative" / "identity_replay.json")
+    replay = json.loads(replay_path.read_text())
+    report, provider = run(repo, replay["responses"])
+
+    plan = report.repository_context["intent_plan"]
+    assert len(provider.calls) == 2
+    assert plan["error_counts"]["invalid_hypothesis_fields"] == 2
+    assert [task["hypothesis_id"] for task in plan["tasks"]] == ["h1", "h2"]
+    assert [task["status"] for task in plan["tasks"]] == [
+        "unknown_hypothesis_id", "unknown_hypothesis_id",
+    ]
+    assert [task["task_id"] for task in plan["tasks"]] == [
+        "9f49f63522c025be5ec0fc12c3d88d5a8630e5d3b3f8c792e7732fcc01e19234",
+        "6b078f8ca9d714744d282e121bfaa40ec14cc633ebd649de52d60c82a45ab167",
+    ]
+    assert [hypothesis["id"] for hypothesis in plan["hypotheses"]] == ["h1", "h2"]
+    assert all(not hypothesis["missing_evidence"] for hypothesis in plan["hypotheses"])
+    assert report.repository_context["requests"] == []
 
 
 def test_task_for_unknown_hypothesis_is_not_executed(repo):
@@ -1036,35 +1466,113 @@ def test_playbook_addendum_reaches_the_grounded_prompt_and_stays_first(repo):
     assert len(prefixes) == 1
 
 
-def test_unit_prompts_share_an_identical_additional_prefix(tmp_path):
-    """All units of one run must open with the same preamble text."""
-    import subprocess
-
-    from src.analyzer.review_plan import build_review_plan
-    from src.reviewer.unit_review import build_unit_context
-
-    def run(*args):
-        return subprocess.check_output(["git", "-C", str(tmp_path), *args], text=True).strip()
-
-    run("init"); run("config", "user.email", "f@e.invalid"); run("config", "user.name", "F")
+def test_unit_prompts_share_identical_knowledge_prefix_and_actual_unit_content(tmp_path):
+    """Observe real per-unit provider calls: shared knowledge leads, unit diffs vary."""
+    for args in (
+        ("init",),
+        ("config", "user.email", "f@e.invalid"),
+        ("config", "user.name", "Fixture"),
+    ):
+        git(tmp_path, *args)
     for index in range(3):
-        (tmp_path / f"m{index}.py").write_text(f"def f{index}(x):\n    return x\n")
-    run("add", "."); run("commit", "-m", "base")
-    base = run("rev-parse", "HEAD")
+        (tmp_path / f"module_{index}.py").write_text(
+            f"def value_{index}():\n    return 'before_{index}'\n"
+        )
+    git(tmp_path, "add", ".")
+    git(tmp_path, "commit", "-m", "base")
+    base = git(tmp_path, "rev-parse", "HEAD")
     for index in range(3):
-        (tmp_path / f"m{index}.py").write_text(f"def f{index}(x):\n    return x + 1\n")
-    run("add", "."); run("commit", "-m", "head")
-    head = run("rev-parse", "HEAD")
+        (tmp_path / f"module_{index}.py").write_text(
+            f"def value_{index}():\n    return 'unit_payload_{index}'\n"
+        )
+    git(tmp_path, "add", ".")
+    git(tmp_path, "commit", "-m", "head")
+    head = git(tmp_path, "rev-parse", "HEAD")
 
     snapshot = GitSnapshot(tmp_path, base, head)
-    files = parse_diff(run("diff", base, head))
-    plan = build_review_plan(snapshot, files, [f.filename for f in files], token_budget=1000)
-    contexts = [build_unit_context(unit) for unit in plan.units]
-    assert len(contexts) >= 2
-    # The unit diff differs, but the rendered block shape is identical, so a
-    # run-level preamble prepended by the caller is a shared cacheable prefix.
-    heads = {ctx.text.splitlines()[0] for ctx in contexts}
-    assert heads == {""}
+    files = parse_diff(git(tmp_path, "diff", base, head))
+    pr = PullRequest(
+        repo="fixture/repo", number=9, title="Independent module changes",
+        base_sha=base, head_sha=head,
+    )
+    context = build_review_context(
+        pr, files, include_context_pack=False, allow_remote_file_fetch=False,
+        max_patch_tokens=1,
+    )
+    assert context.truncated
+    provider = Provider([
+        {"summary": "Reviewed one unit", "risk_level": "low", "suggestions": []}
+        for _ in range(3)
+    ])
+    knowledge = "## Project knowledge\n- Preserve each module's return contract"
+
+    report = review_with_ai(
+        pr, files, [], provider, 20, repository_snapshot=snapshot,
+        follow_changes=True, review_context=context, prompt_addendum=knowledge,
+        unit_review_max_units=3, unit_review_workers=1,
+        repository_evidence_tokens=1000, unit_evidence_tokens=1000,
+    )
+
+    prompts = [prompt for _system, prompt in provider.calls]
+    assert len(prompts) == report.metrics["units_reviewed"] == 3
+    assert all(prompt.startswith(knowledge + "\n") for prompt in prompts)
+    assert {prompt[:len(knowledge)] for prompt in prompts} == {knowledge}
+    payload_markers = [f"return 'unit_payload_{index}'" for index in range(3)]
+    matched_units = []
+    for prompt in prompts:
+        matches = [index for index, marker in enumerate(payload_markers) if marker in prompt]
+        assert len(matches) == 1
+        matched_units.extend(matches)
+    assert set(matched_units) == {0, 1, 2}
+
+
+def test_unit_followup_slot_rejects_generic_context_request_without_missing_id(tmp_path):
+    for args in (("init",), ("config", "user.email", "f@e.invalid"),
+                 ("config", "user.name", "Fixture")):
+        git(tmp_path, *args)
+    for index in range(3):
+        (tmp_path / f"module_{index}.py").write_text(
+            f"def value_{index}():\n    return 'before_{index}'\n"
+        )
+    git(tmp_path, "add", ".")
+    git(tmp_path, "commit", "-m", "base")
+    base = git(tmp_path, "rev-parse", "HEAD")
+    for index in range(3):
+        (tmp_path / f"module_{index}.py").write_text(
+            f"def value_{index}():\n    return 'after_{index}'\n"
+        )
+    git(tmp_path, "add", ".")
+    git(tmp_path, "commit", "-m", "head")
+    head = git(tmp_path, "rev-parse", "HEAD")
+    snapshot = GitSnapshot(tmp_path, base, head)
+    files = parse_diff(git(tmp_path, "diff", base, head))
+    pr = PullRequest(repo="fixture/repo", number=10, title="Unit review",
+                     base_sha=base, head_sha=head)
+    context = build_review_context(
+        pr, files, include_context_pack=False, allow_remote_file_fetch=False,
+        max_patch_tokens=1,
+    )
+    provider = Provider([
+        {"summary": "Candidate", "risk_level": "medium", "suggestions": [{
+            "file_path": "module_0.py", "line": 2, "severity": "medium",
+            "confidence": .9, "title": "Check contract", "reason": "Possible mismatch",
+            "recommendation": "Read caller", "evidence": [],
+        }]},
+        {"context_requests": [{"path": "helper.py", "line": 1, "side": "head"}],
+         "items": [{"candidate_id": 0, "decision": "needs_context"}]},
+    ])
+
+    report = review_with_ai(
+        pr, files, [], provider, 20, repository_snapshot=snapshot,
+        follow_changes=True, review_context=context, unit_review_max_units=1,
+        unit_review_workers=1, repository_evidence_tokens=1000, unit_evidence_tokens=1000,
+        grounded_missing_evidence_followup=True,
+    )
+
+    assert len(provider.calls) == 2
+    trace = report.repository_context["review_trace"]
+    assert trace["policy"]["grounded_missing_evidence_followup"] is True
+    assert all(task.get("missing_id") is None for task in trace["intent"]["tasks"])
 
 
 def test_impact_closure_coverage_reaches_the_report_metrics(repo):
@@ -1079,3 +1587,20 @@ def test_impact_closure_coverage_reaches_the_report_metrics(repo):
     coverage = report.metrics["impact_coverage"]
     assert nodes >= 0 and seen <= nodes
     assert coverage == (seen / nodes if nodes else 1.0)
+
+
+def test_review_trace_records_rendered_head_ranges_for_the_patch(repo):
+    """S is auditable from a saved report: which head lines reached the prompt."""
+    report, _ = run(repo, [
+        {**candidate(), "intent_hypotheses": planned_hypotheses()},
+        verdict(),
+    ])
+    trace = report.repository_context["review_trace"]
+    ranges = {
+        item["path"]: item["ranges"]
+        for item in trace["coverage"]["rendered_head_ranges"]
+    }
+    assert "users.py" in ranges
+    assert any(start <= 2 <= end for start, end in ranges["users.py"])
+    # caller.py is unchanged in this fixture, so it has no rendered patch lines.
+    assert "caller.py" not in ranges

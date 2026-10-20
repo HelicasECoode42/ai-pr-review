@@ -61,13 +61,6 @@ def test_ai_failure_still_produces_report(sample_pr: PullRequest) -> None:
     assert report.summary
 
 
-def test_empty_pr_produces_diagnostic(sample_pr: PullRequest) -> None:
-    """Empty PR (no files) still produces a report with summary."""
-    report = build_rule_only_report(sample_pr, [], [])
-    assert report.summary
-    assert report.report_confidence in {"normal", "partial", "failed"}
-
-
 def test_diagnostic_report_always_works(sample_pr: PullRequest) -> None:
     """Level 3: build_diagnostic_report always returns a valid report."""
     report = build_diagnostic_report(

@@ -1,0 +1,24 @@
+diff --git a/src/routes.py b/src/routes.py
+index 2d8f8aa..9217abc 100644
+--- a/src/routes.py
++++ b/src/routes.py
+@@ -1,7 +1,5 @@
+ from accounts import load_for_actor
+ 
+ def account_page(account_id, actor):
+-    account = accounts.get(account_id)
+-    if account.owner_id != actor.id:
+-        raise NotFound()
++    account = load_for_actor(account_id, actor)
+     return render(account)
+diff --git a/src/accounts.py b/src/accounts.py
+new file mode 100644
+index 0000000..7ac291c
+--- /dev/null
++++ b/src/accounts.py
+@@ -0,0 +1,5 @@
++def load_for_actor(account_id, actor):
++    account = accounts.get(account_id)
++    if account.owner_id != actor.id:
++        raise NotFound()
++    return account

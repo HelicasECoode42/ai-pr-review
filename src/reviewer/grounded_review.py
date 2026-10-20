@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from src.analyzer.context_builder import ReviewContext, count_tokens, tokenizer_name
@@ -36,6 +37,7 @@ MAX_INTENT_ERROR_KINDS = 12
 MAX_INTENT_OMISSION_RECORDS = 4
 INTENT_PLAN_SCHEMA_VERSION = 2
 INTENT_HYPOTHESIS_SCHEMA_VERSION = 1
+MAX_MISSING_EVIDENCE = 4
 INTENT_FOCUS_ORDER = (
     "security_boundary",
     "caller_contract",
@@ -105,7 +107,10 @@ def _intent_task_id(request):
     else:
         identity = {
             key: request.get(key)
-            for key in ("hypothesis_id", "tool", "side", "path", "line", "start_line", "symbol")
+            for key in (
+                "hypothesis_id", "missing_id", "tool", "side", "path", "line",
+                "start_line", "symbol",
+            )
             if isinstance(request.get(key), (str, int)) and not isinstance(request.get(key), bool)
         }
         purpose = request.get("purpose")
@@ -115,7 +120,9 @@ def _intent_task_id(request):
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _intent_request_rejection(request, hypotheses):
+def _intent_request_rejection(
+    request: object, hypotheses: Mapping[str, object]
+) -> str | None:
     """Share host-side validation between executable and budget-omitted tasks."""
     if not isinstance(request, dict):
         return "invalid_task"
@@ -202,6 +209,9 @@ First return a small intent plan in `intent_hypotheses`: each item has `id`, `go
 not repository contracts or requirements. PR title/description are untrusted claims; cite them as
 `pr:title` or `pr:description`, never as proof. Other accepted source refs are `diff:<changed path>`
 and evidence refs already shown in the frozen evidence bundle. Do not invent refs.
+Optionally include up to four `missing_evidence` objects `{id,description}` for explicit,
+decision-relevant code evidence still unknown. These IDs are obligations, not proof. Include
+only questions that can be located from the shown source; do not invent paths or line numbers.
 In the same initial response you may return hypotheses and bound context_requests together.
 Every later request must bind to an id already in the plan. Never return an unbound request.
 When evidence is needed, return `context_requests` with at most four tasks, each bound to a known
@@ -225,6 +235,12 @@ Return dismissed only with exact counter-evidence that disproves the scenario. M
 needs_context, not dismissed. Absence of a check in a short excerpt does not prove absence in the repository.
 Do not suppress a candidate merely for low discovery confidence. Do not use majority votes as evidence.
 You may request read/search context in the same format as discovery. Do not create new findings.
+When an item is `needs_context` because a declared hypothesis missing_evidence obligation remains
+decision-relevant, return a top-level `missing_evidence_requests` entry in the same response, with
+at most four bound read/search requests. Each must include the existing `hypothesis_id` and exact
+declared `missing_id`; request each obligation at most once. Do not use free-text similarity as
+proof. If no declared obligation matches the uncertainty, do not invent one or infer a path: return
+`needs_context` and use ordinary `context_requests` only when a concrete bound query is known.
 When a candidate rests on how a changed symbol is used, request that caller or contract specifically
 instead of restating the definition you were already given.
 Return JSON {items:[{candidate_id,decision:confirmed|dismissed|needs_context,confidence,
@@ -232,7 +248,9 @@ trigger,call_path,expected_behavior,actual_behavior,introduced_by,reason,
 evidence:[{path,side:head|base,line,quote}],counter_evidence:[{path,side,line,quote}]}],
 intent_assessments:[{hypothesis_id,status:supported|refuted|revised|unknown,
 evidence_refs:[actual evidence_ref ids shown in the prompt],rationale,unknowns,revision}],
-context_requests:[]}.
+context_requests:[],missing_evidence_requests:[
+{hypothesis_id,missing_id,purpose,tool:read,path,line|start_line,side:head|base} |
+{hypothesis_id,missing_id,purpose,tool:search,symbol,side:head|base}]}.
 An intent assessment is only a model assessment of a hypothesis, never a finding verdict. It cannot
 confirm or dismiss a candidate. Cite actual frozen evidence refs; PR description refs alone are not
 supporting code evidence. Unknown, missing or contradictory evidence means unknown/needs_context.
@@ -384,6 +402,27 @@ def _intent_hypotheses(raw, available_sources):
                 valid = False
                 break
             fields[name] = [value.strip() for value in values]
+        raw_missing = item.get("missing_evidence", [])
+        missing_evidence = []
+        if not isinstance(raw_missing, list) or len(raw_missing) > MAX_MISSING_EVIDENCE:
+            errors.append("invalid_missing_evidence_list")
+            raw_missing = []
+        missing_ids = set()
+        for missing in raw_missing:
+            if not isinstance(missing, dict):
+                errors.append("invalid_missing_evidence")
+                continue
+            missing_id = missing.get("id")
+            description = missing.get("description")
+            if (not isinstance(missing_id, str)
+                    or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,31}", missing_id)
+                    or missing_id in missing_ids
+                    or not isinstance(description, str) or not description.strip()
+                    or len(description) > 240):
+                errors.append("invalid_missing_evidence_identity_or_description")
+                continue
+            missing_ids.add(missing_id)
+            missing_evidence.append({"id": missing_id, "description": description.strip()})
         source_refs = item.get("source_refs", [])
         if not isinstance(source_refs, list) or len(source_refs) > 6 or any(
             not isinstance(ref, str) or len(ref) > 200 for ref in source_refs
@@ -414,6 +453,7 @@ def _intent_hypotheses(raw, available_sources):
             "focus_tags": focus_tags,
             "source_refs": accepted,
             "unknown_source_refs": unknown,
+            "missing_evidence": missing_evidence,
             "source_status": "known" if accepted and not unknown else "unknown",
             # PR metadata can seed a question but cannot make it outrank source-backed work.
             "priority_eligible": bool(accepted and not unknown) and any(
@@ -480,6 +520,63 @@ def _intent_assessments(raw, plan, evidence_by_hypothesis):
     return assessments, errors
 
 
+def _missing_evidence_accounting(plan, bundle):
+    """Mechanically report each declared obligation against executed task refs."""
+    excerpt_items = bundle.excerpts if hasattr(bundle, "excerpts") else bundle.get("excerpts", [])
+    excerpts = {item["evidence_ref"]: item for item in excerpt_items}
+    tasks = plan.get("tasks", [])
+    result = []
+    for hypothesis in plan.get("hypotheses", []):
+        for obligation in hypothesis.get("missing_evidence", []):
+            matching = [task for task in tasks
+                        if task.get("hypothesis_id") == hypothesis["id"]
+                        and task.get("missing_id") == obligation["id"]]
+            refs = list(dict.fromkeys(
+                ref for task in matching for ref in task.get("evidence_refs", [])
+                if ref in excerpts
+            ))
+            ranges = [{
+                "evidence_ref": ref,
+                "path": excerpts[ref]["path"],
+                "side": excerpts[ref]["side"],
+                "start_line": excerpts[ref]["start_line"],
+                "end_line": excerpts[ref]["end_line"],
+                "truncated": bool(excerpts[ref].get("truncated")),
+            } for ref in refs]
+            statuses = [task.get("status") for task in matching]
+            if not matching:
+                status = "not_requested"
+            elif any(value == "not_executed_followup_limit" for value in statuses):
+                status = "followup_limit_rejected"
+            elif any(value in {"not_executed_budget_exhausted", "task_limit_exceeded",
+                               "request_limit_exceeded"} for value in statuses):
+                status = "budget_rejected"
+            elif refs and all(item["truncated"] for item in ranges):
+                status = "snippet_truncated"
+            elif refs:
+                status = "evidence_visible"
+            elif any(task.get("omission_reason") == "evidence_budget_exhausted"
+                     for task in matching):
+                status = "budget_rejected"
+            elif any(value in {"executed_no_evidence", "search_unavailable", "no_evidence",
+                               "unavailable", "failed"} for value in statuses):
+                status = "request_failed"
+            else:
+                status = "request_failed"
+            result.append({
+                "hypothesis_id": hypothesis["id"],
+                "missing_id": obligation["id"],
+                "description_sha256": hashlib.sha256(
+                    obligation["description"].encode("utf-8")
+                ).hexdigest(),
+                "status": status,
+                "request_count": len(matching),
+                "evidence_ref_ids": refs,
+                "code_ranges": ranges,
+            })
+    return result
+
+
 def _execute_intent_tasks(bundle, requests, plan, snapshot, query_keys, changed_paths):
     """Validate and execute one bounded batch of hypothesis-bound source queries."""
     hypotheses = {item["id"]: item for item in plan["hypotheses"]}
@@ -500,45 +597,22 @@ def _execute_intent_tasks(bundle, requests, plan, snapshot, query_keys, changed_
     executable = []
     for original_index, request in batch:
         priority = _task_priority(request, plan["hypotheses"], original_index)
-        rejection = None
-        if not isinstance(request, dict):
-            rejection = "invalid_task"
-        elif not hypotheses:
-            rejection = (
-                "unknown_hypothesis_id" if request.get("hypothesis_id")
-                else "unbound_task"
-            )
-        elif not isinstance(request.get("hypothesis_id"), str) or request.get(
-            "hypothesis_id"
-        ) not in hypotheses:
-            rejection = "unknown_hypothesis_id"
-        elif (not isinstance(request.get("purpose"), str)
-              or not request["purpose"].strip() or len(request["purpose"]) > 240):
-            rejection = "invalid_task_purpose"
-        elif not isinstance(request.get("tool"), str) or request["tool"] not in {"read", "search"}:
-            rejection = "unsupported_tool"
-        elif (not isinstance(request.get("side", "head"), str)
-              or request.get("side", "head") not in {"head", "base"}):
-            rejection = "invalid_snapshot_side"
-        elif request["tool"] == "read" and (
-            not isinstance(request.get("path"), str) or len(request.get("path", "")) > 400
-            or not safe_source_path(request["path"])
-            or isinstance(request.get("line", request.get("start_line")), bool)
-            or not isinstance(request.get("line", request.get("start_line")), int)
-            or request.get("line", request.get("start_line")) < 1
-        ):
-            rejection = "invalid_read_query"
-        elif request["tool"] == "search" and (
-            not isinstance(request.get("symbol"), str)
-            or not re.fullmatch(r"[A-Za-z_]\w{2,79}", request.get("symbol", "").strip())
-        ):
-            rejection = "invalid_search_query"
+        rejection = _intent_request_rejection(request, hypotheses)
+        if not rejection and request.get("followup") and not request.get("missing_id"):
+            rejection = "missing_evidence_id_required"
+        if not rejection and request.get("missing_id") is not None:
+            hypothesis = hypotheses[request["hypothesis_id"]]
+            known_missing = {item["id"] for item in hypothesis.get("missing_evidence", [])}
+            if request["missing_id"] not in known_missing:
+                rejection = "unknown_missing_evidence_id"
         if rejection:
             identifier, purpose = _task_labels(request)
             plan["tasks"].append({
                 "hypothesis_id": identifier,
                 "purpose": purpose,
                 "task_id": _intent_task_id(request),
+                "missing_id": request.get("missing_id"),
+                "followup": bool(request.get("followup")),
                 "status": rejection, "evidence_refs": [],
                 "priority_rank": priority[1],
                 "priority_source": "focus_tag" if priority[0] == 0 else "model_order",
@@ -554,10 +628,54 @@ def _execute_intent_tasks(bundle, requests, plan, snapshot, query_keys, changed_
             query_key = (snapshot.base, snapshot.head, "search", request.get("side", "head"),
                          symbol, 4)
             request = {**request, "symbol": symbol}
+        prior_task = None
+        for completed in plan["tasks"]:
+            query = completed.get("query")
+            if not isinstance(query, dict):
+                continue
+            if query.get("tool") == "read":
+                prior_key = (snapshot.base, snapshot.head, "read", query.get("side", "head"),
+                             query.get("path"), query.get("line"))
+            elif query.get("tool") == "search":
+                prior_key = (snapshot.base, snapshot.head, "search", query.get("side", "head"),
+                             query.get("symbol"), query.get("limit", 4))
+            else:
+                continue
+            if prior_key == query_key:
+                prior_task = completed
+                break
+        if prior_task is not None:
+            visible_refs = {item["evidence_ref"] for item in bundle.excerpts}
+            shared_refs = [ref for ref in prior_task.get("evidence_refs", [])
+                           if ref in visible_refs]
+            prior_status = prior_task.get("status", "unknown")
+            prior_had_no_evidence = prior_status != "executed_with_evidence"
+            prior_reused_result = prior_had_no_evidence or bool(shared_refs)
+            plan["tasks"].append({
+                "hypothesis_id": request["hypothesis_id"],
+                "purpose": request["purpose"],
+                "task_id": _intent_task_id(request),
+                "query": prior_task.get("query"),
+                "missing_id": request.get("missing_id"),
+                "followup": bool(request.get("followup")),
+                "status": (prior_status if prior_reused_result
+                           else "evidence_not_visible_after_prior_request"),
+                "reused": prior_reused_result,
+                "evidence_refs": shared_refs,
+                "omission_reason": (
+                    prior_task.get("omission_reason") if prior_had_no_evidence
+                    else None if shared_refs else "prior_evidence_not_rendered"
+                ),
+                "priority_rank": priority[1],
+                "priority_source": "focus_tag" if priority[0] == 0 else "model_order",
+            })
+            continue
         if query_key not in query_keys and len(query_keys) >= MAX_INTENT_TASKS:
             plan["tasks"].append({
                 "hypothesis_id": request["hypothesis_id"], "purpose": request["purpose"],
                 "task_id": _intent_task_id(request),
+                "missing_id": request.get("missing_id"),
+                "followup": bool(request.get("followup")),
                 "status": "task_limit_exceeded", "evidence_refs": [],
                 "priority_rank": priority[1],
                 "priority_source": "focus_tag" if priority[0] == 0 else "model_order",
@@ -586,6 +704,8 @@ def _execute_intent_tasks(bundle, requests, plan, snapshot, query_keys, changed_
             "reused": bool(outcome.get("reused")),
             "evidence_refs": task_evidence_refs,
             "omission_reason": omission_reason,
+            "missing_id": request.get("missing_id"),
+            "followup": bool(request.get("followup")),
             "priority_rank": priority[1],
             "priority_source": "focus_tag" if priority[0] == 0 else "model_order",
         })
@@ -623,7 +743,9 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
                     evidence_tokens=6000, verify_behavior=True, max_suggestions_per_file=5,
                     contract_domains: dict | None = None,
                     discovery_rounds: int = 3, verify_rounds: int = 2,
-                    prompt_addendum: str = "") -> GroundedResult:
+                    prompt_addendum: str = "",
+                    missing_evidence_followup: bool = False,
+                    missing_evidence_followup_only: bool = False) -> GroundedResult:
     """Ground discovery and verification in a frozen snapshot.
 
     Publication here is decided by proof, not by the model's self-reported
@@ -869,6 +991,117 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
                 response = _json(provider, VERIFY_SYSTEM, prompt)
                 verification_calls += 1
                 requested = response.get("context_requests") or []
+                missing_requests = response.get("missing_evidence_requests") or []
+                if (missing_evidence_followup and round_index == 0
+                        and isinstance(missing_requests, list) and missing_requests):
+                    prior_followup = any(
+                        task.get("followup") for task in intent_plan.get("tasks", [])
+                    )
+                    if not prior_followup:
+                        if len(missing_requests) > MAX_INTENT_TASKS:
+                            overflow = len(missing_requests) - MAX_INTENT_TASKS
+                            intent_plan["request_overflow_count"] = (
+                                intent_plan.get("request_overflow_count", 0) + overflow
+                            )
+                            _record_intent_error(intent_plan, "request_limit_exceeded")
+                        hypotheses_by_id = {
+                            item["id"]: item for item in intent_plan["hypotheses"]
+                        }
+                        bounded_missing = []
+                        seen_obligations = set()
+                        for request in missing_requests[:MAX_INTENT_TASKS]:
+                            if not isinstance(request, dict):
+                                intent_plan["tasks"].append({
+                                    "task_id": _intent_task_id(request),
+                                    "status": "invalid_missing_evidence_request",
+                                    "evidence_refs": [],
+                                })
+                                continue
+                            hypothesis = hypotheses_by_id.get(request.get("hypothesis_id"))
+                            known_ids = {item["id"] for item in hypothesis.get(
+                                "missing_evidence", [])} if hypothesis else set()
+                            rejection = _intent_request_rejection(
+                                request, hypotheses_by_id
+                            )
+                            missing_id = request.get("missing_id")
+                            if not isinstance(missing_id, str) or not missing_id:
+                                rejection = rejection or "missing_evidence_id_required"
+                            elif missing_id not in known_ids:
+                                rejection = rejection or "unknown_missing_evidence_id"
+                            obligation_key = (request.get("hypothesis_id"), missing_id)
+                            if not rejection and obligation_key in seen_obligations:
+                                rejection = "duplicate_missing_evidence_request"
+                            if rejection:
+                                hypothesis_id, purpose = _task_labels(request)
+                                intent_plan["tasks"].append({
+                                    "hypothesis_id": hypothesis_id,
+                                    "purpose": purpose,
+                                    "task_id": _intent_task_id(request),
+                                    "missing_id": request.get("missing_id"),
+                                    "followup": True,
+                                    "status": rejection,
+                                    "evidence_refs": [],
+                                })
+                            else:
+                                seen_obligations.add(obligation_key)
+                                bounded_missing.append({**request, "followup": True})
+                        ordinary_requests = requested if isinstance(requested, list) else []
+                        ordinary_capacity = max(0, MAX_INTENT_TASKS - len(bounded_missing))
+                        if len(ordinary_requests) > ordinary_capacity:
+                            overflow = len(ordinary_requests) - ordinary_capacity
+                            intent_plan["request_overflow_count"] = (
+                                intent_plan.get("request_overflow_count", 0) + overflow
+                            )
+                            _record_intent_error(intent_plan, "request_limit_exceeded")
+                        bounded_ordinary = ordinary_requests[:ordinary_capacity]
+                        if missing_evidence_followup_only:
+                            for request in bounded_ordinary:
+                                hypothesis_id, purpose = _task_labels(request)
+                                intent_plan["tasks"].append({
+                                    "hypothesis_id": hypothesis_id,
+                                    "purpose": purpose,
+                                    "task_id": _intent_task_id(request),
+                                    "status": "not_executed_missing_only_policy",
+                                    "evidence_refs": [],
+                                })
+                            executable_requests = bounded_missing
+                        else:
+                            executable_requests = bounded_missing + bounded_ordinary
+                        if executable_requests:
+                            newly_added = _execute_intent_tasks(
+                                bundle, executable_requests, intent_plan, snapshot,
+                                intent_query_keys, changed_paths,
+                            )
+                            if newly_added:
+                                intent_plan["status"] = "evidence_collected"
+                            else:
+                                _record_intent_error(
+                                    intent_plan, "missing_evidence_followup_no_new_evidence"
+                                )
+                            # The final verification consumes the existing second
+                            # round; no provider/request/evidence budget is added.
+                            continue
+                if (missing_evidence_followup and round_index > 0
+                        and isinstance(missing_requests, list) and missing_requests):
+                    if len(missing_requests) > MAX_INTENT_TASKS:
+                        intent_plan["request_overflow_count"] = (
+                            intent_plan.get("request_overflow_count", 0)
+                            + len(missing_requests) - MAX_INTENT_TASKS
+                        )
+                        _record_intent_error(intent_plan, "request_limit_exceeded")
+                    _record_intent_error(intent_plan, "followup_limit_exceeded")
+                    for request in missing_requests[:MAX_INTENT_TASKS]:
+                        hypothesis_id, purpose = _task_labels(request)
+                        intent_plan["tasks"].append({
+                            "hypothesis_id": hypothesis_id,
+                            "purpose": purpose,
+                            "task_id": _intent_task_id(request),
+                            "missing_id": request.get("missing_id")
+                            if isinstance(request, dict) else None,
+                            "followup": True,
+                            "status": "not_executed_followup_limit",
+                            "evidence_refs": [],
+                        })
                 if not requested or round_index == verify_budget - 1:
                     rendered_refs = {item["evidence_ref"] for item in bundle.excerpts}
                     assessed, errors = _intent_assessments(
@@ -889,7 +1122,9 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
                         intent_plan["assessments"] = assessed
                     assessment_errors.extend(errors)
                 if (requested and round_index < verify_budget - 1
-                        and not verify_force_final):
+                        and not verify_force_final
+                        and not (missing_evidence_followup_only
+                                 and missing_evidence_followup and round_index == 0)):
                     if not isinstance(requested, list):
                         raise ValueError("Verification requests must be a list")
                     legacy_requests = (
@@ -1035,6 +1270,7 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
     kept = published
     audit = bundle.audit()
     audit["intent_plan"] = intent_plan
+    audit["missing_evidence_followup_enabled"] = bool(missing_evidence_followup)
     audit["witness_blocked"] = witness_blocked
     # Impact closure: was the callers' side of every change actually visible? Hunk
     # counting says how many lines were shown; this says how much of the change's
@@ -1150,6 +1386,9 @@ def _review_trace(pr, files, result, context, reviewer_version):
         "constraints_sha256": _trace_hash(item.get("constraints", [])),
         "risk_sha256": _trace_hash(item.get("risk_hypotheses", [])),
         "unknown_count": len(item.get("unknowns", [])),
+        "missing_evidence": [obligation for obligation in _missing_evidence_accounting(
+            plan, result.bundle
+        ) if obligation["hypothesis_id"] == item.get("id")],
         "revision": item.get("revision", 0),
     } for item in plan.get("hypotheses", []) if isinstance(item, dict)]
     tasks = []
@@ -1168,6 +1407,8 @@ def _review_trace(pr, files, result, context, reviewer_version):
             "purpose_sha256": _trace_hash(item.get("purpose", "")),
             "status": item.get("status", "unknown"),
             "omission_reason": item.get("omission_reason"),
+            "missing_id": item.get("missing_id"),
+            "followup": bool(item.get("followup")),
             "query": query,
             "priority_rank": item.get("priority_rank"),
             "priority_source": item.get("priority_source", "model_order"),
@@ -1199,6 +1440,35 @@ def _review_trace(pr, files, result, context, reviewer_version):
         "end_line": item.get("end_line"),
         "content_sha256": item.get("sha256"),
     } for ref, item in sorted(excerpt_by_ref.items())]
+    candidate_evidence = []
+    for candidate in result.candidates:
+        candidate_id = candidate.get("candidate_id")
+        decision = next((item for item in result.decisions
+                         if item.get("candidate_id") == candidate_id), {})
+        refs = []
+        for citation in (decision.get("evidence", []) + decision.get("counter_evidence", [])):
+            if not isinstance(citation, dict):
+                continue
+            for ref, excerpt in excerpt_by_ref.items():
+                if (citation.get("path") == excerpt.get("path")
+                        and citation.get("side") == excerpt.get("side")
+                        and isinstance(citation.get("line"), int)
+                        and excerpt.get("start_line", 0) <= citation["line"]
+                        <= excerpt.get("end_line", 0)):
+                    refs.append(ref)
+        refs = list(dict.fromkeys(refs))
+        candidate_evidence.append({
+            "candidate_id": candidate_id,
+            "status": candidate.get("status", "unknown"),
+            "evidence_ref_ids": refs,
+            "code_ranges": [{
+                "evidence_ref_id": ref, "path": excerpt_by_ref[ref].get("path"),
+                "side": excerpt_by_ref[ref].get("side"),
+                "start_line": excerpt_by_ref[ref].get("start_line"),
+                "end_line": excerpt_by_ref[ref].get("end_line"),
+                "truncated": bool(excerpt_by_ref[ref].get("truncated")),
+            } for ref in refs],
+        })
     filters = [
         verdict.get("name") + ":" + ("passed" if verdict.get("passed") else "failed")
         for decision in result.decisions if isinstance(decision, dict)
@@ -1217,9 +1487,11 @@ def _review_trace(pr, files, result, context, reviewer_version):
             "schema_version": plan.get("schema_version", INTENT_PLAN_SCHEMA_VERSION),
             "status": plan.get("status", "not_reported"),
             "hypotheses": hypotheses,
+            "candidate_evidence": candidate_evidence,
             "tasks": tasks,
             "omitted_tasks": omitted_tasks,
             "omitted_task_overflow_count": plan.get("omitted_task_overflow_count", 0),
+            "request_overflow_count": plan.get("request_overflow_count", 0),
             "assessments": [{
                 "hypothesis_id": item.get("hypothesis_id"),
                 "status": item.get("status", "unknown"),
@@ -1230,6 +1502,9 @@ def _review_trace(pr, files, result, context, reviewer_version):
             "error_counts": dict(plan.get("error_counts", {})),
         },
         "evidence_refs": evidence_refs,
+        "missing_evidence_followup_enabled": bool(
+            result.bundle.get("missing_evidence_followup_enabled", False)
+        ),
         "candidate_counts": {
             "raw": len(result.candidates),
             "confirmed": sum(status == "confirmed" for status in statuses),
@@ -1260,6 +1535,15 @@ def _review_trace(pr, files, result, context, reviewer_version):
             "evidence_budget_limit": result.bundle.get("token_budget", 0),
             "omitted_count": len(result.bundle.get("omitted", [])),
             "evicted_count": len(result.bundle.get("evicted", [])),
+            # Head lines that reached the prompt patch section. Ranges only, no
+            # source text, so a saved report can answer "was the gold line shown?"
+            "rendered_head_ranges": [
+                {"path": path, "ranges": [[start, end] for start, end in ranges]}
+                for path, ranges in sorted(
+                    getattr(context, "rendered_head_ranges", {}).items()
+                )
+                if ranges
+            ],
         },
         "unknown_counts": {
             "hypotheses_with_unknown_source": sum(
@@ -1300,6 +1584,11 @@ def build_grounded_report(pr, files, findings, result, context, *, reviewer_vers
                       or result.bundle["snapshot"].get("search_limited")
                       or result.bundle["snapshot"].get("errors"))
     warnings = ["Behavior verification uses cited source reasoning; no target tests were executed."]
+    if result.bundle.get("provider_cleanup_failed"):
+        warnings.append(
+            "Unit provider cleanup failed; completed model results were retained without retry."
+        )
+        report_confidence = "partial"
     intent_status = result.bundle.get("intent_plan", {}).get("status")
     if intent_status == "not_reported":
         warnings.append(

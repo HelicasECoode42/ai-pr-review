@@ -119,12 +119,16 @@ class OpenAICompatibleProvider:
         request_budget: ReviewRequestBudget | None = None,
         read_timeout: float | None = None,
         connect_timeout: float = 10.0,
+        thinking_enabled: bool | None = None,
     ) -> None:
         self._model = model
         self._stream = stream
         self._max_output_tokens = max_output_tokens
         self._total_timeout = total_timeout
-        self._reasoning_effort = reasoning_effort
+        self._thinking_enabled = thinking_enabled
+        self._reasoning_effort = (
+            None if thinking_enabled is False else reasoning_effort
+        )
         self._request_attempt_hook = request_attempt_hook
         self._request_budget = request_budget
         self._read_timeout = read_timeout if read_timeout is not None else timeout
@@ -150,6 +154,10 @@ class OpenAICompatibleProvider:
         }
         if self._reasoning_effort is not None:
             payload["reasoning_effort"] = self._reasoning_effort
+        if self._thinking_enabled is not None:
+            payload["thinking"] = {
+                "type": "enabled" if self._thinking_enabled else "disabled"
+            }
         if self._max_output_tokens is not None:
             payload["max_tokens"] = self._max_output_tokens
         try:

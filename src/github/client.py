@@ -1,18 +1,36 @@
 from __future__ import annotations
 
-import httpx
-import logging
-from typing import Optional
 import base64
+import json
+import logging
+import time
+
+import httpx
 
 from src.models import ChangedFile, FileStatus, PullRequest
 
 logger = logging.getLogger(__name__)
+_CONTENT_RESPONSE_MAX_BYTES = 800_000
+_TREE_RESPONSE_MAX_BYTES = 2_000_000
+_CONTENT_BODY_DEADLINE_SECONDS = 10.0
+_CONTENT_READ_IDLE_TIMEOUT_SECONDS = 2.0
 
 
 class GitHubApiError(Exception):
     """Raised when GitHub API request fails (network, auth, HTTP error)."""
     pass
+
+
+class GitHubResponseTooLarge(GitHubApiError):
+    """A bounded source/tree response exceeded the caller's byte allowance."""
+
+    reason = "response_too_large"
+
+
+class GitHubResponseTimeout(GitHubApiError):
+    """A bounded source/tree response exceeded its wall-clock deadline."""
+
+    reason = "response_timed_out"
 
 
 def _as_int(value: object) -> int:
@@ -82,12 +100,87 @@ class GitHubClient:
             if status == 401:
                 raise GitHubApiError("Authentication failed: token invalid or expired") from exc
             if status == 403:
-                raise GitHubApiError("Access denied: rate limit exceeded or insufficient permissions") from exc
+                raise GitHubApiError(
+                    "Access denied: rate limit exceeded or insufficient permissions"
+                ) from exc
             if status == 404:
                 raise GitHubApiError(f"Resource not found: {path}") from exc
             raise GitHubApiError(f"HTTP {status}: {path}") from exc
         except httpx.RequestError as exc:
             raise GitHubApiError(f"Failed to connect to GitHub API: {exc}") from exc
+
+    def _get_json_limited(
+        self, path: str, *, params: dict[str, str] | None = None, max_response_bytes: int,
+        deadline_seconds: float = _CONTENT_BODY_DEADLINE_SECONDS,
+    ) -> object:
+        """Read a small JSON response incrementally before parsing it.
+
+        Snapshot source and recursive-tree endpoints can return attacker-controlled
+        JSON. Requesting identity encoding keeps the byte cap on the bytes we store,
+        and the stream is closed as soon as the cap or deadline is crossed.
+        """
+        if max_response_bytes <= 0 or deadline_seconds <= 0:
+            raise ValueError("invalid GitHub response limits")
+        timeout = httpx.Timeout(
+            self.timeout,
+            connect=min(self.timeout, 5.0),
+            read=min(self.timeout, _CONTENT_READ_IDLE_TIMEOUT_SECONDS),
+            write=min(self.timeout, 5.0),
+            pool=min(self.timeout, 5.0),
+        )
+        deadline = time.monotonic() + deadline_seconds
+        body = bytearray()
+        try:
+            with self._client.stream(
+                "GET", path, params=params,
+                headers={"Accept-Encoding": "identity"}, timeout=timeout,
+            ) as response:
+                response.raise_for_status()
+                # Do not coalesce small arrivals: an 8 KiB chunker can hide a
+                # slow-dripping body from the deadline check for many seconds.
+                for chunk in response.iter_raw():
+                    if time.monotonic() > deadline:
+                        raise GitHubResponseTimeout(
+                            f"GitHub API response deadline exceeded: {path}"
+                        )
+                    remaining = max_response_bytes - len(body)
+                    if len(chunk) > remaining:
+                        raise GitHubResponseTooLarge(
+                            f"GitHub API response exceeded byte limit: {path}"
+                        )
+                    body.extend(chunk)
+            if time.monotonic() > deadline:
+                raise GitHubResponseTimeout(f"GitHub API response deadline exceeded: {path}")
+            try:
+                return json.loads(body.decode("utf-8"))
+            except (UnicodeError, json.JSONDecodeError) as exc:
+                raise GitHubApiError(f"Invalid JSON response: {path}") from exc
+        except GitHubApiError:
+            raise
+        except httpx.TimeoutException:
+            raise GitHubResponseTimeout(f"GitHub API timeout: {path}") from None
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            if status == 401:
+                raise GitHubApiError("Authentication failed: token invalid or expired") from exc
+            if status == 403:
+                raise GitHubApiError(
+                    "Access denied: rate limit exceeded or insufficient permissions"
+                ) from exc
+            if status == 404:
+                raise GitHubApiError(f"Resource not found: {path}") from exc
+            raise GitHubApiError(f"HTTP {status}: {path}") from exc
+        except httpx.RequestError as exc:
+            raise GitHubApiError(f"Failed to connect to GitHub API: {exc}") from exc
+
+    def get_json_limited(
+        self, path: str, *, params: dict[str, str] | None = None,
+        max_response_bytes: int = _TREE_RESPONSE_MAX_BYTES,
+    ) -> object:
+        """Fetch bounded JSON for frozen snapshot inventory queries."""
+        return self._get_json_limited(
+            path, params=params, max_response_bytes=max_response_bytes,
+        )
 
     def get_pull_request(self, repo: str, number: int) -> PullRequest:
         response = self._get(f"/repos/{repo}/pulls/{number}")
@@ -217,25 +310,45 @@ class GitHubClient:
         if ref:
             params["ref"] = ref
         try:
-            response = self._get(f"/repos/{repo}/contents/{path}", params=params)
-            data = response.json()
+            data = self._get_json_limited(
+                f"/repos/{repo}/contents/{path}", params=params,
+                max_response_bytes=_CONTENT_RESPONSE_MAX_BYTES,
+            )
+            if not isinstance(data, dict):
+                raise GitHubApiError(f"Invalid file response: {repo}/{path}@{ref}")
             content = data.get("content")
             encoding = data.get("encoding")
-            if not content:
+            if not isinstance(content, str) or not content:
                 return None
             if encoding == "base64":
                 try:
-                    decoded = base64.b64decode(content).decode("utf-8", errors="replace")
-                    return decoded
-                except Exception:
+                    decoded = base64.b64decode(content)
+                    if len(decoded) > 500_000:
+                        raise GitHubResponseTooLarge(
+                            f"GitHub source exceeded byte limit: {repo}/{path}@{ref}"
+                        )
+                    return decoded.decode("utf-8", errors="replace")
+                except GitHubResponseTooLarge:
+                    raise
+                except Exception as exc:
                     # Return the raw content as a fallback
+                    if len(content.encode("utf-8")) > 500_000:
+                        raise GitHubResponseTooLarge(
+                            f"GitHub source exceeded byte limit: {repo}/{path}@{ref}"
+                        ) from exc
                     return content
+            if len(content.encode("utf-8")) > 500_000:
+                raise GitHubResponseTooLarge(
+                    f"GitHub source exceeded byte limit: {repo}/{path}@{ref}"
+                )
             return content
         except GitHubApiError:
             # Re-raise for caller to handle
             raise
         except Exception as e:
-            raise GitHubApiError(f"Failed to fetch file contents for {repo}/{path}@{ref}: {e}") from e
+            raise GitHubApiError(
+                f"Failed to fetch file contents for {repo}/{path}@{ref}: {e}"
+            ) from e
 
     def get_issue_comments(self, repo: str, issue_number: int) -> list[dict]:
         """Fetch issue comments for a PR (issue_number = PR number).

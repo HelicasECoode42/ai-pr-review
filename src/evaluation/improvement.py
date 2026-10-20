@@ -376,6 +376,10 @@ def _load_verified_trace(
         str(policy.get("effective_policy_sha256", ""))
     ):
         raise ImprovementError("review trace effective policy identity is invalid")
+    if policy.get("grounded_missing_evidence_followup") is True:
+        raise ImprovementError(
+            "unsupported_source_strategy: missing-evidence follow-up traces cannot seed RSI"
+        )
     run_identity = run_record.get("review_trace_identity", {})
     if run_identity and any(
         run_identity.get(key) != value

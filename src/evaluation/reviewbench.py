@@ -114,10 +114,12 @@ def run_review(
     repository_snapshot=None,
     patch_and_repository_tokens=12000,
     repository_evidence_tokens=6000,
+    documentation_patch_tokens=0,
     trace_input_identity: dict | None = None,
     strategy_policy_id: str = "baseline",
     strategy_policy_status: str = "baseline",
     strategy_policy_content_sha256: str | None = None,
+    grounded_missing_evidence_followup: bool = False,
 ) -> tuple[dict, dict]:
     files = parse_diff(diff)
     pr = PullRequest(
@@ -135,6 +137,7 @@ def run_review(
         pr, files, include_context_pack=False, allow_remote_file_fetch=False,
         max_patch_tokens=patch_and_repository_tokens
         - (repository_evidence_tokens if follow_changes else 0),
+        max_documentation_tokens=documentation_patch_tokens,
     )
     if context_pack and project_root is not None:
         root = project_root.resolve()
@@ -171,6 +174,7 @@ def run_review(
         strategy_policy_id=strategy_policy_id,
         strategy_policy_status=strategy_policy_status,
         strategy_policy_content_sha256=strategy_policy_content_sha256,
+        grounded_missing_evidence_followup=grounded_missing_evidence_followup,
         review_meta=ReviewMeta(reviewed_commit=metadata["head"]),
     )
     if observed.errors:
@@ -277,6 +281,7 @@ def run_review(
             "verify_signals": verify_signals,
             "min_confidence": min_confidence,
             "follow_changes": follow_changes,
+            "grounded_missing_evidence_followup": grounded_missing_evidence_followup,
             "patch_and_repository_tokens": patch_and_repository_tokens,
             "repository_evidence_tokens": repository_evidence_tokens if follow_changes else 0,
             "prompt_sha256": hashlib.sha256(prompt_addendum.encode()).hexdigest(),

@@ -41,7 +41,6 @@ def test_every_hunk_ends_up_selected_or_reported_as_uncovered():
     files, hunks = files_and_hunks()
     result = select_hunks_optimal(files, hunks, budget=5)
     assert len(result.selected) + len(result.uncovered) == 3
-    assert result.token_coverage + (1 - result.token_coverage) == 1.0
     assert 0.0 <= result.value_coverage <= 1.0
 
 

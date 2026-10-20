@@ -56,6 +56,41 @@ def test_build_review_context_keeps_project_config_patch() -> None:
     assert 'name = "ai-pr-review"' in ctx.text
 
 
+def test_same_path_changed_files_keep_their_own_parsed_hunks(monkeypatch) -> None:
+    first = ChangedFile(
+        filename="src/shared.py",
+        status=FileStatus.MODIFIED,
+        additions=1,
+        patch="@@ -1,1 +1,2 @@\n+from_first_input()",
+    )
+    second = ChangedFile(
+        filename="src/shared.py",
+        status=FileStatus.MODIFIED,
+        additions=1,
+        patch="@@ -1,1 +1,2 @@\n+from_second_input()",
+    )
+    parsed_inputs = []
+    parse_file_hunks = context_builder.parse_file_hunks
+
+    def track_parse(file):
+        parsed_inputs.append(file)
+        return parse_file_hunks(file)
+
+    monkeypatch.setattr(context_builder, "parse_file_hunks", track_parse)
+
+    ctx = build_review_context(
+        PullRequest(repo="test/repo", number=4, title="Repeated path"),
+        [first, second],
+        [],
+        include_context_pack=False,
+        allow_remote_file_fetch=False,
+    )
+
+    assert "from_first_input()" in ctx.text
+    assert "from_second_input()" in ctx.text
+    assert parsed_inputs == [first, second]
+
+
 def test_truncate_to_token_budget_is_language_independent_and_bounded() -> None:
     text = "鉴权逻辑发生变化，需要检查权限边界。" * 20
     fitted, consumed, truncated = truncate_to_token_budget(text, 24)
@@ -260,3 +295,42 @@ def test_over_budget_context_still_shows_the_model_something(monkeypatch) -> Non
         + ctx.coverage_summary.hunks_omitted
     )
     assert ctx.coverage_summary.hunks_complete < ctx.coverage_summary.hunks_total
+
+
+def test_documentation_patch_budget_is_off_by_default() -> None:
+    files = [
+        ChangedFile(
+            filename="CHANGELOG.md",
+            status=FileStatus.MODIFIED,
+            additions=1,
+            patch="@@ -1,1 +1,2 @@\n # Changelog\n+## v2\n",
+        )
+    ]
+    context = build_review_context(
+        PullRequest(repo="test/repo", number=1, title="Docs"),
+        files,
+        [],
+    )
+    assert "documentation_only_change" in [reason for _, reason in context.skipped_files]
+    assert "## v2" not in context.text
+    assert context.rendered_head_ranges == {}
+
+
+def test_documentation_patch_budget_keeps_doc_hunks_and_records_ranges() -> None:
+    files = [
+        ChangedFile(
+            filename="CHANGELOG.md",
+            status=FileStatus.MODIFIED,
+            additions=1,
+            patch="@@ -1,1 +1,2 @@\n # Changelog\n+## v2\n",
+        )
+    ]
+    context = build_review_context(
+        PullRequest(repo="test/repo", number=1, title="Docs"),
+        files,
+        [],
+        max_documentation_tokens=600,
+    )
+    assert "## v2" in context.text
+    assert "documentation_only_change" not in [reason for _, reason in context.skipped_files]
+    assert context.rendered_head_ranges["CHANGELOG.md"] == ((1, 2),)

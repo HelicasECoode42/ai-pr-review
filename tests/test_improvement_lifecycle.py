@@ -238,6 +238,34 @@ def lifecycle(tmp_path):
     return store, candidate, hold_manifest_path, split_registry_path
 
 
+def test_rsi_rejects_missing_evidence_followup_source_trace(lifecycle, tmp_path):
+    _store, _candidate, _holdout, split_registry_path = lifecycle
+    dataset = tmp_path / "dataset"
+    run_dir = dataset / "run"
+    trace_path = run_dir / "traces" / "dev-case.json"
+    trace = json.loads(trace_path.read_text(encoding="utf-8"))
+    trace["policy"]["grounded_missing_evidence_followup"] = True
+    unsigned = {key: value for key, value in trace.items() if key != "trace_sha256"}
+    trace["trace_sha256"] = hashlib.sha256(
+        json.dumps(unsigned, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        .encode("utf-8")
+    ).hexdigest()
+    write_json(trace_path, trace)
+    run_path = run_dir / "run.json"
+    run = json.loads(run_path.read_text(encoding="utf-8"))
+    run["records"][0]["review_trace_sha256"] = sha256_file(trace_path)
+    write_json(run_path, run)
+
+    diagnosis = derive_trace_diagnoses(
+        run_path=run_path,
+        manifest_path=dataset / "dev-manifest.json",
+        split_registry_path=split_registry_path,
+    )
+
+    assert diagnosis["diagnoses"] == []
+    assert diagnosis["unavailable"][0]["reason"].startswith("unsupported_source_strategy")
+
+
 def test_dev_only_allowlisted_candidate_and_replay_then_one_use_holdout(lifecycle):
     store, candidate, holdout_path, split_registry_path = lifecycle
     assert candidate["status"] == "candidate"

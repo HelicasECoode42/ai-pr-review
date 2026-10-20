@@ -225,6 +225,7 @@ _SECRET_PATTERNS: list[tuple[str, str]] = [
     (r"(?:token[=:]\s*)([A-Za-z0-9_\-]{20,})", "TOKEN"),
     (r"(?:secret[=:]\s*)([A-Za-z0-9_\-]{10,})", "SECRET"),
     (r"(gh[pous]_[A-Za-z0-9_]{20,})", "GITHUB_TOKEN"),
+    (r"(github_pat_[A-Za-z0-9_]{20,})", "GITHUB_TOKEN"),
     (r"(sk-[A-Za-z0-9_-]{20,})", "OPENAI_API_KEY"),
 ]
 

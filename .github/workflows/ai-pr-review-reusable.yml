@@ -123,6 +123,9 @@ jobs:
           CRITIC_MODEL: ${{ secrets.CRITIC_MODEL }}
           MAX_REVIEW_INPUT_TOKENS: ${{ inputs.max_input_tokens }}
           MAX_INPUT_TOKEN_UPPER_BOUND: ${{ inputs.max_input_token_upper_bound }}
+          # Caller checkout dotenv must not redirect durable writes into outputs.
+          DECISION_LEDGER_ENABLED: "true"
+          DECISION_LEDGER_PATH: reports/decision-ledger.jsonl
           STRATEGY_POLICY_STORE_DIR: ${{ inputs.strategy_policy_store_dir }}
           INPUT_LANGUAGE: ${{ inputs.language }}
           INPUT_MAX_SUGGESTIONS: ${{ inputs.max_suggestions }}
@@ -247,7 +250,7 @@ jobs:
               });
             } catch (error) {
               fs.writeFileSync("reports/publication.json", JSON.stringify({
-                schema_version: 1, status: "unknown", reason: "could_not_read_current_head",
+                schema_version: 1, status: "partial", reason: "could_not_read_current_head",
               }, null, 2) + "\n");
               core.warning(`Cannot verify current PR head; no inline comments sent: ${error.message}`);
               return;
@@ -295,7 +298,7 @@ jobs:
               authLogin = (await github.rest.users.getAuthenticated()).data.login;
             } catch (error) {
               fs.writeFileSync("reports/publication.json", JSON.stringify({
-                schema_version: 1, status: "unknown", owner: context.repo.owner,
+                schema_version: 1, status: "partial", owner: context.repo.owner,
                 repo: context.repo.repo, pr: prNumber, head: commitId,
                 criteria: criteriaVersion, reason: "could_not_read_publication_state",
                 candidates: candidates.map((_, index) => ({
@@ -363,7 +366,7 @@ jobs:
             fs.writeFileSync("reports/publication.json", JSON.stringify({
               schema_version: 1, owner: context.repo.owner, repo: context.repo.repo,
               pr: prNumber, head: commitId, criteria: criteriaVersion,
-              status: outcomes.some(item => item?.status === "unknown_after_api_error")
+              status: outcomes.some(item => /^(unknown|unavailable)(_|$)/.test(item?.status || ""))
                 ? "partial" : "complete",
               candidates: outcomes,
             }, null, 2) + "\n");
@@ -377,4 +380,5 @@ jobs:
           path: |
             reports/pr-review.json
             reports/publication.json
+            reports/decision-ledger.jsonl
           if-no-files-found: warn

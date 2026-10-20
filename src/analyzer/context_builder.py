@@ -152,6 +152,46 @@ def _hunk_buckets(hunk_texts: list[str], covered_chars: int) -> tuple[int, int, 
     return complete, partial, omitted
 
 
+_HUNK_HEADER = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
+
+
+def _rendered_head_ranges(text: str) -> tuple[tuple[int, int], ...]:
+    """Head line ranges that are actually present in a rendered patch fragment.
+
+    The fragment is walked line by line instead of re-parsed, so a token-clipped
+    tail is reported exactly: a line counts as visible only when its rendered line
+    is present. Added and context lines exist on the head side; removed lines do
+    not advance the head cursor.
+    """
+    ranges: list[list[int]] = []
+    current_start = current_end = None
+    head_line = None
+    for raw in text.splitlines():
+        header = _HUNK_HEADER.match(raw)
+        if header:
+            if current_start is not None:
+                ranges.append([current_start, current_end])
+            current_start = current_end = None
+            head_line = int(header.group(3))
+            continue
+        if head_line is None:
+            continue
+        if raw.startswith("\\"):
+            continue
+        if raw.startswith("-"):
+            continue
+        if not raw.startswith(("+", " ")):
+            # A clipped fragment without a diff prefix is not provably visible.
+            continue
+        if current_start is None:
+            current_start = head_line
+        current_end = head_line
+        head_line += 1
+    if current_start is not None:
+        ranges.append([current_start, current_end])
+    return tuple((start, end) for start, end in ranges)
+
+
 def _cover(entries: dict[str, ChunkCoverage], path: str, **fields) -> None:
     """Record what happened to one changed file without ever dropping the entry."""
     base = entries.get(path) or ChunkCoverage(path=path)
@@ -234,6 +274,12 @@ class ReviewContext:
     coverage: tuple[ChunkCoverage, ...] = ()
     coverage_summary: ChunkCoverageSummary = field(
         default_factory=ChunkCoverageSummary
+    )
+    # Head line ranges rendered in the prompt's patch section, per file. This is
+    # the measured S numerator: a gold finding can only be found if its line was
+    # actually shown. Empty when a file was excluded or substituted from BASE.
+    rendered_head_ranges: dict[str, tuple[tuple[int, int], ...]] = field(
+        default_factory=dict
     )
 
 
@@ -469,6 +515,17 @@ def partial_inclusion_warning(context: ReviewContext) -> str | None:
     return f"{sum(counts.values())} file(s) only partly in the AI patch context: {detail}"
 
 
+def _per_file_patch_budget(max_patch_tokens: int, file_count: int) -> int:
+    """Per-file share of the patch budget.
+
+    The divisor is capped at 8 so one file cannot monopolise the patch budget.
+    Measured on dev: letting the divisor follow the file count (16/38 files)
+    lowered S from 74/102 to 70/102, because gold lines concentrate in the first
+    hunks of the larger files. Keep the cap; change it only with a new S ledger.
+    """
+    return max(1, max_patch_tokens // min(8, max(1, file_count)))
+
+
 def build_review_context(
     pr: PullRequest,
     files: list[ChangedFile],
@@ -479,6 +536,7 @@ def build_review_context(
     include_context_pack: bool = True,
     allow_remote_file_fetch: bool = True,
     max_patch_tokens: int = 6_000,
+    max_documentation_tokens: int = 0,
 ) -> ReviewContext:
     # Input validation: require a valid PullRequest object
     if not isinstance(pr, PullRequest):
@@ -531,7 +589,18 @@ def build_review_context(
     # sweep flagged come first, then the largest. Suspicion is a priority, not a
     # filter - a diff with nothing flagged must still reach the model, which is why
     # nothing is dropped here.
-    parsed_hunks = {file.filename: parse_file_hunks(file) for file in files}
+    # Keep parsed results tied to each input object. Direct callers can provide
+    # distinct ChangedFile values for the same path, so a path-only cache would
+    # make one file reuse another file's hunks. The path view is retained for the
+    # path-oriented triage API, with its existing last-entry behavior.
+    parsed_hunks_by_file = {}
+    for file in files:
+        file_id = id(file)
+        if file_id not in parsed_hunks_by_file:
+            parsed_hunks_by_file[file_id] = parse_file_hunks(file)
+    parsed_hunks = {
+        file.filename: parsed_hunks_by_file[id(file)] for file in files
+    }
     triage_priority: dict[str, int] = {}
     if max_patch_tokens > 0 and count_tokens(
         "\n".join(file.patch or "" for file in files)
@@ -595,7 +664,7 @@ def build_review_context(
         not f.filename.startswith(("src/", ".github/", "vscode-extension/src/")),
         -(f.additions + f.deletions), f.filename,
     ))
-    per_file_budget = max(1, max_patch_tokens // min(8, max(1, len(files))))
+    per_file_budget = _per_file_patch_budget(max_patch_tokens, len(files))
     skipped_files: list[tuple[str, str]] = []
     extra_omissions: list[Omission] = []
     # A file never touched by the loop stays "not_processed" and is reported as
@@ -604,9 +673,14 @@ def build_review_context(
         file.filename: ChunkCoverage(path=file.filename, status="excluded", reason="not_processed")
         for file in files
     }
+    # Head line ranges that provably reach the prompt patch section. Used by the
+    # exposure ledger (S): a gold finding is only findable if its line was shown.
+    rendered_ranges: dict[str, tuple[tuple[int, int], ...]] = {}
     max_file_tokens = 0
     lockfiles_skipped = 0
     partial_flag = False
+    documentation_budget = max(0, int(max_documentation_tokens))
+    deferred_documentation: list[ChangedFile] = []
 
     for file in ordered_files:
         try:
@@ -616,10 +690,16 @@ def build_review_context(
             if reason is None:
                 reason = _documentation_reason(file.filename)
             if reason is not None:
+                if reason == "documentation_only_change" and documentation_budget > 0:
+                    # Prose changes can carry real defects the diff alone hides
+                    # ("usage" claims, migration notes). Hold them for a separate,
+                    # additive budget so code coverage is not reduced to pay for it.
+                    deferred_documentation.append(file)
+                    continue
                 skipped_files.append((file.filename, reason))
                 # Reuse the parsed diff metadata: excluded paths stay out of the
                 # prompt, while each supplied hunk still gets an omitted outcome.
-                excluded_hunks = parsed_hunks.get(file.filename, [])
+                excluded_hunks = parsed_hunks_by_file[id(file)]
                 _cover(
                     coverage_by_path,
                     file.filename,
@@ -636,7 +716,7 @@ def build_review_context(
                 # Count the dropped hunks even though they are not rendered: a
                 # shrinking budget must not shrink the denominator, or every
                 # coverage ratio silently starts lying.
-                dropped = parse_file_hunks(file)
+                dropped = parsed_hunks_by_file[id(file)]
                 skipped_files.append((file.filename, "patch_budget_exhausted"))
                 _cover(
                     coverage_by_path,
@@ -671,17 +751,16 @@ def build_review_context(
                 partial_flag = True
                 continue
 
-            parse_failed = False
-            try:
-                hunks = parse_file_hunks(file)
-            except Exception as e:
-                logger.warning(f"Failed to parse hunks for {file.filename}: {e}")
-                hunks = []
-                parse_failed = True
-                partial_flag = True
+            hunks = parsed_hunks_by_file[id(file)]
 
-            # If hunks empty and either parsing failed, patch missing, or file added/removed, try fallback to full file content
-            if not hunks and (parse_failed or file.patch is None or file.patch == "" or file.status in (FileStatus.ADDED, FileStatus.REMOVED)):
+            # If hunks are empty because the patch is missing or the file was
+            # added/removed, try fallback to full file content. The parser logs
+            # and returns an empty list for its own parse failures.
+            if not hunks and (
+                file.patch is None
+                or file.patch == ""
+                or file.status in (FileStatus.ADDED, FileStatus.REMOVED)
+            ):
                 # Only immutable commits may be read: a branch name would mix
                 # code that is not part of the reviewed revision into the context.
                 if file.status == FileStatus.ADDED:
@@ -715,6 +794,9 @@ def build_review_context(
                             ),
                         )
                     )
+                    line_count = len(file_text.splitlines())
+                    if getattr(file, "status", None) != FileStatus.REMOVED and line_count:
+                        rendered_ranges[file.filename] = ((1, line_count),)
                     parts.extend(["", f"### {file.filename}", "```", file_text, "```"])
                     _cover(
                         coverage_by_path,
@@ -746,7 +828,7 @@ def build_review_context(
                     continue
 
             if not hunks:
-                reason = "patch_parse_failed" if parse_failed else "patch_without_hunks"
+                reason = "patch_without_hunks"
                 partial_flag = True
                 skipped_files.append((file.filename, reason))
                 _cover(coverage_by_path, file.filename, status="excluded", reason=reason)
@@ -758,14 +840,21 @@ def build_review_context(
             total_added = sum(len(h.added_lines) for h in hunks)
             total_hunk_lines = sum(h.new_count for h in hunks)
             substituted_reason = None
+            substituted_from_head = False
             if allow_remote_file_fetch and total_hunk_lines > 0 and total_added < total_hunk_lines // 2:
                 # Hunk likely truncated: read the frozen file and record that the
                 # context now carries whole-file code instead of the diff.
-                file_contents = _fetch_repo_file_text(
-                    pr.repo, file.filename, pr.head_sha
-                ) or _fetch_repo_file_text(pr.repo, file.filename, pr.base_sha)
+                head_contents = (
+                    _fetch_repo_file_text(pr.repo, file.filename, pr.head_sha)
+                    if pr.head_sha else None
+                )
+                base_contents = head_contents or _fetch_repo_file_text(
+                    pr.repo, file.filename, pr.base_sha
+                )
+                file_contents = head_contents or base_contents
                 if file_contents:
                     file_text = file_contents
+                    substituted_from_head = head_contents is not None
                     substituted_reason = "full_file_substituted_for_truncated_hunk"
                     extra_omissions.append(
                         Omission(
@@ -783,6 +872,13 @@ def build_review_context(
             truncated = truncated or clipped
             partial_flag = partial_flag or clipped
             max_file_tokens = max(max_file_tokens, consumed)
+            if substituted_reason is not None:
+                if substituted_from_head:
+                    line_count = len(file_text.splitlines())
+                    if line_count:
+                        rendered_ranges[file.filename] = ((1, line_count),)
+            else:
+                rendered_ranges[file.filename] = _rendered_head_ranges(file_text)
             if substituted_reason is not None:
                 _cover(
                     coverage_by_path,
@@ -855,6 +951,43 @@ def build_review_context(
                 coverage_by_path, failed_path, status="excluded", reason="patch_processing_error"
             )
             continue
+
+    for file in deferred_documentation:
+        hunks = parsed_hunks_by_file[id(file)]
+        if not hunks:
+            skipped_files.append((file.filename, "patch_without_hunks"))
+            _cover(coverage_by_path, file.filename, status="excluded",
+                   reason="patch_without_hunks")
+            continue
+        hunk_texts = [hunk.raw for hunk in hunks]
+        file_text = "\n".join(hunk_texts)
+        limit = min(documentation_budget, per_file_budget)
+        fitted, consumed, clipped = truncate_to_token_budget(file_text, limit)
+        if consumed <= 0:
+            skipped_files.append((file.filename, "documentation_budget_exhausted"))
+            _cover(coverage_by_path, file.filename, status="excluded",
+                   reason="documentation_budget_exhausted")
+            partial_flag = True
+            continue
+        complete, part, omitted_hunks = _hunk_buckets(
+            hunk_texts, _covered_chars(fitted, clipped, len(file_text))
+        )
+        _cover(
+            coverage_by_path, file.filename,
+            status="partial" if clipped else "included",
+            reason="documentation_patch" if not clipped else "documentation_patch_clipped",
+            hunks_total=len(hunks), hunks_complete=complete,
+            hunks_partial=part, hunks_omitted=omitted_hunks,
+        )
+        rendered_ranges[file.filename] = _rendered_head_ranges(fitted)
+        parts.extend(["", f"### {file.filename}", "```diff", fitted, "```"])
+        documentation_budget -= consumed
+        if clipped:
+            extra_omissions.append(
+                Omission(path=file.filename, reason="documentation_patch_clipped",
+                         detail=f"kept {consumed} tokens of this file's documentation diff")
+            )
+            partial_flag = True
 
     if lockfiles_skipped > 0 or skipped_files:
         parts.append("")
@@ -932,4 +1065,5 @@ def build_review_context(
         budgets=budgets,
         coverage=coverage,
         coverage_summary=coverage_summary,
+        rendered_head_ranges=rendered_ranges,
     )

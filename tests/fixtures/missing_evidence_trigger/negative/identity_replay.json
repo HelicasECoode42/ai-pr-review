@@ -1,0 +1,80 @@
+{
+  "provenance": {
+    "source_artifact": "reports/evaluation/missing-evidence-trigger-real-2026-10-19/negative/logical-calls/call-01.json + call-02.json",
+    "raw_content_sha256": [
+      "78de5756ce352ed7880925966f7527511c3598cf214f51636570fc4d302d9551",
+      "af59243b5011e8f21900c9f9255347de9649d1bb5868c588ed5f5b30210d2268"
+    ],
+    "scope": "intent hypotheses and bound context requests only; no prompts, candidate text, or provider metadata"
+  },
+  "responses": [
+    {
+      "intent_hypotheses": [
+        {
+          "id": "h1",
+          "goal": "Verify the new helper module resolves its dependencies.",
+          "constraints": "The helper must be importable.",
+          "risk_hypotheses": ["Missing imports cause NameError."],
+          "unknowns": ["Whether dependencies are imported or defined."],
+          "source_refs": ["diff:src/accounts.py"],
+          "focus_tags": ["caller_contract", "error_propagation"]
+        },
+        {
+          "id": "h2",
+          "goal": "Check behavior when an account does not exist.",
+          "constraints": "The same dereference existed before.",
+          "risk_hypotheses": ["A missing account may cause AttributeError."],
+          "unknowns": ["Whether get returns None or raises."],
+          "source_refs": ["diff:src/accounts.py"],
+          "focus_tags": ["input_validation", "error_propagation"]
+        }
+      ],
+      "missing_evidence": [
+        {"id": "m1", "description": "Imports or definitions of the helper dependencies."},
+        {"id": "m2", "description": "The get method's missing-account behavior."}
+      ],
+      "context_requests": [
+        {
+          "hypothesis_id": "h1",
+          "purpose": "Confirm whether `accounts` and `NotFound` are imported or defined in the new module.",
+          "tool": "read",
+          "path": "src/accounts.py",
+          "line": 1,
+          "side": "head"
+        },
+        {
+          "hypothesis_id": "h2",
+          "purpose": "Determine whether accounts.get returns None or raises for unknown ids.",
+          "tool": "search",
+          "symbol": "get",
+          "side": "head"
+        }
+      ]
+    },
+    {
+      "summary": "The PR extracts account loading into a helper.",
+      "risk_level": "medium",
+      "intent_hypotheses": [
+        {
+          "id": "h1",
+          "goal": "Verify the new helper resolves its dependencies.",
+          "constraints": ["The helper imports or defines its dependencies."],
+          "risk_hypotheses": ["Missing imports cause NameError."],
+          "unknowns": ["Whether dependencies are imported or defined."],
+          "source_refs": ["diff:src/accounts.py"],
+          "focus_tags": ["caller_contract", "error_propagation"]
+        },
+        {
+          "id": "h2",
+          "goal": "Verify behavior when get returns no account.",
+          "constraints": ["Missing-account behavior is unknown."],
+          "risk_hypotheses": ["A missing account may cause AttributeError."],
+          "unknowns": ["Whether get returns None or raises."],
+          "source_refs": ["diff:src/accounts.py"],
+          "focus_tags": ["input_validation", "error_propagation"]
+        }
+      ],
+      "suggestions": []
+    }
+  ]
+}

@@ -132,15 +132,13 @@ def test_auto_large_pr_keeps_grounded_cross_file_review():
         def get_changed_files(self, _repo, _number):
             return files
 
-        def _get(self, _path, *, params):
+        def get_json_limited(self, _path, *, params, max_response_bytes):
             self.tree_reads += 1
             paths = [file.filename for file in files] + ["src/caller.py"]
-            response = MagicMock()
-            response.json.return_value = {
+            return {
                 "truncated": False,
                 "tree": [{"type": "blob", "path": path} for path in paths],
             }
-            return response
 
         def get_file_contents(self, _repo, path, sha):
             self.reads.append((path, sha))
@@ -248,6 +246,7 @@ def test_auto_large_pr_keeps_grounded_cross_file_review():
         ]
 
     settings = Settings(
+        _env_file=None,
         github_token="fake-github-token", openai_api_key="fake-model-key",
         review_model="fake-model", enable_repository_review=True,
         unit_review_max_units=0, max_review_http_attempts=3,

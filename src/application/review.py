@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import uuid
 from collections.abc import Callable
 from contextlib import ExitStack
 from pathlib import Path
@@ -20,7 +21,7 @@ from src.knowledge.playbook import (
 from src.models import ChangedFile, PullRequest, ReviewReport, RiskFinding
 from src.reviewer.provider import ReviewRequestBudget
 from src.reviewer.usage import summarize_usage
-from src.utils.config import Settings
+from src.utils.config import Settings, is_deepseek_chat_model
 
 logger = logging.getLogger(__name__)
 
@@ -64,19 +65,25 @@ class ReviewApplication:
             and model.startswith(("deepseek-v4", "deepseek-flash"))
         ):
             effort = "low"
-        return self.provider_factory(
-            api_key=s.openai_api_key,
-            model=model,
-            base_url=s.openai_base_url,
-            timeout=s.request_timeout_seconds,
-            connect_timeout=s.model_connect_timeout_seconds,
-            read_timeout=s.model_read_timeout_seconds,
-            stream=s.enable_repository_review,
-            total_timeout=s.max_review_timeout_seconds if s.enable_repository_review else None,
-            max_output_tokens=s.model_output_token_limit,
-            reasoning_effort=effort,
-            request_budget=request_budget,
-        )
+        provider_options = {
+            "api_key": s.openai_api_key,
+            "model": model,
+            "base_url": s.openai_base_url,
+            "timeout": s.request_timeout_seconds,
+            "connect_timeout": s.model_connect_timeout_seconds,
+            "read_timeout": s.model_read_timeout_seconds,
+            "stream": s.enable_repository_review,
+            "total_timeout": s.max_review_timeout_seconds if s.enable_repository_review else None,
+            "max_output_tokens": s.model_output_token_limit,
+            "reasoning_effort": effort,
+            "request_budget": request_budget,
+        }
+        if (
+            s.review_thinking_enabled is not None
+            and is_deepseek_chat_model(model, s.openai_base_url)
+        ):
+            provider_options["thinking_enabled"] = s.review_thinking_enabled
+        return self.provider_factory(**provider_options)
 
     @staticmethod
     def _changed_symbols_by_path(
@@ -274,7 +281,9 @@ class ReviewApplication:
             defaults = {
                 "max_suggestions": s.max_suggestions,
                 "follow_changes": s.enable_repository_review,
+                "grounded_missing_evidence_followup": s.grounded_missing_evidence_followup,
                 "repository_evidence_tokens": s.repository_evidence_tokens,
+                "documentation_patch_tokens": s.documentation_patch_tokens,
                 "max_input_tokens": s.max_review_input_tokens,
                 "min_confidence": s.min_comment_confidence,
                 "max_suggestions_per_file": s.max_suggestions_per_file,
@@ -358,12 +367,31 @@ class ReviewApplication:
             report = self.engine(
                 pr=pr, files=files, findings=findings, provider=provider, **defaults
             )
+            if not isinstance(report, ReviewReport):
+                # Tests and embedding callers may inject a lightweight engine
+                # with its own return type. Candidate lifecycle applies only to
+                # the stable production report contract.
+                return report
+            from src.reviewer.decision_ledger import (
+                append_candidate_ledger,
+                build_candidate_lifecycle,
+            )
+            from src.reviewer.grounded_review import CRITERIA_VERSION
+
+            run_id = uuid.uuid4().hex
+            lifecycle = build_candidate_lifecycle(
+                report,
+                run_id=run_id,
+                criteria_version=CRITERIA_VERSION,
+                publish_min_confidence=s.publish_min_confidence,
+            )
             # Stamp what this run actually cost and which single threshold governs
             # publishing, at the boundary that owns both the providers and the
             # settings. The workflow reads these instead of keeping its own copy.
             # A provider that exposes no usage records contributes nothing rather
             # than a fabricated zero.
             metrics = getattr(report, "metrics", None)
+            fingerprints = {}
             if isinstance(metrics, dict):
                 records = _usage_records(provider)
                 if critic is not provider:
@@ -383,8 +411,6 @@ class ReviewApplication:
                 metrics["publish_min_confidence"] = s.publish_min_confidence
                 # Which verification rules produced this report, so a change in
                 # behaviour can be attributed to a criteria change (ADR-006).
-                from src.reviewer.grounded_review import CRITERIA_VERSION
-
                 metrics["criteria_version"] = CRITERIA_VERSION
                 trace = getattr(report, "repository_context", {}).get("review_trace")
                 if isinstance(trace, dict):
@@ -392,6 +418,15 @@ class ReviewApplication:
                         "policy_id": loaded_policy.policy_id,
                         "status": loaded_policy.status,
                         "effective_policy_sha256": effective_policy_sha256,
+                        "grounded_missing_evidence_followup": s.grounded_missing_evidence_followup,
+                        "effective_review_strategy_sha256": hashlib.sha256(json.dumps(
+                            {
+                                "effective_policy_sha256": effective_policy_sha256,
+                                "grounded_missing_evidence_followup": (
+                                    s.grounded_missing_evidence_followup
+                                ),
+                            }, sort_keys=True, separators=(",", ":"),
+                        ).encode("utf-8")).hexdigest(),
                     }
                     usage_keys = (
                         "usage_responses_known", "usage_responses_unknown",
@@ -445,6 +480,55 @@ class ReviewApplication:
                     )
                 else:
                     metrics["publish_fingerprint_status"] = "unavailable_missing_identity"
+                metrics["candidate_ledger_run_id"] = run_id
+                metrics["candidate_lifecycle_inventory_status"] = lifecycle[
+                    "inventory_status"
+                ]
+                metrics["suggestion_candidate_ids"] = json.dumps(
+                    lifecycle["suggestion_candidate_ids"],
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                fingerprint_by_candidate_id = {}
+                for suggestion_index, candidate_id in lifecycle[
+                    "suggestion_candidate_ids"
+                ].items():
+                    fingerprint = fingerprints.get(suggestion_index)
+                    if fingerprint:
+                        fingerprint_by_candidate_id[candidate_id] = fingerprint
+                for candidate in lifecycle["candidates"]:
+                    fingerprint = fingerprint_by_candidate_id.get(candidate["candidate_id"])
+                    if fingerprint:
+                        candidate["publish_fingerprint"] = fingerprint
+            if not s.decision_ledger_enabled:
+                persistence_status = "not_persisted"
+                report.analysis_warnings.append(
+                    "Candidate lifecycle was not persisted because "
+                    "local ledger writing is disabled."
+                )
+            else:
+                try:
+                    append_candidate_ledger(s.decision_ledger_path, lifecycle)
+                    persistence_status = "persisted"
+                except Exception as exc:
+                    persistence_status = "failed"
+                    error_type = type(exc).__name__
+                    if not error_type.isidentifier():
+                        error_type = "OSError"
+                    report.analysis_warnings.append(
+                        "Candidate lifecycle persistence failed "
+                        f"({error_type}); the report is partial."
+                    )
+                    if report.execution_status == "success":
+                        report.execution_status = "degraded"
+                    if report.report_confidence not in {"failed", "partial"}:
+                        report.report_confidence = "partial"
+                    if report.degradation_reason is None:
+                        report.degradation_reason = "candidate_ledger_persistence_failed"
+            lifecycle["persistence_status"] = persistence_status
+            report.candidate_lifecycle = lifecycle
+            if isinstance(metrics, dict):
+                metrics["candidate_ledger_persistence_status"] = persistence_status
             if knowledge_warnings:
                 report.analysis_warnings.extend(knowledge_warnings)
             return report

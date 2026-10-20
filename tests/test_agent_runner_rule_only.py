@@ -351,6 +351,124 @@ class TestRunnerRuleOnly:
             assert "个文件" in result.markdown
 
 
+class TestRunnerTraceRedaction:
+    @pytest.mark.parametrize("token_prefix", ["ghp_", "github_pat_"])
+    def test_redacts_pr_title_and_fetch_error_from_trace_outputs(
+        self, mock_settings: Settings, sample_pr: PullRequest, token_prefix: str
+    ) -> None:
+        title_token = token_prefix + "a" * 30
+        error_token = token_prefix + "b" * 30
+        pr = sample_pr.model_copy(update={"title": f"Fix login {title_token}"})
+        failure = RuntimeError(f"GitHub API rate limit for {error_token}")
+        progress_events: list[tuple[str, dict[str, object]]] = []
+
+        with patch("src.github.client.GitHubClient") as mock_gh_class:
+            mock_gh = MagicMock()
+            mock_gh.get_pull_request.return_value = pr
+            mock_gh.get_changed_files.side_effect = failure
+            mock_gh_class.return_value.__enter__.return_value = mock_gh
+
+            runner = ReviewAgentRunner(
+                mock_settings,
+                progress_sink=lambda event, payload: progress_events.append((event, payload)),
+            )
+            result = runner.run(ReviewAgentRequest(
+                repo="test/repo", pr_number=1, use_ai=False, agent_mode="rule_only",
+            ))
+
+        sidecar = result.agent_sidecar
+        pr_step = next(step for step in sidecar["steps"] if step["tool"] == "fetch_pull_request")
+        expected_title = "Fix login <redacted:GITHUB_TOKEN>"
+        assert pr_step["status"] == "success"
+        assert pr_step["observation_summary"]["title"] == expected_title
+        assert pr_step["observation_summary"]["author"] == "alice"
+
+        pr_event = next(
+            payload for event, payload in progress_events
+            if event == "step_completed" and payload["tool"] == "fetch_pull_request"
+        )
+        assert pr_event["observation_summary"]["title"] == expected_title
+        assert pr_event["observation_summary"]["author"] == "alice"
+
+        failed_step = next(
+            step for step in sidecar["steps"] if step["tool"] == "fetch_changed_files"
+        )
+        assert failed_step["status"] == "failed"
+        assert failed_step["error"] == "GitHub API rate limit for <redacted:GITHUB_TOKEN>"
+        failed_event = next(
+            payload for event, payload in progress_events
+            if event == "step_failed" and payload["tool"] == "fetch_changed_files"
+        )
+        assert failed_event["error"] == failed_step["error"]
+        assert any(
+            "GitHub API rate limit for <redacted:GITHUB_TOKEN>" in warning
+            for warning in sidecar["warnings"]
+        )
+
+        trace_outputs = repr((sidecar, result.state.model_dump(), progress_events))
+        assert title_token not in trace_outputs
+        assert error_token not in trace_outputs
+
+    def test_redacts_fine_grained_token_in_invalid_mode(
+        self, mock_settings: Settings, sample_pr: PullRequest, sample_files: list[ChangedFile],
+    ) -> None:
+        token = "github_pat_" + "d" * 40
+        events: list[tuple[str, dict[str, object]]] = []
+        settings = mock_settings.model_copy(update={"openai_api_key": "test-only"})
+        with patch("src.github.client.GitHubClient") as client_class, patch(
+            "src.application.review.ReviewApplication.review",
+            side_effect=RuntimeError("Local test: model unavailable"),
+        ):
+            client = client_class.return_value.__enter__.return_value
+            client.get_pull_request.return_value = sample_pr
+            client.get_changed_files.return_value = sample_files
+            result = ReviewAgentRunner(
+                settings, progress_sink=lambda event, payload: events.append((event, payload)),
+            ).run(ReviewAgentRequest(repo="test/repo", pr_number=1, agent_mode=token))
+
+        reason = "Unknown requested mode '<redacted:GITHUB_TOKEN>', falling back to one_shot_ai"
+        assert result.agent_sidecar["requested_mode"] == "<redacted:GITHUB_TOKEN>"
+        assert result.agent_sidecar["strategy_reason"] == result.state.strategy_reason == reason
+        assert next(payload for event, payload in events if event == "strategy_selected")[
+            "reason"
+        ] == reason
+        assert token not in repr((result.agent_sidecar, result.state.model_dump(), events))
+
+    def test_call_tool_reraises_original_exception_after_redacting_trace(
+        self, mock_settings: Settings, sample_pr: PullRequest
+    ) -> None:
+        from src.agent.registry import AgentTool
+        from src.agent.state import ReviewAgentState
+        from src.application.protocol import AgentContext
+
+        token = "ghp_" + "c" * 30
+        original_error = RuntimeError(f"github_token={token}")
+        progress_events: list[tuple[str, dict[str, object]]] = []
+        runner = ReviewAgentRunner(
+            mock_settings,
+            progress_sink=lambda event, payload: progress_events.append((event, payload)),
+        )
+        state = ReviewAgentState(repo="test/repo", pr_number=1)
+        ctx = AgentContext(repo="test/repo", pr_number=1, pr=sample_pr)
+
+        def fail(_ctx: AgentContext) -> None:
+            raise original_error
+
+        with patch.object(
+            runner._registry,
+            "get",
+            return_value=AgentTool(name="failing_tool", execute=fail),
+        ), pytest.raises(RuntimeError) as raised:
+            runner._call_tool(state, ctx, "failing_tool")
+
+        assert raised.value is original_error
+        assert raised.value.args == (f"github_token={token}",)
+        assert state.steps[0].error == "<redacted:GITHUB_TOKEN>"
+        failed_event = next(payload for event, payload in progress_events if event == "step_failed")
+        assert failed_event["error"] == state.steps[0].error
+        assert token not in repr((state.model_dump(), progress_events))
+
+
 class TestRunnerDegradation:
     def test_one_shot_without_api_key_degrades(
         self, mock_settings: Settings, sample_pr: PullRequest, sample_files: list[ChangedFile]

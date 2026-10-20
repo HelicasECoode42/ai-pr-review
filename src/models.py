@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -289,6 +290,9 @@ class ReviewReport(BaseModel):
     stage_results: list[dict] = Field(default_factory=list)
     candidate_audit: list[dict] = Field(default_factory=list)
     behavior_verifications: list[dict] = Field(default_factory=list)
+    # Report-local candidate lifecycle summary. Empty on reports created by
+    # older callers; consumers must tolerate the optional field.
+    candidate_lifecycle: dict[str, Any] = Field(default_factory=dict)
     repository_context: dict = Field(default_factory=dict)
     # Counters and small stamps. Values may be strings (e.g. criteria_version),
     # so the type is wider than "numbers only" on purpose.

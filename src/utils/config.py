@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from urllib.parse import urlsplit
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -20,7 +21,18 @@ class Settings(BaseSettings):
     verify_rule_signals: bool = False
     enable_critic: bool = False
     enable_repository_review: bool = True
+    grounded_missing_evidence_followup: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "GROUNDED_MISSING_EVIDENCE_FOLLOWUP", "grounded_missing_evidence_followup",
+        ),
+    )
     repository_evidence_tokens: int = 6000
+    # Additive budget for documentation-only changes. Measured on the dev set:
+    # 1200 tokens recovered 3 more gold lines (S 72.55% -> 75.49%). Off by default
+    # because it grows the prompt without a paid D/P run proving the trade is
+    # worth it; enable per experiment.
+    documentation_patch_tokens: int = 0
     # Complete system+user request input, conservatively estimated in UTF-8
     # bytes. This is a request guard, not a tokenizer or billing-token count.
     max_input_token_upper_bound: int | None = Field(
@@ -58,7 +70,19 @@ class Settings(BaseSettings):
     # Confidence floor for publishing an inline comment. It is stamped into the
     # report so the workflow reads one source instead of hardcoding its own.
     publish_min_confidence: float = 0.80
+    # Candidate lifecycle records are append-only and local to this checkout by
+    # default. Set DECISION_LEDGER_ENABLED=false to keep them in the report only.
+    decision_ledger_enabled: bool = True
+    decision_ledger_path: str = "reports/decision-ledger.jsonl"
     review_reasoning_effort: str | None = None
+    # DeepSeek-specific Chat Completions switch. None preserves provider defaults;
+    # callers pass it only when explicitly configured.
+    review_thinking_enabled: bool | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "REVIEW_THINKING_ENABLED", "review_thinking_enabled",
+        ),
+    )
     critic_model: str | None = None
 
     model_config = SettingsConfigDict(
@@ -73,6 +97,22 @@ class Settings(BaseSettings):
 
 def get_settings() -> Settings:
     return Settings()
+
+
+def is_deepseek_chat_model(model: str, base_url: str) -> bool:
+    """Return whether the official DeepSeek Chat Completions API owns this model id."""
+    endpoint = urlsplit(base_url)
+    return (
+        endpoint.scheme == "https"
+        and endpoint.hostname == "api.deepseek.com"
+        and endpoint.username is None
+        and model in {
+            "deepseek-flash",
+            "deepseek-v4-pro",
+            "deepseek-v4-flash",
+            "deepseek-v4-flash-vision-exp",
+        }
+    )
 
 
 # CJK Unicode ranges

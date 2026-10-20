@@ -10,9 +10,11 @@ whole path is testable offline and the engine keeps ownership of the provider.
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import os
+import stat
 import tempfile
 import time
 from collections.abc import Callable, Sequence
@@ -22,6 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Event, Lock
 from typing import Any, Literal
+from weakref import WeakValueDictionary
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -43,6 +46,8 @@ MAX_UNIT_WORKERS = 8
 MAX_CHECKPOINT_ARTIFACT_BYTES = 2 * 1024 * 1024
 MAX_CHECKPOINT_FILE_BYTES = 16 * 1024 * 1024
 _checkpoint_write_lock = Lock()
+_checkpoint_run_locks_guard = Lock()
+_checkpoint_run_locks: WeakValueDictionary[str, Lock] = WeakValueDictionary()
 
 # Measured on a real 251-file PR: 558,691 tokens over 9 reviewed units, i.e.
 # ~4.7 model calls per unit with the prompt and evidence re-sent each round. Used
@@ -144,7 +149,12 @@ class UnitReviewSummary:
 
     @property
     def failed(self) -> list[UnitOutcome]:
-        return [o for o in self.outcomes if o.status == "failed"]
+        return [
+            o for o in self.outcomes
+            if o.status in {
+                "failed", "checkpoint_busy", "checkpoint_unavailable", "checkpoint_unsupported",
+            }
+        ]
 
     @property
     def units_planned(self) -> int:
@@ -377,8 +387,227 @@ def append_checkpoint(
             os.close(descriptor)
 
 
+class _CheckpointLockError(Exception):
+    def __init__(self, status: str, message: str) -> None:
+        super().__init__(message)
+        self.status = status
+
+
+class _CheckpointRunLock:
+    """Nonblocking, process-wide lock for one checkpoint's whole review run."""
+
+    def __init__(self, checkpoint_path: Path | str) -> None:
+        self.path = Path(f"{os.fspath(checkpoint_path)}.lock")
+        self.fd: int | None = None
+        self.backend: str | None = None
+        self.module: Any = None
+        self.thread_lock: Lock | None = None
+        self.thread_locked = False
+        self.locked = False
+
+        try:
+            self.backend, self.module = self._load_backend()
+            key = str(self.path.resolve(strict=False))
+            with _checkpoint_run_locks_guard:
+                self.thread_lock = _checkpoint_run_locks.setdefault(key, Lock())
+            if not self.thread_lock.acquire(blocking=False):
+                raise _CheckpointLockError("checkpoint_busy", "another local run holds the lock")
+            self.thread_locked = True
+            self._open_and_lock()
+        except OSError as exc:
+            self._close_and_release()
+            raise _CheckpointLockError(
+                "checkpoint_unavailable", f"checkpoint lock unavailable: {exc}"
+            ) from exc
+        except Exception:
+            self._close_and_release()
+            raise
+
+    @staticmethod
+    def _load_backend() -> tuple[str, Any]:
+        if os.name == "posix":
+            try:
+                import fcntl
+            except ImportError as exc:
+                raise _CheckpointLockError(
+                    "checkpoint_unsupported", "POSIX advisory file locks are unavailable"
+                ) from exc
+            return "posix", fcntl
+        if os.name == "nt":
+            try:
+                import msvcrt
+            except ImportError as exc:
+                raise _CheckpointLockError(
+                    "checkpoint_unsupported", "Windows byte-range file locks are unavailable"
+                ) from exc
+            return "windows", msvcrt
+        raise _CheckpointLockError(
+            "checkpoint_unsupported", f"no checkpoint lock backend for os.name={os.name!r}"
+        )
+
+    def _open_and_lock(self) -> None:
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                current = self.path.lstat()
+            except FileNotFoundError:
+                current = None
+            if current is not None and (
+                stat.S_ISLNK(current.st_mode) or not stat.S_ISREG(current.st_mode)
+            ):
+                raise _CheckpointLockError(
+                    "checkpoint_unavailable", "checkpoint lock target must be a regular file"
+                )
+
+            flags = os.O_CREAT | os.O_RDWR
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            self.fd = os.open(self.path, flags, 0o600)
+            opened = os.fstat(self.fd)
+            target = self.path.lstat()
+            if (
+                not stat.S_ISREG(opened.st_mode)
+                or stat.S_ISLNK(target.st_mode)
+                or not stat.S_ISREG(target.st_mode)
+                or (opened.st_dev, opened.st_ino) != (target.st_dev, target.st_ino)
+            ):
+                raise _CheckpointLockError(
+                    "checkpoint_unavailable", "checkpoint lock target changed or is a symlink"
+                )
+
+            if self.backend == "posix":
+                self.module.flock(self.fd, self.module.LOCK_EX | self.module.LOCK_NB)
+            else:
+                if opened.st_size == 0:
+                    os.write(self.fd, b"\0")
+                    os.fsync(self.fd)
+                os.lseek(self.fd, 0, os.SEEK_SET)
+                self.module.locking(self.fd, self.module.LK_NBLCK, 1)
+            self.locked = True
+        except _CheckpointLockError:
+            raise
+        except OSError as exc:
+            if self._is_busy_error(exc):
+                raise _CheckpointLockError(
+                    "checkpoint_busy", "another local run holds the lock"
+                ) from exc
+            if self._is_unsupported_error(exc):
+                raise _CheckpointLockError(
+                    "checkpoint_unsupported", f"checkpoint locking is unsupported: {exc}"
+                ) from exc
+            raise _CheckpointLockError(
+                "checkpoint_unavailable", f"checkpoint lock unavailable: {exc}"
+            ) from exc
+
+    def _is_busy_error(self, exc: OSError) -> bool:
+        if exc.errno in {errno.EACCES, errno.EAGAIN, getattr(errno, "EDEADLK", -1)}:
+            return True
+        return getattr(exc, "winerror", None) in {33, 36}
+
+    @staticmethod
+    def _is_unsupported_error(exc: OSError) -> bool:
+        unsupported = {
+            getattr(errno, "ENOSYS", -1),
+            getattr(errno, "ENOTSUP", -1),
+            getattr(errno, "EOPNOTSUPP", -1),
+        }
+        return exc.errno in unsupported
+
+    def release(self) -> None:
+        self._close_and_release()
+
+    def _close_and_release(self) -> None:
+        if self.fd is not None:
+            descriptor = self.fd
+            self.fd = None
+            try:
+                if self.locked:
+                    if self.backend == "posix":
+                        self.module.flock(descriptor, self.module.LOCK_UN)
+                    elif self.backend == "windows":
+                        os.lseek(descriptor, 0, os.SEEK_SET)
+                        self.module.locking(descriptor, self.module.LK_UNLCK, 1)
+            except OSError:
+                # Closing the descriptor still releases the OS lock.
+                pass
+            finally:
+                with suppress(OSError):
+                    os.close(descriptor)
+                self.locked = False
+        if self.thread_lock is not None and self.thread_locked:
+            self.thread_lock.release()
+            self.thread_locked = False
+            self.thread_lock = None
+
+
+def _lock_failure_summary(
+    plan: Any, max_units: int | None, error: _CheckpointLockError,
+) -> UnitReviewSummary:
+    summary = UnitReviewSummary()
+    units = list(plan.units)
+    if max_units is not None:
+        summary.remaining_units = max(0, len(units) - max_units)
+        units = units[:max_units]
+    summary.checkpoint_issues.append(f"checkpoint_lock_{error.status.removeprefix('checkpoint_')}")
+    summary.outcomes.extend(
+        UnitOutcome(
+            unit_id=unit.unit_id,
+            status=error.status,
+            estimated_tokens=unit.estimated_tokens,
+            error=f"{error.status}: {error}",
+        )
+        for unit in units
+    )
+    return summary
+
+
 def review_by_units(
     plan,
+    files: Sequence[ChangedFile],
+    run_unit: Callable[[ReviewContext, list[ChangedFile]], Any],
+    *,
+    max_units: int | None = None,
+    max_workers: int = 1,
+    retry_backoff_seconds: float = 0.0,
+    checkpoint_path: Path | str | None = None,
+    checkpoint_identity: dict[str, Any] | None = None,
+    max_attempts: int = 2,
+    cancel: Event | None = None,
+) -> UnitReviewSummary:
+    """Run bounded unit reviews under one nonblocking checkpoint lock.
+
+    The lock serializes checkpoint readers, provider calls, and durable writes
+    across local processes. A process that cannot lock returns terminal lock
+    outcomes without calling its runner. A crash after a provider response but
+    before the artifact and metadata are durable can still repeat that request.
+    """
+    if max_workers < 1:
+        raise ValueError(f"max_workers must be >= 1, got {max_workers}")
+    if max_attempts < 1:
+        raise ValueError(f"max_attempts must be >= 1, got {max_attempts}")
+    if checkpoint_path is None:
+        return _review_by_units_locked(
+            plan, files, run_unit, max_units=max_units, max_workers=max_workers,
+            retry_backoff_seconds=retry_backoff_seconds, checkpoint_identity=checkpoint_identity,
+            max_attempts=max_attempts, cancel=cancel,
+        )
+
+    try:
+        run_lock = _CheckpointRunLock(checkpoint_path)
+    except _CheckpointLockError as error:
+        return _lock_failure_summary(plan, max_units, error)
+    try:
+        return _review_by_units_locked(
+            plan, files, run_unit, max_units=max_units, max_workers=max_workers,
+            retry_backoff_seconds=retry_backoff_seconds, checkpoint_path=checkpoint_path,
+            checkpoint_identity=checkpoint_identity, max_attempts=max_attempts, cancel=cancel,
+        )
+    finally:
+        run_lock.release()
+
+
+def _review_by_units_locked(
+    plan: Any,
     files: Sequence[ChangedFile],
     run_unit: Callable[[ReviewContext, list[ChangedFile]], Any],
     *,
@@ -462,6 +691,9 @@ def review_by_units(
             outcome.status = "cancelled"
             return outcome
         for attempt in range(1, max_attempts + 1):
+            if cancel is not None and cancel.is_set():
+                outcome.status = "cancelled"
+                break
             outcome.attempts = attempt
             try:
                 result = run_unit(build_unit_context(unit), unit_files(unit, files))
@@ -503,7 +735,11 @@ def review_by_units(
                         )
                     break
                 if attempt < max_attempts and retry_backoff_seconds:
-                    time.sleep(retry_backoff_seconds * attempt)
+                    delay = retry_backoff_seconds * attempt
+                    if cancel is None:
+                        time.sleep(delay)
+                    else:
+                        cancel.wait(delay)
         return outcome
 
     if workers > 1 and len(units) > 1:
@@ -563,7 +799,8 @@ def merge_grounded_results(results: Sequence[Any], *, summary_note: str = "") ->
     if not live:
         return GroundedResult(
             summary=summary_note, suggestions=[], pending=[], candidates=[], decisions=[],
-            bundle={}, discovery_calls=0, verification_calls=0,
+            bundle={"tokens": 0, "omitted": [], "excerpts": [], "snapshot": {}},
+            discovery_calls=0, verification_calls=0,
             verification_failed=True,
         )
     key = lambda s: (s.file_path, s.line, s.title.casefold())  # noqa: E731
@@ -678,7 +915,20 @@ def run_units_for_review(
         "units_cancelled": sum(o.status == "cancelled" for o in summary.outcomes),
         "unit_attempts": sum(o.attempts for o in summary.outcomes),
         "unit_errors": [o.error for o in summary.failed if o.error],
-        "unit_checkpoint_failed": sum(o.status == "checkpoint_failed" for o in summary.outcomes),
+        "unit_checkpoint_failed": sum(
+            o.status in {
+                "checkpoint_failed", "checkpoint_busy", "checkpoint_unavailable",
+                "checkpoint_unsupported",
+            }
+            for o in summary.outcomes
+        ),
+        "unit_checkpoint_busy": sum(
+            o.status == "checkpoint_busy" for o in summary.outcomes
+        ),
+        "unit_checkpoint_lock_unavailable": sum(
+            o.status in {"checkpoint_unavailable", "checkpoint_unsupported"}
+            for o in summary.outcomes
+        ),
         "unit_checkpoint_issues": summary.checkpoint_issues,
         "unit_review": 1,
     }

@@ -58,7 +58,8 @@ def _canonical_sha256(value: object) -> str:
 
 def _grounded_trace_identity(pr, files, snapshot, *, reviewer_version, prompt_addendum,
                              policy_id, policy_status, policy_content_sha256,
-                             trace_input_identity=None):
+                             trace_input_identity=None,
+                             missing_evidence_followup=False):
     """Fingerprint only review inputs and executable policy, never retain their text."""
     from pathlib import Path
 
@@ -80,7 +81,7 @@ def _grounded_trace_identity(pr, files, snapshot, *, reviewer_version, prompt_ad
     metadata_sha = _canonical_sha256(metadata)
     diff_sha = _canonical_sha256(file_manifest)
     effective_policy_sha = policy_content_sha256 or _canonical_sha256({
-        "prompt_addendum": "", "playbook_recall_k": 5,
+        "prompt_addendum": prompt_addendum, "playbook_recall_k": 5,
     })
     runtime_hash = hashlib.sha256()
     source_root = Path(__file__).parents[1]
@@ -155,6 +156,11 @@ def _grounded_trace_identity(pr, files, snapshot, *, reviewer_version, prompt_ad
             "policy_id": policy_id,
             "status": policy_status,
             "effective_policy_sha256": effective_policy_sha,
+            "grounded_missing_evidence_followup": bool(missing_evidence_followup),
+            "effective_review_strategy_sha256": _canonical_sha256({
+                "effective_policy_sha256": effective_policy_sha,
+                "grounded_missing_evidence_followup": bool(missing_evidence_followup),
+            }),
         },
         "criteria_sha256": hashlib.sha256(CRITERIA_VERSION.encode("utf-8")).hexdigest(),
         "runtime_sha256": runtime_hash.hexdigest(),
@@ -538,20 +544,38 @@ def review_with_ai(
     follow_changes: bool = False,
     verify_behavior: bool = True,
     repository_evidence_tokens: int = 6000,
+    documentation_patch_tokens: int = 0,
     max_input_tokens: int | None = None,
     analyzer_warnings: list[str] | None = None,
     strategy_policy_id: str = "baseline",
     strategy_policy_status: str = "baseline",
     strategy_policy_content_sha256: str | None = None,
     trace_input_identity: dict | None = None,
+    grounded_missing_evidence_followup: bool = False,
 ) -> ReviewReport:
     try:
+        grounded_route = follow_changes and not two_stage and (
+            repository_snapshot is not None or (pr.head_sha and pr.base_sha)
+        )
+        unsupported = []
+        if grounded_route and enable_critic:
+            unsupported.append("critic")
+        if grounded_route and verify_rule_signals:
+            unsupported.append("rule_signal_verification")
+        if unsupported:
+            raise ProviderError(
+                "Unsupported grounded review configuration: " + ", ".join(unsupported)
+                + ". Disable these options or explicitly select a supported review route.",
+                kind="unsupported_configuration",
+            )
         # The main review must start from the PR text and diff alone. Rule
         # results are retained as audit signals, not injected as conclusions.
         ctx = review_context if review_context is not None else build_review_context(
-            pr, files, include_context_pack=not follow_changes, allow_remote_file_fetch=not follow_changes
+            pr, files, include_context_pack=not follow_changes,
+            allow_remote_file_fetch=not follow_changes,
+            max_documentation_tokens=documentation_patch_tokens,
         )
-        if follow_changes and not two_stage and (repository_snapshot is not None or (pr.head_sha and pr.base_sha)):
+        if grounded_route:
             from src.reviewer.grounded_review import (
                 DISCOVERY_SYSTEM,
                 VERIFY_SYSTEM,
@@ -560,21 +584,36 @@ def review_with_ai(
             )
             def run_one_unit(unit_ctx, unit_files, snapshot):
                 unit_provider = unit_provider_factory() if unit_provider_factory else provider
+                result = None
                 try:
-                    return review_grounded(
+                    result = review_grounded(
                         pr, unit_files, unit_provider, snapshot, unit_ctx, max_suggestions,
                         language, min(repository_evidence_tokens, unit_evidence_tokens),
                         verify_behavior,
                         max_suggestions_per_file=max_suggestions_per_file,
                         contract_domains=contract_domains,
-                        # A unit is small: one discovery round and one verification
-                        # round. Each extra round re-sends the prompt and evidence.
-                        discovery_rounds=1, verify_rounds=1,
+                        # A unit is small; the optional follow-up only uses the
+                        # existing second verification slot when a declared missing
+                        # evidence ID requests executable source. The shared request
+                        # budget remains the hard cap for the complete review.
+                        discovery_rounds=1,
+                        verify_rounds=(2 if grounded_missing_evidence_followup else 1),
                         prompt_addendum=prompt_addendum,
+                        missing_evidence_followup=grounded_missing_evidence_followup,
+                        missing_evidence_followup_only=grounded_missing_evidence_followup,
                     )
                 finally:
                     if unit_provider_factory is not None:
-                        unit_provider.close()
+                        try:
+                            unit_provider.close()
+                        except Exception:
+                            # Cleanup must not turn completed model work into a
+                            # retryable failure and charge for the same unit again.
+                            if result is not None:
+                                result.bundle["provider_cleanup_failed"] = True
+                            else:
+                                logger.warning("Unit provider cleanup failed after review failure")
+                return result
 
             def grounded(snapshot):
                 trace_identity = _grounded_trace_identity(
@@ -583,6 +622,7 @@ def review_with_ai(
                     policy_status=strategy_policy_status,
                     policy_content_sha256=strategy_policy_content_sha256,
                     trace_input_identity=trace_input_identity,
+                    missing_evidence_followup=grounded_missing_evidence_followup,
                 )
                 # Large diffs are reviewed one semantic unit at a time. The gate is
                 # deliberate: this path costs one review per unit, so it only runs
@@ -609,6 +649,8 @@ def review_with_ai(
                             "reviewer_version": reviewer_version,
                             "strategy": (
                                 "grounded-unit-v2:intent-plan-v2:"
+                                "missing-evidence-followup-"
+                                f"{int(grounded_missing_evidence_followup)}:"
                                 "one-discovery-one-verification"
                             ),
                             "strategy_policy_id": strategy_policy_id,
@@ -625,6 +667,9 @@ def review_with_ai(
                                         "endpoint": endpoint,
                                         "reasoning_effort": getattr(
                                             provider, "_reasoning_effort", None
+                                        ),
+                                        "thinking_enabled": getattr(
+                                            provider, "_thinking_enabled", None
                                         ),
                                         "max_output_tokens": getattr(
                                             provider, "_max_output_tokens", None
@@ -673,21 +718,33 @@ def review_with_ai(
                         checkpoint_identity=checkpoint_identity,
                         max_attempts=unit_max_attempts,
                     )
-                    if merged is not None and unit_details.get("units_reviewed"):
+                    if merged is not None:
                         merged.bundle["unit_details"] = unit_details
                         checkpoint_failed = bool(unit_details.get("unit_checkpoint_failed"))
+                        unit_incomplete = (
+                            bool(unit_details.get("units_failed"))
+                            or bool(unit_details.get("units_cancelled"))
+                            or not unit_details.get("units_reviewed")
+                        )
                         if checkpoint_failed:
                             warnings.append(
                                 "Unit findings are included, but checkpoint persistence failed; "
                                 "a later resume may repeat model work."
                             )
+                        if unit_incomplete:
+                            warnings.append(
+                                "Per-unit review did not complete; "
+                                "no fallback model requests were dispatched."
+                            )
+                        unit_degraded = checkpoint_failed or unit_incomplete
                         unit_degradation_reason = (
-                            "unit_checkpoint_failed" if checkpoint_failed else degradation_reason
+                            "unit_checkpoint_failed" if checkpoint_failed else
+                            "unit_review_incomplete" if unit_incomplete else degradation_reason
                         )
                         return build_grounded_report(
                             pr, files, findings, merged, ctx, reviewer_version=reviewer_version,
-                            execution_status="degraded" if checkpoint_failed else execution_status,
-                            report_confidence="partial" if checkpoint_failed else report_confidence,
+                            execution_status="degraded" if unit_degraded else execution_status,
+                            report_confidence="partial" if unit_degraded else report_confidence,
                             degradation_reason=unit_degradation_reason,
                             review_meta=review_meta,
                             pr_syntax_ok=pr_syntax_ok,
@@ -710,7 +767,11 @@ def review_with_ai(
                                          language, repository_evidence_tokens, verify_behavior,
                                          max_suggestions_per_file=max_suggestions_per_file,
                                          contract_domains=contract_domains,
-                                         prompt_addendum=prompt_addendum)
+                                         prompt_addendum=prompt_addendum,
+                                         missing_evidence_followup=grounded_missing_evidence_followup)
+                result.bundle["missing_evidence_followup_enabled"] = bool(
+                    grounded_missing_evidence_followup
+                )
                 report = build_grounded_report(
                     pr, files, findings, result, ctx, reviewer_version=reviewer_version,
                     execution_status=execution_status, review_meta=review_meta, pr_syntax_ok=pr_syntax_ok,
@@ -965,6 +1026,8 @@ def review_with_ai(
                 analyzer_warnings=analyzer_warnings,
             )
         report.ai_failure_reason = str(exc)
+        if isinstance(exc, ProviderError) and exc.kind == "unsupported_configuration":
+            report.metrics["configuration_status"] = "unsupported"
         # Re-build completeness to reflect AI-attempted-but-failed state
         report.completeness = _build_completeness(
             pr=pr, files=files,

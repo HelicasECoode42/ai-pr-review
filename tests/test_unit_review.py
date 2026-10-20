@@ -223,6 +223,7 @@ def test_worker_count_is_validated_and_capped():
 def _unit_review_report(
     tmp_path, *, units_enabled: int, checkpoint_path=None, repo_ready=False, call_counter=None,
     strategy_policy_id="baseline", strategy_policy_content_sha256=None,
+    provider_close_fails=False,
 ):
     """Drive the engine's unit path with a scripted provider over a small repo.
 
@@ -306,7 +307,8 @@ def _unit_review_report(
                 "failure_scenario": "every caller now gets a total one higher"}]})
 
         def close(self):
-            pass
+            if provider_close_fails:
+                raise OSError("fixture cleanup failure")
 
     snapshot = GitSnapshot(tmp_path, base, head)
     files = parse_diff(run("diff", base, head))
@@ -687,6 +689,58 @@ def test_cancellation_stops_the_run_and_marks_the_rest(tmp_path):
     assert summary.counts()["units_reviewed"] == 0
 
 
+def test_cancellation_after_failure_prevents_another_paid_attempt():
+    from threading import Event
+
+    plan, files = plan_with_two_units()
+    cancel = Event()
+    calls = []
+
+    def fail_and_cancel(context, unit_files_):
+        calls.append(unit_files_[0].filename)
+        cancel.set()
+        raise RuntimeError("cancelled while the first request failed")
+
+    summary = review_by_units(plan, files, fail_and_cancel, cancel=cancel, max_attempts=3)
+
+    assert len(calls) == 1
+    assert [outcome.status for outcome in summary.outcomes] == ["cancelled", "cancelled"]
+    assert [outcome.attempts for outcome in summary.outcomes] == [1, 0]
+
+
+def test_cancellation_interrupts_retry_backoff():
+    from threading import Event, Thread
+
+    plan, files = plan_with_two_units()
+    backoff_started = Event()
+    calls = []
+
+    class SignallingEvent(Event):
+        def wait(self, timeout=None):
+            backoff_started.set()
+            return super().wait(timeout)
+
+    cancel = SignallingEvent()
+
+    def fail_once(context, unit_files_):
+        calls.append(unit_files_[0].filename)
+        raise RuntimeError("transient")
+
+    summaries = []
+    worker = Thread(target=lambda: summaries.append(review_by_units(
+        plan, files, fail_once, max_attempts=3, retry_backoff_seconds=30, cancel=cancel
+    )))
+    worker.start()
+    assert backoff_started.wait(5)
+    cancel.set()
+    worker.join(5)
+
+    assert not worker.is_alive()
+    assert len(calls) == 1
+    assert summaries[0].outcomes[0].status == "cancelled"
+    assert summaries[0].outcomes[0].attempts == 1
+
+
 def test_every_unit_has_a_terminal_status_even_if_the_provider_explodes(tmp_path):
     """Reliable return: no unit is ever left without an outcome."""
     plan, files = plan_with_two_units()
@@ -699,3 +753,41 @@ def test_every_unit_has_a_terminal_status_even_if_the_provider_explodes(tmp_path
     assert all(o.status == "failed" for o in summary.outcomes)
     assert all(o.attempts == 2 for o in summary.outcomes)
     assert all(o.error and "provider down" in o.error for o in summary.outcomes)
+
+
+def test_engine_does_not_dispatch_fallback_when_checkpoint_is_busy(tmp_path):
+    from src.reviewer.unit_review import _CheckpointRunLock
+
+    checkpoint = tmp_path / "units.jsonl"
+    calls = []
+    lock = _CheckpointRunLock(checkpoint)
+    try:
+        report, provider = _unit_review_report(
+            tmp_path / "repo", units_enabled=8, checkpoint_path=checkpoint,
+            call_counter=calls,
+        )
+    finally:
+        lock.release()
+    assert calls == []
+    assert provider.calls == 0
+    assert report.execution_status == "partial"
+    assert report.report_confidence == "partial"
+    assert report.metrics["units_reviewed"] == 0
+    assert report.metrics["units_failed"] > 0
+
+
+def test_unit_provider_cleanup_failure_does_not_retry_completed_model_work(tmp_path):
+    normal_calls = []
+    normal, _ = _unit_review_report(
+        tmp_path / "normal", units_enabled=8, call_counter=normal_calls,
+    )
+    failed_calls = []
+    failed, _ = _unit_review_report(
+        tmp_path / "cleanup-fails", units_enabled=8,
+        call_counter=failed_calls, provider_close_fails=True,
+    )
+    assert len(failed_calls) == len(normal_calls) > 0
+    assert failed.metrics["units_reviewed"] == normal.metrics["units_reviewed"] == 8
+    assert failed.metrics["unit_attempts"] == 8
+    assert failed.report_confidence == "partial"
+    assert any("cleanup failed" in message for message in failed.analysis_warnings)

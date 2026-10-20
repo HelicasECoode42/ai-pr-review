@@ -24,8 +24,8 @@ class AgentTool:
 
     name: str
     execute: Callable[[AgentContext], None]
-    description: str = ""   # Human-readable, appears in trace and error messages
-    risk: str = "read"      # "read" | "write" — whether the tool has side effects
+    description: str = ""   # Optional metadata; the current Runner does not emit it in traces.
+    risk: str = "read"      # "read" | "write" metadata; the current Runner does not enforce it.
 
 
 class AgentToolRegistry:

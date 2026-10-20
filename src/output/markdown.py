@@ -302,6 +302,60 @@ def _render_completeness(report: ReviewReport, T: _Translator, zh: bool) -> list
     return lines
 
 
+def _render_candidate_lifecycle(report: ReviewReport, zh: bool) -> list[str]:
+    lifecycle = report.candidate_lifecycle
+    if not isinstance(lifecycle, dict) or not lifecycle:
+        return []
+    scope = str(lifecycle.get("candidate_scope", "unknown"))
+    scope_text = {
+        "grounded_final_payload_candidates": (
+            "grounded final payload candidates; earlier provisional or unparsed "
+            "responses are outside this inventory"
+            if not zh else "grounded 最终 payload 候选；此前 provisional 或未解析响应不在此清单内"
+        ),
+        "surviving_legacy_report_suggestions_and_pending": (
+            "surviving legacy suggestions and pending items only; "
+            "discarded model candidates are unknown"
+            if not zh else "仅含 legacy 保留建议与待补项；被丢弃的模型候选未知"
+        ),
+        "no_parsed_model_candidate_inventory": (
+            "model candidates could not be enumerated; total count is unknown"
+            if not zh else "未能枚举模型候选；总数未知"
+        ),
+        "model_candidates_not_requested": (
+            "model candidate generation was not requested" if not zh else "本次未请求生成模型候选"
+        ),
+    }.get(scope, "unknown" if not zh else "未知")
+    status = lifecycle.get("inventory_status", "unknown")
+    status_text = {
+        "complete_within_scope": "complete within scope" if not zh else "范围内完整",
+        "partial": "partial" if not zh else "部分",
+        "not_applicable": "not applicable" if not zh else "不适用",
+    }.get(status, "unknown" if not zh else "未知")
+    count = lifecycle.get("candidate_count", 0)
+    counts = lifecycle.get("counts", {})
+    counts = counts if isinstance(counts, dict) else {}
+    if lifecycle.get("candidate_count_known"):
+        count_text = str(count)
+    else:
+        count_text = (f"at least {count}; total unknown" if count else "unknown")
+        if zh:
+            count_text = f"至少 {count}；总数未知" if count else "未知"
+    states = (f"ready {counts.get('ready_for_publication', 0)}, "
+              f"withheld {counts.get('withheld', 0)}, unknown {counts.get('unknown', 0)}")
+    if zh:
+        states = (f"可发布 {counts.get('ready_for_publication', 0)}，"
+                  f"暂缓 {counts.get('withheld', 0)}，未知 {counts.get('unknown', 0)}")
+    title = "候选生命周期" if zh else "Candidate lifecycle"
+    inventory = (f"候选清单：{status_text} — {scope_text}" if zh
+                 else f"Inventory: {status_text} — {scope_text}")
+    candidates = (f"已枚举候选：{count_text}；状态：{states}" if zh
+                  else f"Candidates: {count_text}; {states}")
+    ledger = lifecycle.get("persistence_status", "unknown")
+    ledger_line = f"本地台账：{ledger}" if zh else f"Local ledger: {ledger}"
+    return [f"## {title}", "", f"- {inventory}", f"- {candidates}", f"- {ledger_line}", ""]
+
+
 def render_markdown(report: ReviewReport, language: str = "en") -> str:
     zh = language == "zh"
     T = _Translator(zh)
@@ -319,6 +373,7 @@ def render_markdown(report: ReviewReport, language: str = "en") -> str:
     # ── Stage 15: run status & analysis completeness ──
     lines.extend(_render_run_status(report, T, zh))
     lines.extend(_render_completeness(report, T, zh))
+    lines.extend(_render_candidate_lifecycle(report, zh))
 
     lines.extend([f"## {T.t('PR 概览')}", ""])
 

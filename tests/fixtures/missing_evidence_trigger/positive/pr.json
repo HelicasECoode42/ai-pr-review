@@ -1,0 +1,9 @@
+{
+  "nwo": "synthetic/missing-evidence-positive",
+  "pr_number": 1,
+  "title": "Route account lookup through a shared loader",
+  "body": "Use the shared loader for account pages.",
+  "base": "0000000000000000000000000000000000000001",
+  "head": "0000000000000000000000000000000000000002",
+  "agent": "synthetic-trigger-check"
+}
