@@ -849,37 +849,29 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
         prefix = (prompt_addendum + "\n" if prompt_addendum else "") + diff_text
         samples = (("diff", prefix),
                    ("diff+evidence", prefix + "\n## Frozen repository evidence\n" + bundle.render()))
-        union, seen_anchors = [], set()
-
-        def _merge(findings, origin):
-            added = 0
-            for item in findings or []:
-                if not isinstance(item, dict):
-                    continue
-                anchor = (item.get("file") or item.get("file_path"), item.get("line"))
-                if anchor in seen_anchors:
-                    continue
-                seen_anchors.add(anchor)
-                union.append({**item, "origin": origin})
-                added += 1
-            return added
-
+        pool = []
         for origin, sample_prompt in samples:
             response = _json(provider, RAW_DISCOVERY_SYSTEM, sample_prompt)
             discovery_calls += 1
             returned = response.get("findings") if isinstance(response, dict) else None
+            returned = [item for item in returned or [] if isinstance(item, dict)]
+            pool.extend({**item, "origin": origin} for item in returned)
             discovery_trace.append({
                 "round": discovery_calls - 1, "mode": "raw", "input": origin,
                 "response_format_notice": response.get("response_format_notice"),
-                "suggestions": len(returned or []),
-                "new_after_union": _merge(returned, origin),
+                "suggestions": len(returned),
             })
         from src.analyzer.test_quality_lane import collect_test_quality_candidates
+        from src.reviewer.candidate_dedupe import dedupe_candidates
         rule_candidates = collect_test_quality_candidates(snapshot, files)
+        pool.extend({**item, "origin": "test_quality_rules"} for item in rule_candidates)
+        union, merges = dedupe_candidates(pool)
         discovery_trace.append({
             "round": discovery_calls, "mode": "test_quality_rules",
             "suggestions": len(rule_candidates),
-            "new_after_union": _merge(rule_candidates, "test_quality_rules"),
+        })
+        discovery_trace.append({
+            "mode": "dedupe", "pool": len(pool), "kept": len(union), "merges": merges,
         })
         payload = parse_model_payload(json.dumps(
             _raw_findings_payload({"findings": union}, max(max_suggestions, len(union))),
