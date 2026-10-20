@@ -570,6 +570,62 @@ def _add_serialization_contract(bundle, snapshot, suggestion) -> None:
                 break
 
 
+_CALL_NAME = re.compile(r"\.([a-z_][A-Za-z0-9_]{2,})\b|\b([a-z_][A-Za-z0-9_]{2,})\s*\(")
+_NOT_CALLEES = frozenset({
+    "if", "for", "while", "return", "print", "len", "str", "int", "list", "dict", "set", "map",
+    "new", "self", "this", "super", "then", "else", "elif", "case", "when", "and", "not",
+    "function", "lambda", "await", "async", "typeof", "require", "import", "assert", "raise",
+})
+CALLEE_LIMIT = 4
+
+
+def _add_callee_contracts(bundle, snapshot, suggestion) -> None:
+    """Add definitions of what the anchor lines call, one hop down.
+
+    A claim like "this loop spins forever on truncated input" depends on how the
+    called read primitive behaves at end of input; on fastimage it raises, and
+    the verifier confirmed eight such claims without seeing that contract.
+    """
+    text = (snapshot.read(suggestion.file_path, "head") or "").splitlines()
+    line = suggestion.line or 0
+    window = "\n".join(text[max(0, line - 3):line + 2])
+    names = []
+    for dotted, called in _CALL_NAME.findall(window):
+        name = dotted or called
+        if name not in _NOT_CALLEES and name not in names:
+            names.append(name)
+    for name in names[:CALLEE_LIMIT]:
+        try:
+            hits = snapshot.search(name, side="head", limit=8)
+        except Exception:  # a search backend must not break the review
+            return
+        for path, number in hits:
+            source = (snapshot.read(path, "head") or "").splitlines()
+            current = source[number - 1] if 0 < number <= len(source) else ""
+            if re.search(rf"\b(def|func|fun|function)\s+(self\.)?{re.escape(name)}\b"
+                         rf"|\bfunc\s+\([^)]*\)\s*{re.escape(name)}\b", current):
+                bundle.add(path, number, kind="candidate_callee_contract", max_lines=25)
+                break
+
+
+# A confirmation that hedges its own causal claim, or whose only failure is on
+# malformed input, was a false positive in every case on the six-case dev set
+# (12 of 12): these stay in the review queue instead of being published.
+_HEDGED_CONFIRMATION = re.compile(
+    r"\b(may|might|could|potentially|possibly|theoretically)\b", re.IGNORECASE)
+_MALFORMED_ONLY = re.compile(
+    r"\b(malformed|truncated|corrupt\w*|short (file|stream|read|segment)|EOF|"
+    r"end of (file|input|stream))\b", re.IGNORECASE)
+
+
+def _speculative_confirmation(item) -> str | None:
+    if _HEDGED_CONFIRMATION.search(str(item.get("reason") or "")):
+        return "hedged_confirmation"
+    if _MALFORMED_ONLY.search(str(item.get("actual_behavior") or "")):
+        return "malformed_input_only"
+    return None
+
+
 VERIFY_EVIDENCE_EXTRA_TOKENS = 4000
 _CAMEL_SYMBOL = re.compile(r"\b[A-Z][A-Za-z0-9]*[a-z][A-Za-z0-9]*\b|\b[A-Z]{2,}[a-z]\w*\b")
 
@@ -1258,6 +1314,8 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
                 # One hop along the contract: where else is this symbol used?
                 _add_contract_callers(bundle, snapshot, files, suggestion)
                 _add_serialization_contract(bundle, snapshot, suggestion)
+                if raw_discovery:
+                    _add_callee_contracts(bundle, snapshot, suggestion)
         seen.add(identity); candidates.append(item)
 
     verification_calls, failed = 0, False
@@ -1537,6 +1595,10 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
                 item = {**item, "verifier_decision": decision, "decision": "confirmed",
                         "validation_reason": "deterministic_rule_fact"}
                 decision = "confirmed"
+            elif (raw_discovery and decision == "confirmed"
+                  and (speculative := _speculative_confirmation(item)) is not None):
+                item = {**item, "decision": "needs_context", "validation_reason": speculative}
+                decision = "needs_context"
             elif contradicted is not None:
                 # Deterministic fact beats model reasoning: the claimed mock does
                 # not reach this local binding, so the stated mechanism is wrong.

@@ -1989,3 +1989,52 @@ def test_raw_verification_gets_extra_evidence_headroom(repo):
                       [verdict()["items"][0]])
     limits = [line.limit for line in result.evidence_budget.lines if line.limit]
     assert max(limits) >= 6000 + VERIFY_EVIDENCE_EXTRA_TOKENS
+
+
+@pytest.mark.parametrize("updates, expected", [
+    ({"reason": "The loop could spin if the stream ever returns nil."}, "hedged_confirmation"),
+    ({"actual_behavior": "On a truncated file the loop never terminates."}, "malformed_input_only"),
+])
+def test_speculative_confirmation_stays_in_the_review_queue(repo, updates, expected):
+    finding = {"file": "users.py", "line": 2, "title": "Caller still expects positional values",
+               "reason": "r"}
+    result = _raw_run(repo, [finding], [{**verdict()["items"][0], **updates}])
+    assert result.suggestions == []
+    assert [suggestion.title for suggestion in result.pending] == [finding["title"]]
+    assert result.decisions[0]["validation_reason"] == expected
+
+
+def test_plain_confirmation_is_still_published(repo):
+    finding = {"file": "users.py", "line": 2, "title": "Caller still expects positional values",
+               "reason": "r"}
+    result = _raw_run(repo, [finding], [verdict()["items"][0]])
+    assert [suggestion.title for suggestion in result.suggestions] == [finding["title"]]
+
+
+def test_callee_contracts_add_the_called_definition():
+    from src.models import ReviewSuggestion
+    from src.reviewer.grounded_review import _add_callee_contracts
+
+    class Snap:
+        files = {
+            "parser.rb": "def parse\n  data = @stream.read(4)\n  data[0]\nend\n",
+            "stream.rb": "class Stream\n  def read(n)\n    raise Eof if done?\n  end\nend\n",
+        }
+
+        def read(self, path, side="head"):
+            return self.files.get(path)
+
+        def search(self, symbol, side="head", limit=6):
+            return [(p, n) for p, t in self.files.items()
+                    for n, line in enumerate(t.splitlines(), 1) if symbol in line]
+
+    added = []
+
+    class Bundle:
+        def add(self, path, line=1, side="head", kind="related_code", max_lines=None):
+            added.append((path, line, kind))
+
+    _add_callee_contracts(Bundle(), Snap(), ReviewSuggestion(
+        file_path="parser.rb", line=2, severity="medium", confidence=.6,
+        title="t", reason="r", recommendation=""))
+    assert ("stream.rb", 2, "candidate_callee_contract") in added

@@ -52,6 +52,8 @@ _REASONS = frozenset(
         "dismissal_has_no_valid_counter_evidence",
         "dismissal_rests_on_intent_or_impact",
         "contradicted_by_deterministic_rule",
+        "hedged_confirmation",
+        "malformed_input_only",
         "duplicate_of_confirmed_candidate",
         "insufficient_behavior_chain_or_source_evidence",
         "model_review_unavailable",
