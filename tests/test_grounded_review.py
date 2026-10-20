@@ -1607,28 +1607,33 @@ def test_review_trace_records_rendered_head_ranges_for_the_patch(repo):
     assert "caller.py" not in ranges
 
 
-def test_raw_discovery_is_one_call_and_still_passes_the_verification_gate(repo):
+def test_raw_discovery_unions_two_samples_and_still_passes_the_verification_gate(repo):
+    finding = {
+        "file": "users.py", "line": 2,
+        "title": "Caller still expects positional values",
+        "reason": "Dictionary iteration returns keys, not the former values",
+        "evidence": ['return {"name": "name", "age": 42}'],
+    }
     report, provider = run(repo, [
-        {"findings": [{
-            "file": "users.py", "line": 2,
-            "title": "Caller still expects positional values",
-            "reason": "Dictionary iteration returns keys, not the former values",
-            "evidence": ['return {"name": "name", "age": 42}'],
-        }]},
+        {"findings": [finding]},
+        {"findings": [{**finding, "title": "Same anchor, other words"}]},
         verdict(),
     ], raw_discovery=True)
 
-    assert len(provider.calls) == 2  # one raw discovery + one verification
+    assert len(provider.calls) == 3  # diff + diff/evidence discovery, one verification
     assert provider.calls[0][0].startswith("You are a senior code reviewer")
-    assert provider.calls[1][0].startswith("You verify code-review candidates")
-    raw_prompt = provider.calls[0][1]
-    assert "## Diff\n--- a/users.py\n+++ b/users.py\n" in raw_prompt
-    assert '+    return {"name": "name", "age": 42}' in raw_prompt
-    assert "## Changed diff" not in raw_prompt  # budgeted context.text is bypassed
+    assert provider.calls[2][0].startswith("You verify code-review candidates")
+    diff_only, with_evidence = provider.calls[0][1], provider.calls[1][1]
+    for raw_prompt in (diff_only, with_evidence):
+        assert "## Diff\n--- a/users.py\n+++ b/users.py\n" in raw_prompt
+        assert '+    return {"name": "name", "age": 42}' in raw_prompt
+        assert "## Changed diff" not in raw_prompt  # budgeted context.text is bypassed
+    assert "## Frozen repository evidence" not in diff_only
+    assert "## Frozen repository evidence" in with_evidence
     trace = report.repository_context["review_trace"]
     assert trace["discovery_mode"] == "raw"
     assert trace["intent"]["status"] == "not_reported"
-    assert len(report.suggestions) == 1
+    assert len(report.suggestions) == 1  # the duplicate anchor was merged
 
 
 MULTI_SOURCE = (
@@ -1684,7 +1689,8 @@ def test_dismissal_whose_counter_evidence_repeats_the_evidence_is_not_accepted(r
 def test_raw_verification_sees_the_same_full_diff_as_discovery(repo):
     _, provider = run(repo, [
         {"findings": [{"file": "users.py", "line": 2, "title": "t", "reason": "r"}]},
+        {"findings": []},
         verdict(),
     ], raw_discovery=True)
-    verify_prompt = provider.calls[1][1]
+    verify_prompt = provider.calls[2][1]
     assert "--- a/users.py\n+++ b/users.py\n" in verify_prompt

@@ -841,20 +841,50 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
     # is never judged "not shown" because the budgeted context clipped it.
     diff_text = _raw_discovery_prompt(pr, files) if raw_discovery else context.text
     if raw_discovery:
-        prompt = (prompt_addendum + "\n" if prompt_addendum else "")
-        prompt += diff_text
-        prompt += "\n## Frozen repository evidence\n" + bundle.render()
-        response = _json(provider, RAW_DISCOVERY_SYSTEM, prompt)
-        discovery_calls = 1
-        payload = parse_model_payload(json.dumps(
-            _raw_findings_payload(response, max_suggestions), ensure_ascii=False
-        ))
+        # Two samples with different inputs, unioned: the diff-only prompt keeps
+        # local defects undiluted, diff+evidence finds cross-file ones. Their
+        # candidate sets overlap only partly, so the union raises discovery.
+        # Deterministic test-quality candidates join the same pool; every one
+        # still has to pass verification and criteria to be published.
+        prefix = (prompt_addendum + "\n" if prompt_addendum else "") + diff_text
+        samples = (("diff", prefix),
+                   ("diff+evidence", prefix + "\n## Frozen repository evidence\n" + bundle.render()))
+        union, seen_anchors = [], set()
+
+        def _merge(findings, origin):
+            added = 0
+            for item in findings or []:
+                if not isinstance(item, dict):
+                    continue
+                anchor = (item.get("file") or item.get("file_path"), item.get("line"))
+                if anchor in seen_anchors:
+                    continue
+                seen_anchors.add(anchor)
+                union.append({**item, "origin": origin})
+                added += 1
+            return added
+
+        for origin, sample_prompt in samples:
+            response = _json(provider, RAW_DISCOVERY_SYSTEM, sample_prompt)
+            discovery_calls += 1
+            returned = response.get("findings") if isinstance(response, dict) else None
+            discovery_trace.append({
+                "round": discovery_calls - 1, "mode": "raw", "input": origin,
+                "response_format_notice": response.get("response_format_notice"),
+                "suggestions": len(returned or []),
+                "new_after_union": _merge(returned, origin),
+            })
+        from src.analyzer.test_quality_lane import collect_test_quality_candidates
+        rule_candidates = collect_test_quality_candidates(snapshot, files)
         discovery_trace.append({
-            "round": 0,
-            "mode": "raw",
-            "response_format_notice": response.get("response_format_notice"),
-            "suggestions": len(response.get("findings") or []),
+            "round": discovery_calls, "mode": "test_quality_rules",
+            "suggestions": len(rule_candidates),
+            "new_after_union": _merge(rule_candidates, "test_quality_rules"),
         })
+        payload = parse_model_payload(json.dumps(
+            _raw_findings_payload({"findings": union}, max(max_suggestions, len(union))),
+            ensure_ascii=False,
+        ))
     for round_index in range(discovery_budget):
         available_sources.update(item["evidence_ref"] for item in bundle.excerpts)
         # Cross-file evidence changes the constraints; the prompt module owns
