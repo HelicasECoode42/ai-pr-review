@@ -138,8 +138,133 @@ def _mock_call_arity(tree: ast.Module) -> list[tuple[str, int, int]]:
     return hits
 
 
+def _function_signatures(sources: dict[str, str] | None) -> dict[str, tuple[int, str | None]]:
+    """Map a function name to (positional parameter count, return annotation)."""
+    signatures: dict[str, tuple[int, str | None]] = {}
+    for text in (sources or {}).values():
+        try:
+            tree = ast.parse(text)
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            args = [argument for argument in node.args.args if argument.arg not in {"self", "cls"}]
+            if node.args.vararg is not None:
+                continue
+            annotation = None
+            if node.returns is not None:
+                annotation = ast.unparse(node.returns)
+            signatures.setdefault(node.name, (len(args), annotation))
+    return signatures
+
+
+def _patch_side_effect_targets(tree: ast.Module) -> dict[str, str]:
+    """Map a side_effect function name to the dotted target it stands in for."""
+    mapping: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        function = node.func
+        if not ((isinstance(function, ast.Attribute) and function.attr == "patch")
+                or (isinstance(function, ast.Name) and function.id == "patch")):
+            continue
+        if not node.args:
+            continue
+        first = node.args[0]
+        if not isinstance(first, ast.Constant) or not isinstance(first.value, str):
+            continue
+        for keyword in node.keywords:
+            if keyword.arg == "side_effect" and isinstance(keyword.value, ast.Name):
+                mapping[keyword.value.id] = first.value
+    return mapping
+
+
+def _side_effect_return(
+    path: str, tree: ast.Module, signatures: dict[str, tuple[int, str | None]]
+) -> list[TestQualityFinding]:
+    """Mock side_effect return shape/global mutation that make the test self-testing."""
+    findings: list[TestQualityFinding] = []
+    targets = _patch_side_effect_targets(tree)
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        returns = [item for item in ast.walk(node) if isinstance(item, ast.Return) and item.value]
+        mutation = None
+        for child in ast.walk(node):
+            if (isinstance(child, ast.Call) and isinstance(child.func, ast.Attribute)
+                    and child.func.attr in {"append", "clear", "extend", "pop"}
+                    and isinstance(child.func.value, ast.Name)
+                    and child.func.value.id.isupper()):
+                mutation = child.func.value.id
+        if mutation and node.name in targets:
+            findings.append(TestQualityFinding(
+                rule_id="TQ008", path=path, line=node.lineno,
+                title="Mock side_effect mutates module-global state",
+                reason=(
+                    f"`{node.name}` mutates `{mutation}` from inside a mock side_effect; "
+                    "the assertion then checks the mock's own side effect, not production logic."
+                ),
+                confidence=0.7,
+            ))
+        if not returns:
+            continue
+        target = targets.get(node.name)
+        if not target:
+            continue
+        expected = signatures.get(target.split(".")[-1])
+        if expected is None or not expected[1]:
+            continue
+        annotation = expected[1].lower()
+        literal_types = {type(item.value).__name__.lower() for item in returns}
+        if "tuple" in literal_types and "tuple" not in annotation:
+            findings.append(TestQualityFinding(
+                rule_id="TQ006", path=path, line=node.lineno,
+                title="Mock side_effect return shape does not match the real function",
+                reason=(
+                    f"`{node.name}` returns a tuple but the real target returns `{expected[1]}`; "
+                    "if the production path ran against this mock, the result would be "
+                    "the wrong type."
+                ),
+                confidence=0.7,
+            ))
+    return findings
+
+
+def _magic_index_uses(path: str, tree: ast.Module) -> list[TestQualityFinding]:
+    """Integer subscripts on a local tuple-like value are brittle and hard to read."""
+    findings: list[TestQualityFinding] = []
+    seen: set[tuple[str, int]] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Subscript):
+            continue
+        index = node.slice
+        if not isinstance(index, ast.Constant) or isinstance(index.value, bool):
+            continue
+        if not isinstance(index.value, int) or index.value < 4:
+            continue
+        target = node.value
+        if not isinstance(target, ast.Name):
+            continue
+        identity = (target.id, node.lineno)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        findings.append(TestQualityFinding(
+            rule_id="TQ007", path=path, line=node.lineno,
+            title="Test indexes a tuple-like value with a magic number",
+            reason=(
+                f"`{target.id}[{index.value}]` relies on positional tuple layout; a named "
+                "tuple or data class would document the field and survive reordering."
+            ),
+            confidence=0.55,
+        ))
+    return findings
+
+
 def scan_test_file(
-    path: str, text: str, *, project_text: str | None = None
+    path: str, text: str, *, project_text: str | None = None,
+    known_sources: dict[str, str] | None = None,
 ) -> list[TestQualityFinding]:
     """Scan one Python test file for structural test-quality problems."""
     try:
@@ -192,6 +317,24 @@ def scan_test_file(
                 ),
                 confidence=0.75,
             ))
+
+    signatures = _function_signatures(known_sources)
+    for name, line, args in _mock_call_arity(tree):
+        expected = signatures.get(name)
+        if expected is None or args < 1 or args == expected[0]:
+            continue
+        findings.append(TestQualityFinding(
+            rule_id="TQ005", path=path, line=line,
+            title="Mocked call shape does not match the real function signature",
+            reason=(
+                f"`{name}` is called with {args} positional argument(s) but its frozen "
+                f"definition takes {expected[0]}; if the patch ever missed this call "
+                "would raise, and the mock hides the contract mismatch."
+            ),
+            confidence=0.8,
+        ))
+    findings.extend(_magic_index_uses(path, tree))
+    findings.extend(_side_effect_return(path, tree, signatures))
 
     if project_text is not None:
         uses_mocker = re.search(r"\bmocker\b", text) is not None
