@@ -247,6 +247,8 @@ at most four bound read/search requests. Each must include the existing `hypothe
 declared `missing_id`; request each obligation at most once. Do not use free-text similarity as
 proof. If no declared obligation matches the uncertainty, do not invent one or infer a path: return
 `needs_context` and use ordinary `context_requests` only when a concrete bound query is known.
+When a candidate claims a serialized field is present or absent, check the field's serialization
+tag in the evidence (for example Go `omitempty` omits empty strings, maps and slices) before confirming.
 When a candidate rests on how a changed symbol is used, request that caller or contract specifically
 instead of restating the definition you were already given.
 Return JSON {items:[{candidate_id,decision:confirmed|dismissed|needs_context,confidence,
@@ -501,6 +503,48 @@ def _add_contract_callers(bundle, snapshot, files, suggestion) -> None:
         if path in changed or path == suggestion.file_path:
             continue  # callers already in the diff are visible without help
         bundle.add(path, line, kind="candidate_caller")
+
+
+_SERIALIZATION_CLAIM = re.compile(
+    r"\b(json|omit(s|ted|empty)?|serializ\w*|marshal\w*|response (field|key)s?|"
+    r"(fields?|keys?) (are |is )?(present|absent|included))\b",
+    re.IGNORECASE,
+)
+SERIALIZATION_FIELDS_LIMIT = 3
+# Search hits come back sorted by path, so the type file can sit behind tests,
+# SQL and UI files; only tagged lines are added, so a wider net costs nothing.
+SERIALIZATION_SEARCH_LIMIT = 12
+
+
+def _add_serialization_contract(bundle, snapshot, suggestion) -> None:
+    """Add the tag that decides whether a claimed field is serialized.
+
+    A claim that a response "still contains" or "omits" a field depends on the
+    field's serialization tag (Go `json:"x,omitempty"`, and similar), which is
+    usually in a type file the diff does not touch. Only lines that declare a
+    tag for a field named in the claim are added.
+    """
+    text = suggestion.title + "\n" + suggestion.reason
+    if not _SERIALIZATION_CLAIM.search(text):
+        return
+    names = []
+    for name in re.findall(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b", text):
+        if name not in names:
+            names.append(name)
+    for name in names[:SERIALIZATION_FIELDS_LIMIT]:
+        try:
+            hits = snapshot.search(name, side="head", limit=SERIALIZATION_SEARCH_LIMIT)
+        except Exception as exc:  # a search backend must not break the review
+            bundle.omitted.append({"path": suggestion.file_path, "side": "head",
+                                   "reason": "serialization_search_failed",
+                                   "detail": f"{type(exc).__name__}: {exc}"})
+            return
+        for path, line in hits:
+            source = snapshot.read(path, "head") or ""
+            lines = source.splitlines()
+            if 0 < line <= len(lines) and re.search(rf"""json:\"{re.escape(name)}[,\"]""", lines[line - 1]):
+                bundle.add(path, line, kind="serialization_contract", max_lines=40)
+                break
 
 
 def _intent_hypotheses(raw, available_sources):
@@ -1137,6 +1181,7 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
                 bundle.add(suggestion.file_path, suggestion.line, kind="candidate_definition")
                 # One hop along the contract: where else is this symbol used?
                 _add_contract_callers(bundle, snapshot, files, suggestion)
+                _add_serialization_contract(bundle, snapshot, suggestion)
         seen.add(identity); candidates.append(item)
 
     verification_calls, failed = 0, False
@@ -1447,15 +1492,23 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
         # The verifier sees every candidate at once, so it can say which ones
         # share a root cause; a confirmed duplicate of another confirmed
         # candidate is folded into it instead of becoming a second comment.
+        # Two guards against over-grouping, which folded distinct gold findings
+        # into "the test mocks the function under test": a rule finding is a
+        # separate structural fact and is never folded, and a folded model
+        # candidate stays visible in the pending queue instead of disappearing.
         confirmed = set(kept_ids)
         folded = set()
-        for index in kept_ids:
+        for index, suggestion in zip(kept_ids, kept):
             target = duplicate_of.get(index)
+            if _RULE_TITLE.match(suggestion.title):
+                continue
             if (isinstance(target, int) and not isinstance(target, bool) and target != index
                     and target in confirmed and target not in folded):
                 folded.add(index)
-                candidates[index].update(status="filtered", reason="duplicate_of_confirmed_candidate",
+                candidates[index].update(status="needs_context",
+                                         reason="duplicate_of_confirmed_candidate",
                                          duplicate_of=target)
+                pending.append(suggestion.model_copy(update={"source": "ai_duplicate_of_confirmed"}))
         kept = [suggestion for index, suggestion in zip(kept_ids, kept) if index not in folded]
     else:
         kept = [s for _, s in eligible]

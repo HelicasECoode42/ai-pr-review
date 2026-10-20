@@ -1806,10 +1806,11 @@ def test_confirmed_duplicate_is_folded_into_its_confirmed_target(repo):
     ])
     assert [suggestion.title for suggestion in result.suggestions] == [first["title"]]
     folded = result.candidates[1]
-    assert folded["status"] == "filtered"
+    assert folded["status"] == "needs_context"
     assert folded["reason"] == "duplicate_of_confirmed_candidate"
     assert folded["duplicate_of"] == 0
-    assert result.pending == []
+    # A folded candidate stays visible in the review queue.
+    assert [suggestion.title for suggestion in result.pending] == [second["title"]]
 
 
 def test_duplicate_of_an_unconfirmed_candidate_is_still_published(repo):
@@ -1843,3 +1844,64 @@ def test_confirmed_mock_claim_contradicted_by_tq001_is_held_back(repo, monkeypat
     assert any(title.startswith("[TQ001]") for title in titles)
     held = [item for item in result.decisions if item["candidate_id"] == 0][0]
     assert held["validation_reason"] == "contradicted_by_deterministic_rule"
+
+
+def test_rule_candidate_is_never_folded_by_duplicate_of(repo):
+    first = {"file": "users.py", "line": 2, "title": "Caller still expects positional values",
+             "reason": "r"}
+    rule = {"file": "users.py", "line": 1, "title": "[TQ008] Structural rule fact", "reason": "r"}
+    confirmed = verdict()["items"][0]
+    result = _raw_run(repo, [first, rule], [
+        confirmed, {**confirmed, "candidate_id": 1, "duplicate_of": 0},
+    ])
+    assert [suggestion.title for suggestion in result.suggestions] == [first["title"], rule["title"]]
+
+
+class _TagSnapshot:
+    files = {
+        "types.go": 'type Entry struct {\n\tID string `json:"id"`\n'
+                    '\tRequestBody string `json:"request_body,omitempty"`\n}\n',
+        "other.go": "// request_body mentioned in a comment\n",
+    }
+
+    def read(self, path, side="head"):
+        return self.files.get(path)
+
+    def search(self, symbol, side="head", limit=6):
+        return [(path, number) for path, text in self.files.items()
+                for number, line in enumerate(text.splitlines(), 1) if symbol in line]
+
+
+class _RecordingBundle:
+    def __init__(self):
+        self.added, self.omitted = [], []
+
+    def add(self, path, line=1, side="head", kind="related_code", max_lines=None):
+        self.added.append((path, line, kind))
+
+
+def _claim(title, reason):
+    from src.models import ReviewSuggestion
+    return ReviewSuggestion(file_path="reader.go", line=3, severity="medium", confidence=.6,
+                            title=title, reason=reason, recommendation="")
+
+
+def test_serialization_claim_adds_the_field_tag_line():
+    from src.reviewer.grounded_review import _add_serialization_contract
+
+    bundle = _RecordingBundle()
+    _add_serialization_contract(bundle, _TagSnapshot(), _claim(
+        "List response still contains payload fields",
+        "The JSON response still contains request_body as an empty string.",
+    ))
+    assert bundle.added == [("types.go", 3, "serialization_contract")]
+
+
+def test_non_serialization_claim_adds_nothing():
+    from src.reviewer.grounded_review import _add_serialization_contract
+
+    bundle = _RecordingBundle()
+    _add_serialization_contract(bundle, _TagSnapshot(), _claim(
+        "Loop skips the last request_body", "Off by one in the loop bound.",
+    ))
+    assert bundle.added == []
