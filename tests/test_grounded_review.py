@@ -1894,7 +1894,7 @@ def test_serialization_claim_adds_the_field_tag_line():
         "List response still contains payload fields",
         "The JSON response still contains request_body as an empty string.",
     ))
-    assert bundle.added == [("types.go", 3, "serialization_contract")]
+    assert bundle.added == [("types.go", 3, "candidate_serialization_contract")]
 
 
 def test_non_serialization_claim_adds_nothing():

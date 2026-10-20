@@ -543,7 +543,10 @@ def _add_serialization_contract(bundle, snapshot, suggestion) -> None:
             source = snapshot.read(path, "head") or ""
             lines = source.splitlines()
             if 0 < line <= len(lines) and re.search(rf"""json:\"{re.escape(name)}[,\"]""", lines[line - 1]):
-                bundle.add(path, line, kind="serialization_contract", max_lines=40)
+                # A "candidate_*" kind may evict initial windows under budget
+                # pressure; without it the tag line was silently dropped as
+                # evidence_budget_exhausted on CrabTrap. A short window is enough.
+                bundle.add(path, line, kind="candidate_serialization_contract", max_lines=12)
                 break
 
 
