@@ -567,7 +567,11 @@ class EvidenceBundle:
                 self.tokens -= count_tokens(json.dumps(disposable, ensure_ascii=False))
                 self.evicted.append({k: v for k, v in disposable.items() if k != "code"})
         if self.tokens + cost > self.budget:
-            self.omitted.append({"path": path, "side": side, "reason": "evidence_budget_exhausted"})
+            reason = (
+                "index_extra_budget_exhausted"
+                if kind == "index_extra_reference" else "evidence_budget_exhausted"
+            )
+            self.omitted.append({"path": path, "side": side, "reason": reason})
             return None
         self.excerpts.append(entry); self.tokens += cost
         return entry["evidence_ref"]
@@ -647,7 +651,7 @@ class EvidenceBundle:
 
         self.budget = original_budget
 
-    def execute(self, requests):
+    def execute(self, requests, *, search_resolver=None):
         """Run bounded read/search requests and reuse results for identical frozen queries."""
         outcomes = []
         for request in requests[:6]:
@@ -729,10 +733,69 @@ class EvidenceBundle:
                         entry.update(cached)
                         entry.update(executed=False, reused=True)
                     else:
-                        errors_before = len(self.snapshot.audit().get("errors", []))
-                        hits = self.snapshot.search(symbol, side, limit=4)
-                        search_errors = self.snapshot.audit().get("errors", [])[errors_before:]
+                        index_result = None
+                        if callable(search_resolver):
+                            try:
+                                resolved = search_resolver(symbol, side, 4)
+                                if isinstance(resolved, dict):
+                                    hits = resolved.get(
+                                        "baseline_hits", resolved.get("hits", [])
+                                    )
+                                    index_extra_candidates = resolved.get("index_extra_hits", [])
+                                    index_extra_omitted = resolved.get(
+                                        "index_extra_omitted", {}
+                                    )
+                                    if not isinstance(hits, list):
+                                        hits = []
+                                    hits = hits[:4]
+                                    if not isinstance(index_extra_candidates, list):
+                                        index_extra_candidates = []
+                                    extra_slots = max(0, 4 - len(hits))
+                                    index_extra_hits = index_extra_candidates[:extra_slots]
+                                    omitted_for_slots = (
+                                        len(index_extra_candidates) - len(index_extra_hits)
+                                    )
+                                    if omitted_for_slots:
+                                        current_omitted = (
+                                            index_extra_omitted
+                                            if isinstance(index_extra_omitted, dict) else {}
+                                        )
+                                        index_extra_omitted = {
+                                            "count": current_omitted.get("count", 0)
+                                            + omitted_for_slots,
+                                            "reason": "no_return_slot",
+                                        }
+                                    if not isinstance(index_extra_omitted, dict):
+                                        index_extra_omitted = {}
+                                    index_result = resolved.get("index")
+                                    search_errors = resolved.get("search_errors", [])
+                                else:
+                                    hits = self.snapshot.search(symbol, side, limit=4)
+                                    index_extra_hits = []
+                                    index_extra_omitted = {}
+                                    search_errors = []
+                            except Exception as exc:  # index failure must not break legacy search
+                                hits = self.snapshot.search(symbol, side, limit=4)
+                                index_extra_hits = []
+                                index_extra_omitted = {}
+                                search_errors = []
+                                index_result = {
+                                    "schema": "python-binding-v1",
+                                    "status": "unavailable",
+                                    "completeness": "partial",
+                                    "searched_scope": [],
+                                    "omissions": [f"index_error:{type(exc).__name__}"],
+                                    "relationships": [],
+                                }
+                        else:
+                            errors_before = len(self.snapshot.audit().get("errors", []))
+                            hits = self.snapshot.search(symbol, side, limit=4)
+                            index_extra_hits = []
+                            index_extra_omitted = {}
+                            search_errors = self.snapshot.audit().get("errors", [])[errors_before:]
                         refs = []
+                        successful_index_hits = []
+                        baseline_budget_failed = False
                         omissions_before = len(self.omitted)
                         for path, hit_line in hits:
                             evidence_ref = self.add(
@@ -740,6 +803,42 @@ class EvidenceBundle:
                             )
                             if evidence_ref:
                                 refs.append(evidence_ref)
+                            elif self.omitted and self.omitted[-1].get("reason") == (
+                                "evidence_budget_exhausted"
+                            ):
+                                baseline_budget_failed = True
+                        extra_omissions = (
+                            [index_extra_omitted] if index_extra_omitted.get("count", 0) else []
+                        )
+                        if baseline_budget_failed and index_extra_hits:
+                            extra_omissions.append({
+                                "count": len(index_extra_hits),
+                                "reason": "baseline_evidence_budget_exhausted",
+                            })
+                        elif search_errors and index_extra_hits:
+                            extra_omissions.append({
+                                "count": len(index_extra_hits),
+                                "reason": "baseline_search_incomplete",
+                            })
+                        elif index_extra_hits:
+                            for path, hit_line in index_extra_hits:
+                                before_add = len(self.omitted)
+                                evidence_ref = self.add(
+                                    path, hit_line, side, "index_extra_reference"
+                                )
+                                if evidence_ref:
+                                    refs.append(evidence_ref)
+                                    successful_index_hits.append((path, hit_line))
+                                else:
+                                    reason = (
+                                        "evidence_budget_exhausted"
+                                        if len(self.omitted) > before_add
+                                        and self.omitted[-1].get("reason") == (
+                                            "index_extra_budget_exhausted"
+                                        )
+                                        else "source_unavailable_or_out_of_range"
+                                    )
+                                    extra_omissions.append({"count": 1, "reason": reason})
                         new_omissions = self.omitted[omissions_before:]
                         omission_reason = next(
                             (item.get("reason") for item in new_omissions
@@ -759,13 +858,45 @@ class EvidenceBundle:
                             else "executed_no_evidence"
                         )
                         entry.update(executed=True, reused=False, status=status,
-                                     hits=[{"path": p, "line": n} for p, n in hits],
+                                     hits=[{"path": p, "line": n}
+                                           for p, n in hits + successful_index_hits],
                                      evidence_refs=list(dict.fromkeys(refs)))
+                        if extra_omissions:
+                            entry["index_extra_omitted"] = extra_omissions
+                        if index_result is not None:
+                            if not (
+                                isinstance(index_result, dict)
+                                and index_result.get("schema") == "python-binding-v1"
+                                and index_result.get("status") in {"partial", "unavailable"}
+                                and index_result.get("completeness") == "partial"
+                                and isinstance(index_result.get("searched_scope"), list)
+                                and len(index_result["searched_scope"]) <= 12
+                                and all(isinstance(path, str) and safe_source_path(path)
+                                        for path in index_result["searched_scope"])
+                                and isinstance(index_result.get("omissions"), list)
+                                and len(index_result["omissions"]) <= 64
+                                and all(isinstance(item, str) for item in index_result["omissions"])
+                                and isinstance(index_result.get("relationships"), list)
+                                and len(index_result["relationships"]) <= 50
+                            ):
+                                index_result = {
+                                    "schema": "python-binding-v1", "status": "unavailable",
+                                    "completeness": "partial", "searched_scope": [],
+                                    "omissions": ["invalid_index_result"], "relationships": [],
+                                }
+                            entry["host_index"] = index_result
+                            if index_result.get("completeness") != "complete":
+                                self.omitted.append({
+                                    "path": "?", "side": side,
+                                    "reason": "symbol_index_partial_scope",
+                                    "detail": ",".join(index_result.get("omissions", [])[:4]),
+                                })
                         if omission_reason:
                             entry["omission_reason"] = omission_reason
                         self._request_cache[key] = {
                             k: entry[k] for k in (
-                                "status", "hits", "evidence_refs", "omission_reason"
+                                "status", "hits", "evidence_refs", "omission_reason",
+                                "host_index", "index_extra_omitted",
                             )
                             if k in entry
                         }

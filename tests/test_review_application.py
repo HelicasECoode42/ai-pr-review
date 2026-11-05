@@ -74,7 +74,32 @@ def test_primary_is_closed_if_critic_creation_fails():
     provider.close.assert_called_once()
 
 
-def test_same_model_reuses_provider_and_engine_failure_closes_once():
+def test_same_model_uses_critic_output_cap_and_closes_each_provider_on_failure():
+    providers = []
+
+    def factory(**kwargs):
+        provider = Mock()
+        provider.config = kwargs
+        providers.append(provider)
+        return provider
+
+    application = ReviewApplication(
+        settings(enable_critic=True, critic_model="deepseek-flash"),
+        provider_factory=factory,
+        engine=Mock(side_effect=RuntimeError("engine")),
+    )
+    with pytest.raises(RuntimeError):
+        application.review(PullRequest(repo="r", number=1, title="t"), [], [])
+    assert len(providers) == 2
+    assert providers[0].config["model"] == providers[1].config["model"]
+    assert providers[0].config["max_output_tokens"] == 32_768
+    assert providers[1].config["max_output_tokens"] == 1_024
+    assert providers[0].config["request_budget"] is providers[1].config["request_budget"]
+    for provider in providers:
+        provider.close.assert_called_once()
+
+
+def test_shared_provider_instance_is_closed_once_for_review_and_critic():
     provider = Mock()
     factory = Mock(return_value=provider)
     application = ReviewApplication(
@@ -84,7 +109,7 @@ def test_same_model_reuses_provider_and_engine_failure_closes_once():
     )
     with pytest.raises(RuntimeError):
         application.review(PullRequest(repo="r", number=1, title="t"), [], [])
-    factory.assert_called_once()
+    assert factory.call_count == 2
     provider.close.assert_called_once()
 
 

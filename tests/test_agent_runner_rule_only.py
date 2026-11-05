@@ -541,19 +541,14 @@ class TestRunnerDegradation:
             real_choose = original.choose_agent_strategy
 
             def _spy(*, use_ai, has_api_key, files_count, additions, findings_count,
-                     high_severity_count, signal_files=None,
-                     critical_signal_files=None, requested_mode="auto"):
+                     requested_mode="auto"):
                 captured["files_count"] = files_count
                 captured["additions"] = additions
                 captured["findings_count"] = findings_count
-                captured["high_severity_count"] = high_severity_count
                 return real_choose(
                     use_ai=use_ai, has_api_key=has_api_key,
                     files_count=files_count, additions=additions,
                     findings_count=findings_count,
-                    high_severity_count=high_severity_count,
-                    signal_files=signal_files,
-                    critical_signal_files=critical_signal_files,
                     requested_mode=requested_mode,
                 )
 

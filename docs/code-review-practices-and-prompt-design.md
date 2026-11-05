@@ -472,7 +472,7 @@ ReviewBench 的 golden set 有 `G_TP`（真正的参考问题）和候选集合 
 
 ### 5.4 用这套口径看本仓库的历史数字
 
-本仓库历史实验（[REPORT.md](evaluation/reviewbench-2026-10-13/REPORT.md)，本地一手）：25 个任务，**候选建议共 12 条**，匹配 TP 10 条，覆盖参考 TP **14 / 352**，grounded recall **3.98%**。
+本仓库历史实验（[REPORT.md](https://github.com/HelicasECoode42/ai-pr-review/blob/df397d5/docs/evaluation/reviewbench-2026-10-13/REPORT.md)，本地一手）：25 个任务，**候选建议共 12 条**，匹配 TP 10 条，覆盖参考 TP **14 / 352**，grounded recall **3.98%**。
 
 把分子分母摊开看，真正的诊断不是"precision 不够"：
 
@@ -670,4 +670,4 @@ schema 是 `"confidence": 0.0`，配置是 `min_comment_confidence=0.65`（[conf
 本机参考（本仓库已有研究）：
 
 - [review-research-and-development-standard.md](review-research-and-development-standard.md)（第 2 节已覆盖 ReviewBench、PR-Agent、CodeRabbit、Claude Code Review 与 Google 规范）
-- [evaluation/reviewbench-2026-10-13/REPORT.md](evaluation/reviewbench-2026-10-13/REPORT.md)（本仓库真实实验数字）
+- [evaluation/reviewbench-2026-10-13/REPORT.md](https://github.com/HelicasECoode42/ai-pr-review/blob/df397d5/docs/evaluation/reviewbench-2026-10-13/REPORT.md)（本仓库真实实验数字）

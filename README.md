@@ -6,6 +6,7 @@
 - **规范约束**（唯一来源）：[docs/HARNESS.md](docs/HARNESS.md)
 - **当前执行与验收**：[docs/review-v2-development.md](docs/review-v2-development.md)
 - **带日期的状态与实测边界**：[docs/STATE.md](docs/STATE.md)
+- **端到端故障与恢复矩阵**：[docs/failure-recovery-matrix.md](docs/failure-recovery-matrix.md)
 - **我们强在哪、为什么**：[docs/ADVANTAGES.md](docs/ADVANTAGES.md)
 - **开发过程记录**：[HANDOFF.md](HANDOFF.md)（非规范）
 
@@ -198,7 +199,7 @@ flowchart LR
 | [docs/review-v2-development.md](docs/review-v2-development.md) | 当前执行顺序、验收条件与实验协议 |
 | [docs/STATE.md](docs/STATE.md) | 带日期、版本和边界说明的当前状态与测量结果 |
 | [docs/ADVANTAGES.md](docs/ADVANTAGES.md) | 我们强在哪、为什么 |
-| [docs/evaluation/identification-baseline.md](docs/evaluation/identification-baseline.md) | 错误识别基线：0.50 → 1.00 |
+| [docs/evaluation/identification-baseline.md](https://github.com/HelicasECoode42/ai-pr-review/blob/df397d5/docs/evaluation/identification-baseline.md) | 错误识别基线：0.50 → 1.00 |
 | [docs/graph-planning-dataflow.md](docs/graph-planning-dataflow.md) | 预算/覆盖/缓存实测 |
 | [docs/error-handling-policy.md](docs/error-handling-policy.md) | 降级政策 |
 | [docs/review-guide.md](docs/review-guide.md) | 使用与判据 |

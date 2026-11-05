@@ -1,7 +1,7 @@
 """Agent policy: choose review strategy based on task characteristics.
 
 The policy is rule-driven, not LLM-driven.  It takes measurable inputs
-(files count, additions, findings severity, API key availability) and
+(files count, additions, findings count, API key availability) and
 returns a deterministic (strategy, reason) pair.
 """
 
@@ -20,9 +20,6 @@ def choose_agent_strategy(
     files_count: int,
     additions: int,
     findings_count: int,
-    high_severity_count: int,
-    signal_files: set[str] | None = None,
-    critical_signal_files: set[str] | None = None,
     requested_mode: str = "auto",
 ) -> tuple[str, str]:
     """Pick a review strategy and return (strategy, reason).
@@ -39,8 +36,6 @@ def choose_agent_strategy(
         Total added lines.
     findings_count : int
         Total rule-based findings.
-    high_severity_count : int
-        Number of critical + high severity findings.
     requested_mode : str
         Explicit mode override: "auto" | "rule_only" | "one_shot_ai" |
         "two_stage". Incremental review is a separate review_mode, not an
@@ -66,9 +61,6 @@ def choose_agent_strategy(
         return (requested_mode, f"Explicit mode: {requested_mode}")
 
     # ── 3. Auto selection ──────────────────────────────────
-    signal_files = signal_files or set()
-    critical_signal_files = critical_signal_files or set()
-
     if files_count == 0:
         return ("rule_only", "No changed files available; skip model call")
 

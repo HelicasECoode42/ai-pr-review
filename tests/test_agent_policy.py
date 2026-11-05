@@ -15,7 +15,6 @@ class TestChooseAgentStrategy:
             files_count=5,
             additions=100,
             findings_count=3,
-            high_severity_count=1,
         )
         assert strategy == "rule_only"
         assert "no-ai" in reason.lower() or "disabled" in reason.lower()
@@ -27,7 +26,6 @@ class TestChooseAgentStrategy:
             files_count=5,
             additions=100,
             findings_count=3,
-            high_severity_count=1,
         )
         assert strategy == "rule_only"
         assert "api_key" in reason.lower() or "not set" in reason.lower()
@@ -41,7 +39,6 @@ class TestChooseAgentStrategy:
             files_count=5,
             additions=100,
             findings_count=3,
-            high_severity_count=1,
             requested_mode="rule_only",
         )
         assert strategy == "rule_only"
@@ -53,7 +50,6 @@ class TestChooseAgentStrategy:
             files_count=5,
             additions=100,
             findings_count=3,
-            high_severity_count=1,
             requested_mode="one_shot_ai",
         )
         assert strategy == "one_shot_ai"
@@ -66,7 +62,6 @@ class TestChooseAgentStrategy:
             files_count=5,
             additions=100,
             findings_count=3,
-            high_severity_count=1,
             requested_mode="two_stage",
         )
         assert strategy == "two_stage"
@@ -78,7 +73,6 @@ class TestChooseAgentStrategy:
             files_count=5,
             additions=100,
             findings_count=3,
-            high_severity_count=1,
             requested_mode="garbage",
         )
         assert strategy == "one_shot_ai"
@@ -93,7 +87,6 @@ class TestChooseAgentStrategy:
             files_count=5,
             additions=100,
             findings_count=3,
-            high_severity_count=1,
         )
         assert strategy == "one_shot_ai"
 
@@ -104,7 +97,6 @@ class TestChooseAgentStrategy:
             files_count=30,
             additions=1000,
             findings_count=10,
-            high_severity_count=5,
         )
         assert strategy == "one_shot_ai"
         assert "grounded evidence" in reason
@@ -116,35 +108,9 @@ class TestChooseAgentStrategy:
             files_count=3,
             additions=1200,
             findings_count=10,
-            high_severity_count=2,
         )
         assert strategy == "one_shot_ai"
         assert "bounded coverage" in reason
-
-    def test_auto_distributed_signals_do_not_change_primary_strategy(self) -> None:
-        strategy, reason = choose_agent_strategy(
-            use_ai=True,
-            has_api_key=True,
-            files_count=10,
-            additions=300,
-            findings_count=8,
-            high_severity_count=1,
-            signal_files={f"src/file_{i}.py" for i in range(8)},
-        )
-        assert strategy == "one_shot_ai"
-
-    def test_auto_critical_signals_do_not_change_primary_strategy(self) -> None:
-        strategy, reason = choose_agent_strategy(
-            use_ai=True,
-            has_api_key=True,
-            files_count=12,
-            additions=400,
-            findings_count=3,
-            high_severity_count=2,
-            signal_files={"src/auth.py", "src/token.py"},
-            critical_signal_files={"src/auth.py", "src/token.py"},
-        )
-        assert strategy == "one_shot_ai"
 
     # ── Edge cases ──────────────────────────────────────────
 
@@ -155,7 +121,6 @@ class TestChooseAgentStrategy:
             files_count=0,
             additions=0,
             findings_count=0,
-            high_severity_count=0,
         )
         assert strategy == "rule_only"
 
@@ -167,7 +132,6 @@ class TestChooseAgentStrategy:
             files_count=5,
             additions=100,
             findings_count=3,
-            high_severity_count=1,
             requested_mode="one_shot_ai",
         )
         # AI unavailable check runs first, so rule_only wins
@@ -181,7 +145,6 @@ class TestChooseAgentStrategy:
                 files_count=5,
                 additions=100,
                 findings_count=3,
-                high_severity_count=1,
                 requested_mode=mode,
             )
             assert len(reason) > 0, f"Reason empty for mode={mode}"

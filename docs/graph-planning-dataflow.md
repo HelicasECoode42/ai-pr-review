@@ -13,16 +13,18 @@ flowchart TD
     E["Git ls-tree<br/>head 路径 inventory"]
     F["GitSnapshot<br/>固定 base/head Git objects"]
     G["build_review_plan(snapshot, files, paths, token_budget)"]
-    H["Snapshot.read(path, side)<br/>读取 head/base 源码"]
-    I["SourceIndexCache.parse(path, text, side)"]
-    J["SourceFile<br/>symbols, imports, calls, parser, content_hash"]
-    K["Relationship 集合<br/>import strong/weak；symbol_reference weak"]
+    H["有界 Snapshot.read<br/>head inventory + 显式读取的 base 文件"]
+    I["SourceIndexCache.parse(path, text, side, base, head)"]
+    J["SourceFile<br/>带 side/SHA 的 symbols, imports, calls, bindings"]
+    K["按 side 解析关系<br/>import 文件边；call 边带 symbol ID / 行号"]
+    U["UnresolvedReference<br/>动态/歧义/遮蔽及可能目标"]
     L["parse_file_hunks(ChangedFile)<br/>DiffHunk 列表"]
     M["ChangeSlice<br/>hunk_index, fragment_index, fragment, EvidenceRef"]
     N["有界分组<br/>强边邻接 + token_budget + public_degree"]
     O["ReviewUnit 集合<br/>diff token 估算、lazy EvidenceRef、related_paths"]
     P["ReviewPlan JSON<br/>units, files, relationships<br/>coverage + coverage_summary, budgets, cuts"]
     Q["写 output 文件<br/>终端显示单元/关系数量"]
+    R["PythonSymbolIndex.from_plan(side)<br/>有界 callers/callees query<br/>searched_scope + partial/omissions"]
 
     A --> B
     B --> C
@@ -34,10 +36,12 @@ flowchart TD
     E --> G
     F --> G
     G --> H --> I --> J --> K
+    K --> U
     G --> L --> M
     J --> M
     K --> N
     M --> N --> O --> P --> Q
+    P -. "库接口；不由 CLI 自动执行" .-> R
 ```
 
 `MemorySnapshot` 是测试中实现的轻量替身，遵循相同的 `read(path, side="head") -> str | None` 读取约定；生产 CLI 使用 `GitSnapshot`，将 `repo_path` 与固定 SHA 绑定并读取 Git objects，不读取 checkout 中尚未提交的工作区内容。
@@ -50,13 +54,14 @@ flowchart TD
 | `Snapshot` protocol | `base`、`head`；`read(path, side)` | 另声明 `search(symbol, side, limit)`、`audit()` | 图规划实际读取源码依赖 `read`；规划函数不调用 protocol 上的 `search`/`audit`。 |
 | `ChangedFile` | `filename`、`status`、`patch`、可选 `previous_filename` | 传给 `parse_file_hunks(file)` | CLI 通过 `git diff --no-renames` 生成；因此 CLI 重命名表现为删除/新增。库接口可接收 `previous_filename`。 |
 | `DiffHunk` | `ChangedFile.patch` 中的 unified diff hunk | `old_start/count`、`new_start/count`、`added_lines`、`removed_lines`、`raw` | `raw` 保留 hunk 内容，供后续按预算拆片。 |
-| `SourceIndexCache.parse(path, text, side)` | 路径、源码文本、快照侧 | `SourceFile` | 有界的单次运行缓存，键为 `(path, side, sha256(text))`；不缓存模型结论。 |
-| `SourceFile` / `SourceSymbol` | Python AST 或 TS/TSX Tree-sitter 解析 | 文件哈希、解析器名、定义名与行范围、导入、语法调用及限制 | 对其他语言标记 `unavailable`；TS 不解析类型。`SourceSymbol` 用于按 hunk 行范围定位相关定义并生成 `EvidenceRef`。 |
-| `Relationship` | 源文件路径、目标文件路径、关系类型 | `source`, `target`, `kind`, `strength`, 可选 `symbol` | 图节点是**文件路径**，当前是文件级依赖/引用图，不是函数级调用图。唯一解析目标的本地 import 为 strong；多个候选为 weak；按同名调用/定义匹配得到的 `symbol_reference` 始终是 weak。 |
+| `SourceIndexCache.parse(path, text, side, base, head)` | 路径、源码文本、快照侧和冻结 SHA | `SourceFile` | 有界的单次运行缓存，键包含 `(path, side, sha256(text), base, head)`；不缓存模型结论。 |
+| `SourceFile` / `SourceSymbol` | Python AST 或 TS/TSX Tree-sitter 解析 | 文件哈希、解析器名、带 snapshot/side/path 的符号 ID、定义范围、导入、调用和限制 | Python 记录语法调用和静态 import binding；TS/TSX 仍不解析类型或生成 Python 调用边；不支持的语言标记 `unavailable`。符号范围用于 hunk 定位和 `EvidenceRef`。 |
+| `Relationship` / `UnresolvedReference` | 单侧冻结源码和已索引路径 | 文件 `source`/`target`、关系类型/强度、可选 symbol ID 与调用行；未解析项含原因和可能目标 | 分组图节点仍是**文件路径**；call 边额外由 symbol ID/行号锚定。唯一静态 import binding 或局部词法绑定到单一定义时 call 边为 strong；歧义/词法候选为 weak；动态属性、遮蔽、歧义和未解析调用单独留在 unresolved。它是有界语法证据，不是完整运行时调用图。 |
+| `PythonSymbolIndex.from_plan(plan, side).query(...)` | ReviewPlan、base/head 侧、symbol ID、方向、深度/结果上限 | relationships、`searched_scope`、completeness、omissions | 只查已索引的 Python 文件与所选 side。`complete` 仅表示 `searched_scope` 内没有已知缺口，不能推出仓库其他位置没有 caller；base inventory 未枚举时结果为 partial。该库接口尚未接入 CLI 执行。 |
 | `ChangeSlice` | 一个 `DiffHunk` 与其片段序号 | `hunk_id`, `hunk_index`, `fragment_index`, `fragment`, `lines`, `symbols`, `evidence`, `estimated_tokens` | 超预算 hunk 分片；索引从 0 开始。`hunk_id` 绑定文件、hunk 序号与原始文本。`lines` 是该片段覆盖的源码行区间（new/old 各自 start/end），`cuts_a_diff_line` 表示分片边界落在某一行中间，此时该行不是完整行。 |
 | `EvidenceRef` | 相关定义源码 | `path`, `side`, `start`, `end`, `content_hash` | 只保存延迟读取引用，不把定义文本本身计入当前 diff token 预算。 |
 | `ReviewUnit` | 被分到同一组的 slices | `unit_id`, `slices`, `estimated_tokens`, `evidence`, `related_paths` | 单元估算基于拼接后的 diff fragments；相关文件可包括强弱关系边上的邻居。 |
-| `ReviewPlan` | 固定 base/head、预算及组装结果 | `units`, `files`, `relationships`, `coverage`, `coverage_summary`, `budgets`, `cuts`, `limitations` | `version="syntax-plan-v2"`；JSON 是规划产物，不是审查报告。`coverage_summary` 声明每个已解析 hunk/文件是否被解释，`budgets` 是本产物自己的预算与遗漏账本。 |
+| `ReviewPlan` | 固定 base/head、预算及组装结果 | `units`, `files`, `relationships`, `unresolved_references`, `index_omissions`, `coverage`, `coverage_summary`, `budgets`, `cuts`, `limitations` | `version="syntax-plan-v2"`；JSON 是规划产物，不是审查报告。base 侧只包含预算允许显式读取的文件，`PythonSymbolIndex.from_plan(..., side="base")` 会标记 `base_inventory_not_enumerated`。`coverage_summary` 解释变更 hunk；`index_omissions` 解释仓库索引范围缺口。 |
 
 入口签名为 `build_review_plan(snapshot, files, paths, *, token_budget=6000, index_file_limit=5000, index_char_limit=20_000_000, public_degree=8, index_cache=None) -> ReviewPlan`。当前 `token_budget` 只约束分组后拼接的 diff fragment tokens；系统提示、`EvidenceRef` 指向的定义源码及模型输出不在这个预算里。计划会记录 `evidence_refs_are_lazy_and_not_in_diff_token_budget`。
 
@@ -68,7 +73,7 @@ flowchart TD
 - `Omission(path, reason, hunk_id, detail)`：被排除、无法取得或只部分进入产物的对象，reason 是稳定字符串。
 - `BudgetReport.scope`：标明这是哪个产物的账本。不同阶段的预算即使字段同名也不可互换。
 
-planner 的四行分别是：`diff_fragments_per_unit`（真正被强制的每单元上限）、`diff_fragments_total`（跨单元合计，只是测量值）、`indexed_files`、`indexed_source_chars`。生产 `build_review_context` 的账本 scope 是 `build_review_context`，包含 `context_pack`、`patch_context`、`per_file_patch`，并把逐文件遗漏写进 `omissions`；其中 `patch_clipped`、`full_file_substituted_*` 属于“部分进入上下文”，会经 `partial_inclusion_warning()` 变成报告里的显式警告，而不是只留一个 `truncated=True`。
+planner 的四行分别是：`diff_fragments_per_unit`（真正被强制的每单元上限）、`diff_fragments_total`（跨单元合计，只是测量值）、`indexed_files`、`indexed_source_chars`。`indexed_files` 上限由 head 路径索引与显式读取的 base 源码共同使用；`indexed_source_chars` 同样合计两侧实际读取字符，base 读取不会绕过上限或另开一份预算。当前 head 有路径 inventory；base 只按需读取变更文件对应源码，没有完整枚举 base 仓库，因此 base caller query 必须显示 partial。生产 `build_review_context` 的账本 scope 是 `build_review_context`，包含 `context_pack`、`patch_context`、`per_file_patch`，并把逐文件遗漏写进 `omissions`；其中 `patch_clipped`、`full_file_substituted_*` 属于“部分进入上下文”，会经 `partial_inclusion_warning()` 变成报告里的显式警告，而不是只留一个 `truncated=True`。
 
 `ReviewPlan.coverage_summary` 是防回归的不变量：`unaccounted_hunks` / `unaccounted_files` 必须为空，`complete=True` 才表示“每个读到的 hunk 与变更文件都有解释或切片”。它不会让遗漏消失，但会让遗漏无法再悄悄发生。
 
@@ -87,7 +92,7 @@ planner 有 `coverage`/`coverage_summary`，但真正决定模型看到什么的
 
 ## 冻结区间对照基线（planner vs production）
 
-`scripts/context_baseline.py` 在同一冻结区间上同时构建生产上下文与 planner 计划，产出 [context-baseline-89943fe-13e9a3e.json](evaluation/context-baseline-89943fe-13e9a3e.json)（`remote_fetch=false`、`context_pack=false`，无模型调用）。
+`scripts/context_baseline.py` 在同一冻结区间上同时构建生产上下文与 planner 计划，产出 [context-baseline-89943fe-13e9a3e.json](https://github.com/HelicasECoode42/ai-pr-review/blob/df397d5/docs/evaluation/context-baseline-89943fe-13e9a3e.json)（`remote_fetch=false`、`context_pack=false`，无模型调用）。
 
 `89943fe → 13e9a3e`、13 个变更文件、22 个 hunk，`patch_token_budget` 从 1000 到 6000 的阶梯：
 
@@ -294,7 +299,7 @@ limitations: evidence_refs_are_lazy_and_not_in_diff_token_budget
 - 2026-10-15（第三轮）：`pytest` **236 passed**；CI 最低 Ruff gate 通过；改动文件全量 Ruff 通过，`context_builder.py` / `grounded_review.py` / `repository_context.py` / `engine.py` 的长行内容集相对 HEAD 无新增。
 - 2026-10-15（第二轮）：`pytest` 228 passed；离线对照基线见上节。
 - 2026-10-15（第一轮）：`pytest` 217 passed；`ruff check --select E9,F63,F7,F82 src tests` 通过；新增模块与测试全量 Ruff 通过；`context_builder.py` 的既有 lint 数量未增加。
-- 冻结离线基线：`scripts/plan_baseline.py --base 89943fe --head 13e9a3e --token-budget 1000` 产出 [plan-baseline-89943fe-13e9a3e.json](evaluation/plan-baseline-89943fe-13e9a3e.json)。结果 14 units、23 slices、22 planned hunks，`coverage_summary.complete=true`，`omission_reasons={}`，`budget_over_limit=[]`；`diff_fragments_per_unit.used=986/1000`，`relationships` 238 strong + 970 weak，`cuts` 记录 17 条被跨组切开的强边、39 个变更符号的外部调用方。23/23 slices 都有行区间，0 个切在行中间。这些数字与历史记录一致，说明新增账本没有改变分组结果；它证明的是会计与可复现性，不是分组质量或审查召回。
+- 冻结离线基线：`scripts/plan_baseline.py --base 89943fe --head 13e9a3e --token-budget 1000` 产出 [plan-baseline-89943fe-13e9a3e.json](https://github.com/HelicasECoode42/ai-pr-review/blob/df397d5/docs/evaluation/plan-baseline-89943fe-13e9a3e.json)。结果 14 units、23 slices、22 planned hunks，`coverage_summary.complete=true`，`omission_reasons={}`，`budget_over_limit=[]`；`diff_fragments_per_unit.used=986/1000`，`relationships` 238 strong + 970 weak，`cuts` 记录 17 条被跨组切开的强边、39 个变更符号的外部调用方。23/23 slices 都有行区间，0 个切在行中间。这些数字与历史记录一致，说明新增账本没有改变分组结果；它证明的是会计与可复现性，不是分组质量或审查召回。
 - 基线的输入只有 git object：`load_frozen_plan_inputs` 先 `rev-parse` 成 40 位 SHA 再读，未提交的工作区内容不会进入产物（测试用 sentinel 验证）。
 - 历史记录：2026-10-14 D1/D2 交付称 181 项 pytest 通过；固定范围 `89943fe → 13e9a3e`、`token_budget=1000` 时 22 hunks、14 units、最大单元 986；索引 238 import 关系、970 弱符号关系。这些数字说明覆盖、确定性与 diff 预算约束；关系条数不是已证明调用路径条数。真实语义分组质量、Precision/Recall、实际模型 token 消耗与费用变化均未验证。本功能未使用付费模型。
 

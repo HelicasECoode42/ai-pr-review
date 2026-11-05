@@ -56,7 +56,8 @@ class ReviewApplication:
         self.provider_factory: Callable = provider_factory
         self.engine: Callable = engine
 
-    def _provider(self, model: str, request_budget: ReviewRequestBudget):
+    def _provider(self, model: str, request_budget: ReviewRequestBudget, *,
+                  max_output_tokens: int | None = None):
         s = self.settings
         effort = s.review_reasoning_effort
         if (
@@ -74,7 +75,10 @@ class ReviewApplication:
             "read_timeout": s.model_read_timeout_seconds,
             "stream": s.enable_repository_review,
             "total_timeout": s.max_review_timeout_seconds if s.enable_repository_review else None,
-            "max_output_tokens": s.model_output_token_limit,
+            "max_output_tokens": (
+                max_output_tokens if max_output_tokens is not None
+                else s.model_output_token_limit
+            ),
             "reasoning_effort": effort,
             "request_budget": request_budget,
         }
@@ -180,11 +184,25 @@ class ReviewApplication:
         self, files: list[ChangedFile], defaults: dict, *, repo: str, k: int | None = None
     ):
         """Return scope-matched entries and explicit limits on symbol resolution."""
-        path = Path(self.settings.playbook_path or DEFAULT_PLAYBOOK)
+        if self.settings.trusted_ci_mode:
+            # In CI the caller checkout is review input. Never treat its
+            # knowledge/playbook.md as policy; only use the reviewer checkout
+            # explicitly supplied by the trusted workflow.
+            if not self.settings.trusted_playbook_path:
+                logger.warning("Trusted CI mode has no trusted playbook path; recall disabled.")
+                return [], ["Trusted playbook unavailable; knowledge recall was disabled."], []
+            path = Path(self.settings.trusted_playbook_path)
+            if not path.is_file():
+                logger.warning("Trusted CI playbook %s is missing; recall disabled.", path)
+                return [], ["Trusted playbook unavailable; knowledge recall was disabled."], []
+        else:
+            path = Path(self.settings.playbook_path or DEFAULT_PLAYBOOK)
         try:
             entries = load_playbook(path)
         except Exception as exc:  # a broken playbook must not break a review
             logger.warning("Playbook at %s could not be loaded: %s", path, exc)
+            if self.settings.trusted_ci_mode:
+                return [], ["Trusted playbook unavailable; knowledge recall was disabled."], []
             return [], [], []
         paths = [file.filename for file in files]
         languages = sorted({language_of(path) for path in paths})
@@ -267,21 +285,33 @@ class ReviewApplication:
     ) -> ReviewReport:
         s = self.settings
         with ExitStack() as resources:
+            owned_providers = []
+
+            def own_provider(candidate):
+                # A provider factory may return a shared singleton. Close each
+                # owned object once even when it serves multiple stages.
+                if not any(candidate is owned for owned in owned_providers):
+                    owned_providers.append(candidate)
+                    resources.callback(candidate.close)
+                return candidate
+
             request_budget = ReviewRequestBudget(
                 s.max_input_token_upper_bound,
                 s.max_review_http_attempts,
                 s.max_review_timeout_seconds,
             )
-            provider = self._provider(s.review_model, request_budget)
-            resources.callback(provider.close)
+            provider = own_provider(self._provider(s.review_model, request_budget))
             critic = provider
-            if s.enable_critic and s.critic_model and s.critic_model != s.review_model:
-                critic = self._provider(s.critic_model, request_budget)
-                resources.callback(critic.close)
+            if s.enable_critic:
+                critic = own_provider(self._provider(
+                    s.critic_model or s.review_model, request_budget,
+                    max_output_tokens=s.critic_output_token_limit,
+                ))
             defaults = {
                 "max_suggestions": s.max_suggestions,
                 "follow_changes": s.enable_repository_review,
                 "grounded_missing_evidence_followup": s.grounded_missing_evidence_followup,
+                "repository_index_enabled": s.repository_index_enabled,
                 "repository_evidence_tokens": s.repository_evidence_tokens,
                 "documentation_patch_tokens": s.documentation_patch_tokens,
                 "raw_discovery": s.raw_discovery,
@@ -291,6 +321,7 @@ class ReviewApplication:
                 "verify_rule_signals": s.verify_rule_signals,
                 "enable_critic": s.enable_critic,
                 "critic_provider": critic,
+                "critic_batch_cap": s.critic_batch_cap,
             }
             defaults.update(options)
             if (
@@ -373,6 +404,19 @@ class ReviewApplication:
                 # with its own return type. Candidate lifecycle applies only to
                 # the stable production report contract.
                 return report
+            if self.settings.trusted_ci_mode and any(
+                warning.startswith("Trusted playbook unavailable")
+                for warning in knowledge_warnings
+            ):
+                report.analysis_warnings.append(
+                    "Trusted playbook was unavailable; this review is partial."
+                )
+                if report.execution_status == "success":
+                    report.execution_status = "degraded"
+                if report.report_confidence not in {"failed", "partial"}:
+                    report.report_confidence = "partial"
+                if report.degradation_reason is None:
+                    report.degradation_reason = "trusted_playbook_unavailable"
             from src.reviewer.decision_ledger import (
                 append_candidate_ledger,
                 build_candidate_lifecycle,

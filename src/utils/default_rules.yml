@@ -65,14 +65,12 @@ line_rules:
     pattern: except\s+\w*\s*:\s*pass\s*$
     title: Exception handling may hide failures (Python)
     recommendation: "Log enough context, rethrow when appropriate, or return an explicit error."
-    language: python
 
   - id: swallowed-exception-js
     severity: MEDIUM
     pattern: catch\s*\(.*?\)\s*\{\s*\}
     title: Exception handling may hide failures (JS/TS)
     recommendation: "Log enough context, rethrow when appropriate, or return an explicit error."
-    language: javascript
 
   - id: test-skip
     severity: MEDIUM

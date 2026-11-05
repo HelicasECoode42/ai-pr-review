@@ -1,12 +1,20 @@
 """Requested features must not silently disappear on an incompatible route."""
 
 import pytest
+from pydantic import ValidationError
 
 from src.models import ChangedFile, PullRequest
 from src.reviewer.engine import review_with_ai
+from src.utils.config import Settings
 
 
-@pytest.mark.parametrize("feature", ["enable_critic", "verify_rule_signals"])
+def test_repository_index_setting_defaults_off_and_rejects_invalid_values():
+    assert Settings().repository_index_enabled is False
+    with pytest.raises(ValidationError):
+        Settings(repository_index_enabled="not-a-boolean")
+
+
+@pytest.mark.parametrize("feature", ["verify_rule_signals"])
 def test_unsupported_grounded_feature_stops_before_model_request(feature):
     class NoModelCalls:
         calls = 0

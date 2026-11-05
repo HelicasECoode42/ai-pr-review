@@ -130,12 +130,16 @@ class UnitOutcome:
     error: str | None = None
     result: Any = None
     attempts: int = 0
+    exposed_slice_ids: tuple[str, ...] = ()
+    model_calls: int = 0
 
 
 @dataclass
 class UnitReviewSummary:
     outcomes: list[UnitOutcome] = field(default_factory=list)
     remaining_units: int = 0
+    pending_unit_ids: list[str] = field(default_factory=list)
+    pending_reason: str | None = None
     checkpoint_issues: list[str] = field(default_factory=list)
 
     @property
@@ -547,6 +551,7 @@ def _lock_failure_summary(
     units = list(plan.units)
     if max_units is not None:
         summary.remaining_units = max(0, len(units) - max_units)
+        summary.pending_unit_ids = [unit.unit_id for unit in units[max_units:]]
         units = units[:max_units]
     summary.checkpoint_issues.append(f"checkpoint_lock_{error.status.removeprefix('checkpoint_')}")
     summary.outcomes.extend(
@@ -573,6 +578,7 @@ def review_by_units(
     checkpoint_identity: dict[str, Any] | None = None,
     max_attempts: int = 2,
     cancel: Event | None = None,
+    pending_reason: str | None = None,
 ) -> UnitReviewSummary:
     """Run bounded unit reviews under one nonblocking checkpoint lock.
 
@@ -589,7 +595,7 @@ def review_by_units(
         return _review_by_units_locked(
             plan, files, run_unit, max_units=max_units, max_workers=max_workers,
             retry_backoff_seconds=retry_backoff_seconds, checkpoint_identity=checkpoint_identity,
-            max_attempts=max_attempts, cancel=cancel,
+            max_attempts=max_attempts, cancel=cancel, pending_reason=pending_reason,
         )
 
     try:
@@ -601,6 +607,7 @@ def review_by_units(
             plan, files, run_unit, max_units=max_units, max_workers=max_workers,
             retry_backoff_seconds=retry_backoff_seconds, checkpoint_path=checkpoint_path,
             checkpoint_identity=checkpoint_identity, max_attempts=max_attempts, cancel=cancel,
+            pending_reason=pending_reason,
         )
     finally:
         run_lock.release()
@@ -618,6 +625,7 @@ def _review_by_units_locked(
     checkpoint_identity: dict[str, Any] | None = None,
     max_attempts: int = 2,
     cancel: Event | None = None,
+    pending_reason: str | None = None,
 ) -> UnitReviewSummary:
     """Run one review per unit, bounded, recording every outcome.
 
@@ -646,6 +654,10 @@ def _review_by_units_locked(
     units = list(plan.units)
     if max_units is not None:
         summary.remaining_units = max(0, len(units) - max_units)
+        summary.pending_unit_ids = [unit.unit_id for unit in units[max_units:]]
+        summary.pending_reason = pending_reason or (
+            "unit_max_units" if summary.remaining_units else None
+        )
         units = units[:max_units]
 
     identity_hashes: dict[str, str] = {}
@@ -686,6 +698,17 @@ def _review_by_units_locked(
             # Resume only when both the exact inputs and a typed result artifact exist.
             outcome.status = "resumed"
             outcome.result = completed[unit.unit_id]
+            outcome.model_calls = max(
+                0, int(getattr(outcome.result, "discovery_calls", 0) or 0)
+            )
+            if outcome.model_calls:
+                context = build_unit_context(unit)
+                outcome.exposed_slice_ids = tuple(
+                    slice_.slice_id for slice_ in unit.slices
+                    if slice_.fragment in context.text
+                    and hashlib.sha256(slice_.fragment.encode("utf-8")).hexdigest()
+                    == slice_.fragment_sha256
+                )
             return outcome
         if cancel is not None and cancel.is_set():
             outcome.status = "cancelled"
@@ -696,8 +719,19 @@ def _review_by_units_locked(
                 break
             outcome.attempts = attempt
             try:
-                result = run_unit(build_unit_context(unit), unit_files(unit, files))
+                context = build_unit_context(unit)
+                result = run_unit(context, unit_files(unit, files))
                 outcome.result = result
+                outcome.model_calls = max(
+                    0, int(getattr(result, "discovery_calls", 0) or 0)
+                )
+                if outcome.model_calls:
+                    outcome.exposed_slice_ids = tuple(
+                        slice_.slice_id for slice_ in unit.slices
+                        if slice_.fragment in context.text
+                        and hashlib.sha256(slice_.fragment.encode("utf-8")).hexdigest()
+                        == slice_.fragment_sha256
+                    )
                 outcome.error = None
                 if checkpoint_path:
                     identity_hash = identity_hashes.get(unit.unit_id)
@@ -806,8 +840,12 @@ def merge_grounded_results(results: Sequence[Any], *, summary_note: str = "") ->
     key = lambda s: (s.file_path, s.line, s.title.casefold())  # noqa: E731
     candidates: list[dict] = []
     decisions: list[dict] = []
+    critic_traces: list[tuple[int, dict]] = []
     for result in live:
         offset = len(candidates)
+        critic_trace = result.bundle.get("grounded_critic") if isinstance(result.bundle, dict) else None
+        if isinstance(critic_trace, dict):
+            critic_traces.append((offset, critic_trace))
         for candidate in result.candidates:
             moved = dict(candidate)
             if isinstance(moved.get("candidate_id"), int):
@@ -836,13 +874,47 @@ def merge_grounded_results(results: Sequence[Any], *, summary_note: str = "") ->
             omissions=tuple(o for b in budgets for o in b.omissions),
         )
     summaries = [r.summary for r in live if getattr(r, "summary", "").strip()]
+    merged_bundle = _merge_bundles(
+        [r.bundle for r in live if isinstance(r.bundle, dict)]
+    )
+    if critic_traces:
+        items, selected_ids = [], []
+        for offset, trace in critic_traces:
+            selected_ids.extend(
+                value + offset for value in trace.get("selected_candidate_ids", [])
+                if isinstance(value, int) and not isinstance(value, bool)
+            )
+            items.extend(
+                {**item, "candidate_id": item.get("candidate_id", 0) + offset}
+                for item in trace.get("items", []) if isinstance(item, dict)
+                and isinstance(item.get("candidate_id"), int)
+                and not isinstance(item.get("candidate_id"), bool)
+            )
+        called = next((trace for _, trace in critic_traces
+                       if trace.get("status") in {"triggered", "unavailable"}), None)
+        skipped = next((trace for _, trace in critic_traces
+                        if trace.get("status") == "skipped"), None)
+        merged_bundle["grounded_critic"] = {
+            "status": (called.get("status") if called else
+                       skipped.get("status") if skipped else "not_triggered"),
+            "reason": (called.get("reason") if called else
+                       skipped.get("reason") if skipped else "no_eligible_candidate"),
+            "batch_cap": max(
+                (int(trace.get("batch_cap", 0)) for _, trace in critic_traces),
+                default=0,
+            ),
+            "selected_candidate_ids": selected_ids,
+            "items": items,
+            **({"raw_response": called["raw_response"]}
+               if called and isinstance(called.get("raw_response"), str) else {}),
+        }
     return GroundedResult(
         summary=" ".join(dict.fromkeys(summaries)) if summaries else summary_note,
         suggestions=_dedupe([s for r in live for s in r.suggestions], key),
         pending=_dedupe([s for r in live for s in r.pending], key),
         candidates=candidates,
         decisions=decisions,
-        bundle=_merge_bundles([r.bundle for r in live if isinstance(r.bundle, dict)]),
+        bundle=merged_bundle,
         discovery_calls=sum(r.discovery_calls for r in live),
         verification_calls=sum(r.verification_calls for r in live),
         verification_failed=any(r.verification_failed for r in live),
@@ -873,24 +945,38 @@ def run_units_for_review(
 
     plan = build_review_plan(snapshot, files, [f.filename for f in files],
                              token_budget=max(128, token_budget))
+    requested = min(len(plan.units), max_units) if max_units else len(plan.units)
+    dispatch_limit = requested
+    pending_reason = "unit_max_units" if requested < len(plan.units) else None
     if cost_ceiling_tokens:
-        planned = min(len(plan.units), max_units) if max_units else len(plan.units)
-        estimate = planned * MEASURED_TOKENS_PER_UNIT
-        if estimate > cost_ceiling_tokens:
+        affordable = cost_ceiling_tokens // MEASURED_TOKENS_PER_UNIT
+        if affordable < 1:
             return None, {
                 "unit_review_skipped_cost": 1,
                 "units_planned": len(plan.units),
-                "units_where_attempted": planned,
-                "estimated_tokens": estimate,
+                "units_where_attempted": 0,
+                "units_pending_budget": len(plan.units),
+                "estimated_tokens": MEASURED_TOKENS_PER_UNIT,
                 "cost_ceiling_tokens": cost_ceiling_tokens,
+                "hunk_coverage": _hunk_coverage(plan, UnitReviewSummary(),
+                                                 pending_reason="unit_cost_ceiling"),
             }
-    summary = review_by_units(plan, files, run_unit, max_units=max_units,
+        if affordable < dispatch_limit:
+            dispatch_limit = affordable
+            pending_reason = "unit_cost_ceiling"
+    summary = review_by_units(plan, files, run_unit, max_units=dispatch_limit,
                              max_workers=max_workers, checkpoint_path=checkpoint_path,
                              checkpoint_identity=checkpoint_identity,
-                             max_attempts=max_attempts, cancel=cancel)
+                             max_attempts=max_attempts, cancel=cancel,
+                             pending_reason=pending_reason)
     merged = merge_grounded_results([outcome.result for outcome in summary.reviewed])
     details = {
         **summary.counts(),
+        "pending_unit_ids": summary.pending_unit_ids,
+        "hunk_coverage": _hunk_coverage(
+            plan, summary,
+            pending_reason=summary.pending_reason,
+        ),
         "unit_ids_reviewed": [o.unit_id for o in summary.reviewed],
         "units_resumed": sum(o.status == "resumed" for o in summary.outcomes),
         # The merged GroundedResult retains every unit's original counters for
@@ -933,3 +1019,157 @@ def run_units_for_review(
         "unit_review": 1,
     }
     return merged, details
+
+
+def _hunk_coverage(plan, summary: UnitReviewSummary, *, pending_reason: str | None = None) -> dict:
+    """Describe plan, exposure and completed review separately for every hunk.
+
+    Planner coverage only proves that a hunk was represented in a static plan.
+    Model exposure requires a successful runner result with at least one recorded
+    discovery call and every fragment present in the exact unit context. Review
+    completion additionally requires a non-failed verification result. Fragments
+    cut inside a diff line remain partial even when every byte was exposed.
+    """
+    slices_by_hunk: dict[str, list] = {}
+    unit_by_slice: dict[str, str] = {}
+    for unit in plan.units:
+        for slice_ in unit.slices:
+            slices_by_hunk.setdefault(slice_.hunk_id, []).append(slice_)
+            unit_by_slice[slice_.slice_id] = unit.unit_id
+
+    outcomes = {outcome.unit_id: outcome for outcome in summary.outcomes}
+    pending_units = set(summary.pending_unit_ids)
+    planner_by_hunk: dict[str, list] = {}
+    for entry in plan.coverage:
+        if entry.hunk_id:
+            planner_by_hunk.setdefault(entry.hunk_id, []).append(entry)
+
+    result = []
+    for hunk_id in sorted(set(planner_by_hunk) | set(slices_by_hunk)):
+        entries = planner_by_hunk.get(hunk_id, [])
+        slices = sorted(slices_by_hunk.get(hunk_id, []), key=lambda item: item.fragment_index)
+        if not slices:
+            entry = next((item for item in entries if item.status != "planned"), None)
+            status = "excluded" if entry and entry.status == "excluded" else "unavailable"
+            result.append({
+                "path": entries[0].path if entries else "",
+                "hunk_id": hunk_id,
+                "static_scanned": bool(entries),
+                "model_exposed": False,
+                "model_review_completed": False,
+                "status": status,
+                "reason": (entry.reason if entry else "planned_hunk_has_no_fragments"),
+                "fragments": [],
+            })
+            continue
+
+        fragments = []
+        all_exposed = all_completed = True
+        any_exposed = False
+        any_completed = False
+        any_cut = False
+        reasons = []
+        for slice_ in slices:
+            unit_id = unit_by_slice[slice_.slice_id]
+            outcome = outcomes.get(unit_id)
+            exposed = bool(outcome and slice_.slice_id in outcome.exposed_slice_ids)
+            completed = bool(
+                exposed and outcome
+                and outcome.status in {"reviewed", "resumed", "checkpoint_failed"}
+                and outcome.result is not None
+                and not getattr(outcome.result, "verification_failed", False)
+            )
+            cut = bool(slice_.lines.cuts_a_diff_line)
+            any_exposed = any_exposed or exposed
+            any_completed = any_completed or completed
+            all_exposed = all_exposed and exposed
+            all_completed = all_completed and completed
+            any_cut = any_cut or cut
+            if outcome and outcome.status not in {"reviewed", "resumed"}:
+                reasons.append(outcome.status)
+            elif unit_id in pending_units:
+                reasons.append(pending_reason or "pending_budget")
+            elif not exposed:
+                reasons.append("model_context_not_confirmed")
+            fragments.append({
+                "slice_id": slice_.slice_id,
+                "fragment_index": slice_.fragment_index,
+                "unit_id": unit_id,
+                "start_byte": slice_.fragment_start_byte,
+                "end_byte": slice_.fragment_end_byte,
+                "hunk_byte_length": slice_.hunk_byte_length,
+                "sha256": slice_.fragment_sha256,
+                "cuts_a_diff_line": cut,
+                "status": (
+                    "model_review_completed" if completed else
+                    "model_exposed" if exposed else
+                    "pending_budget" if unit_id in pending_units
+                    or (outcome is not None and outcome.status == "cancelled") else
+                    "unavailable" if outcome else "pending_budget"
+                ),
+                "reason": None if completed else (
+                    outcome.error if outcome and outcome.error else
+                    "cancelled" if outcome and outcome.status == "cancelled" else
+                    "fragment_boundary_cuts_diff_line" if cut and exposed else
+                    reasons[-1] if reasons else None
+                ),
+            })
+
+        if all_completed and not any_cut:
+            status, reason = "model_review_completed", None
+        elif any_cut and all_exposed and all_completed:
+            status, reason = "partial", "fragment_boundary_cuts_diff_line"
+        elif not any_exposed and any(item["status"] == "pending_budget" for item in fragments):
+            status = "pending_budget"
+            reason = "cancelled" if "cancelled" in reasons else pending_reason or "pending_budget"
+        else:
+            status = "partial" if any_exposed or any_completed else "unavailable"
+            reason = next(iter(dict.fromkeys(reasons)), "unit_review_incomplete")
+        result.append({
+            "path": slices[0].path,
+            "hunk_id": hunk_id,
+            "static_scanned": True,
+            "model_exposed": all_exposed,
+            "model_review_completed": status == "model_review_completed",
+            "status": status,
+            "reason": reason,
+            "fragments": fragments,
+        })
+
+    file_coverage = []
+    by_path: dict[str, list] = {}
+    for entry in plan.coverage:
+        by_path.setdefault(entry.path, []).append(entry)
+    for path, entries in sorted(by_path.items()):
+        reasons = list(dict.fromkeys(
+            item.reason for item in entries if item.reason and item.hunk_id is None
+        ))
+        hunk_entries = [item for item in entries if item.hunk_id]
+        if any(item.status == "excluded" for item in entries):
+            file_status = "excluded"
+        elif not hunk_entries or any(item.status == "unavailable" for item in hunk_entries):
+            file_status = "unavailable"
+        else:
+            file_status = "static_scanned"
+        file_coverage.append({
+            "path": path,
+            "diff_status": file_status,
+            "hunks_static_scanned": sum(item.status == "planned" for item in hunk_entries),
+            "reasons": reasons,
+        })
+
+    states = ("model_review_completed", "partial", "pending_budget", "excluded", "unavailable")
+    return {
+        "hunks": result,
+        "files": file_coverage,
+        "hunks_static_scanned": sum(item["static_scanned"] for item in result),
+        "hunks_model_exposed": sum(item["model_exposed"] for item in result),
+        "hunks_model_review_completed": sum(item["model_review_completed"] for item in result),
+        "hunks_pending_budget": sum(item["status"] == "pending_budget" for item in result),
+        "hunks_partial": sum(item["status"] == "partial" for item in result),
+        "hunks_excluded": sum(item["status"] == "excluded" for item in result),
+        "hunks_unavailable": sum(item["status"] == "unavailable" for item in result),
+        "status_counts": {
+            state: sum(item["status"] == state for item in result) for state in states
+        },
+    }

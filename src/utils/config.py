@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 from urllib.parse import urlsplit
 
@@ -8,6 +9,17 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    # CI sets this only in its reviewer-owned workflow step. In this mode
+    # ``get_settings`` disables dotenv loading so files in the PR checkout cannot
+    # redirect requests or change review limits.
+    trusted_ci_mode: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("AI_PR_REVIEW_TRUSTED_CI", "trusted_ci_mode"),
+    )
+    trusted_playbook_path: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("TRUSTED_PLAYBOOK_PATH", "trusted_playbook_path"),
+    )
     github_token: str | None = None
     openai_api_key: str | None = None
     openai_base_url: str = "https://api.openai.com/v1"
@@ -28,6 +40,8 @@ class Settings(BaseSettings):
         ),
     )
     repository_evidence_tokens: int = 6000
+    # Opt-in, bounded Python relationship evidence for grounded PR reviews.
+    repository_index_enabled: bool = False
     # Experiment lane: one minimal discovery call (no hypotheses/tools) whose
     # candidates still go through verification and the publication gate. Off by
     # default until a gated evaluation shows D up and P unchanged.
@@ -91,6 +105,8 @@ class Settings(BaseSettings):
         ),
     )
     critic_model: str | None = None
+    critic_output_token_limit: int = Field(default=1024, ge=1, le=4096)
+    critic_batch_cap: int = Field(default=8, ge=1, le=8)
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -103,7 +119,17 @@ class Settings(BaseSettings):
 
 
 def get_settings() -> Settings:
-    return Settings()
+    # The mode switch is read from the process environment, never from .env.
+    # Trusted workflow callers explicitly supply their secrets and bounded inputs
+    # as step environment variables; cwd dotenv must not be a fallback source.
+    trusted_ci = os.environ.get("AI_PR_REVIEW_TRUSTED_CI", "").strip().lower() in {
+        "1", "true", "yes",
+    }
+    if trusted_ci:
+        return Settings(_env_file=None)
+    # Prevent a checkout .env from pretending to be a trusted workflow while
+    # keeping all other local dotenv overrides intact.
+    return Settings(trusted_ci_mode=False)
 
 
 def is_deepseek_chat_model(model: str, base_url: str) -> bool:

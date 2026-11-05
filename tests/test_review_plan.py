@@ -5,6 +5,11 @@ from typer.testing import CliRunner
 
 from src.analyzer.context_builder import count_tokens
 from src.analyzer.review_plan import SourceIndexCache, build_review_plan
+from src.analyzer.symbol_index import (
+    PythonSymbolIndex,
+    parse_python,
+    resolve_python_relationships,
+)
 from src.cli.plan import app
 from src.models import ChangedFile, FileStatus
 
@@ -63,6 +68,32 @@ def test_large_hunk_fragments_without_losing_bytes_and_bounds_each_unit():
 
     assert rebuilt == parse_file_hunks(file)[0].raw
     assert all(count_tokens("\n".join(s.fragment for s in u.slices)) <= 128 for u in plan.units)
+    by_part = sorted(fragments, key=lambda item: item.fragment_index)
+    assert by_part[0].fragment_start_byte == 0
+    assert by_part[-1].fragment_end_byte == by_part[-1].hunk_byte_length
+    assert all(a.fragment_end_byte == b.fragment_start_byte
+               for a, b in zip(by_part, by_part[1:], strict=False))
+    assert all(len(item.fragment.encode("utf-8")) ==
+               item.fragment_end_byte - item.fragment_start_byte for item in by_part)
+
+
+def test_utf8_fragment_boundary_records_byte_ranges_and_partial_line_evidence():
+    patch = "@@ -1,1 +1,1 @@\n-old\n+" + ("界🙂" * 160) + "\n"
+    file = ChangedFile(filename="utf8.py", patch=patch)
+    plan = build_review_plan(MemorySnapshot({"utf8.py": "x=1"}), [file], ["utf8.py"],
+                             token_budget=128)
+    slices = sorted((item for unit in plan.units for item in unit.slices),
+                    key=lambda item: item.fragment_index)
+    assert len(slices) > 1
+    from src.analyzer.diff_parser import parse_file_hunks
+
+    expected_hunk = parse_file_hunks(file)[0].raw
+    assert "".join(item.fragment for item in slices) == expected_hunk
+    assert slices[0].fragment_start_byte == 0
+    assert slices[-1].fragment_end_byte == len(expected_hunk.encode("utf-8"))
+    assert all(left.fragment_end_byte == right.fragment_start_byte
+               for left, right in zip(slices, slices[1:], strict=False))
+    assert all(item.lines.cuts_a_diff_line for item in slices[1:-1])
 
 
 def test_common_hub_does_not_merge_every_consumer():
@@ -95,7 +126,7 @@ def test_ambiguous_bare_calls_never_become_strong_edges():
         "c.py": "def save():\n    return 2\n",
     }
     plan = build_review_plan(MemorySnapshot(sources), [changed(p) for p in sources], list(sources))
-    refs = [e for e in plan.relationships if e.kind == "symbol_reference"]
+    refs = [e for e in plan.relationships if e.kind == "call" and e.side == "head"]
     assert len(refs) == 2 and all(e.strength == "weak" for e in refs)
     assert len(plan.units) == 3
 
@@ -268,15 +299,259 @@ def test_cut_report_finds_unchanged_caller_of_changed_function():
     assert plan.cuts.cut_edges == ()
 
 
-def test_fragment_spans_map_back_to_the_source_lines_they_cover():
-    patch = (
-        "@@ -10,4 +10,5 @@\n"
-        " keep1\n"
-        "-old line\n"
-        "+new line\n"
-        " keep2\n"
-        "+" + ("z" * 400) + "\n"
+def test_python_import_aliases_and_same_named_methods_bind_to_distinct_symbols():
+    sources = {
+        "user.py": "def save():\n    return 'user'\n",
+        "order.py": "def save():\n    return 'order'\n",
+        "client.py": (
+            "import user as u\nfrom order import save as save_order\n"
+            "def run():\n    return u.save(), save_order()\n"
+        ),
+    }
+    plan = build_review_plan(MemorySnapshot(sources), [changed("client.py")], list(sources))
+    run_symbol = next(
+        s
+        for f in plan.files
+        if f.path == "client.py" and f.side == "head"
+        for s in f.symbols
+        if s.name == "run"
     )
+    index = PythonSymbolIndex(plan.files, plan.relationships, side="head")
+    query = index.query(run_symbol.symbol_id, direction="callees")
+    edges = {(e.target, e.symbol, e.evidence_level) for e in query.relationships}
+    assert edges == {
+        ("user.py", "save", "exact_binding"),
+        ("order.py", "save_order", "exact_binding"),
+    }
+    assert query.searched_scope == ("client.py", "order.py", "user.py")
+    assert query.completeness == "complete"
+
+
+def test_python_assignment_parameter_and_nested_function_shadow_module_import():
+    sources = {
+        "service.py": "def save():\n    return 1\n",
+        "caller.py": (
+            "from service import save as persist\n"
+            "def parameter(save):\n    return save()\n"
+            "def outer():\n    persist = lambda: 2\n"
+            "    def inner():\n        return persist()\n"
+            "    return inner()\n"
+            "def exact():\n    return persist()\n"
+        ),
+    }
+    plan = build_review_plan(MemorySnapshot(sources), [changed("caller.py")], list(sources))
+    calls = [e for e in plan.relationships if e.kind == "call" and e.source == "caller.py"]
+    assert [(e.symbol, e.target, e.strength) for e in calls if e.symbol == "persist"] == [
+        ("persist", "service.py", "strong")
+    ]
+    assert any(e.symbol == "inner" and e.strength == "strong" for e in calls)
+    unresolved = {(u.name, u.reason) for u in plan.unresolved_references}
+    assert ("save", "dynamic_binding") in unresolved
+    assert ("persist", "dynamic_binding") in unresolved
+
+
+def test_python_import_alias_shadows_module_and_local_module_assignment():
+    sources = {
+        "user.py": "def save():\n    return 1\n",
+        "service.py": "def save():\n    return 2\n",
+        "caller.py": (
+            "import user as u\nfrom service import save\n"
+            "u = replacement\n"
+            "def parameter(u):\n    return u.save()\n"
+            "save = replacement\n"
+            "def run():\n    return save()\n"
+            "def module_alias():\n    return u.save()\n"
+        ),
+    }
+    plan = build_review_plan(MemorySnapshot(sources), [changed("caller.py")], list(sources))
+    edges = [e for e in plan.relationships if e.kind == "call" and e.source == "caller.py"]
+    assert edges == []
+    assert (
+        sum(
+            r.side == "head" and r.name == "save" and r.reason == "dynamic_binding"
+            for r in plan.unresolved_references
+        )
+        == 3
+    )
+    run = next(s for f in plan.files if f.path == "caller.py" for s in f.symbols if s.name == "run")
+    result = PythonSymbolIndex.from_plan(plan, side="head").query(
+        run.symbol_id, direction="callers"
+    )
+    assert result.completeness == "partial"
+
+
+def test_shadowed_import_alias_marks_possible_caller_query_partial():
+    sources = {
+        "service.py": "def save(): return 1\n",
+        "caller.py": "from service import save as persist\ndef run(persist): return persist()\n",
+    }
+    plan = build_review_plan(MemorySnapshot(sources), [changed("caller.py")], list(sources))
+    target = next(s for f in plan.files if f.path == "service.py" for s in f.symbols)
+    unresolved = next(ref for ref in plan.unresolved_references if ref.name == "persist")
+    assert target.symbol_id in unresolved.possible_target_symbol_ids
+    result = PythonSymbolIndex.from_plan(plan, side="head").query(
+        target.symbol_id, direction="callers"
+    )
+    assert result.completeness == "partial"
+    assert "unresolved:dynamic_binding" in result.omissions
+
+
+def test_bare_method_name_does_not_resolve_through_class_namespace():
+    source = parse_python(
+        "client.py",
+        "class C:\n    def save(self): pass\n    def run(self): return save()\n",
+        "head",
+        "1" * 40,
+        "2" * 40,
+    )
+    edges, unresolved, _ = resolve_python_relationships((source,), {"client.py"}, side="head")
+    assert edges == ()
+    assert [(ref.name, ref.reason) for ref in unresolved] == [("save", "unresolved_name")]
+
+
+def test_dotted_import_without_as_alias_is_not_treated_as_submodule_binding():
+    sources = {
+        "pkg/__init__.py": "",
+        "pkg/sub.py": "def save(): return 1\n",
+        "caller.py": "import pkg.sub\ndef run(): return pkg.save()\n",
+    }
+    plan = build_review_plan(MemorySnapshot(sources), [changed("caller.py")], list(sources))
+    assert not [e for e in plan.relationships if e.kind == "call" and e.source == "caller.py"]
+    assert any(
+        r.name == "save" and r.reason == "dynamic_binding" for r in plan.unresolved_references
+    )
+    aliased = dict(sources)
+    aliased["caller.py"] = "import pkg.sub as ps\ndef run(): return ps.save()\n"
+    alias_plan = build_review_plan(MemorySnapshot(aliased), [changed("caller.py")], list(aliased))
+    assert any(
+        e.kind == "call" and e.strength == "strong" and e.target == "pkg/sub.py"
+        for e in alias_plan.relationships
+    )
+
+
+def test_plan_index_query_propagates_omissions_and_unresolved_scope():
+    sources = {
+        "service.py": "def save(): return 1\n",
+        "caller.py": "from service import save as persist\ndef run(persist): return persist()\n",
+        "omitted.py": "def other(): return 2\n",
+    }
+    plan = build_review_plan(
+        MemorySnapshot(sources),
+        [changed("service.py"), changed("caller.py")],
+        list(sources),
+        index_file_limit=2,
+    )
+    target = next(s for f in plan.files if f.path == "service.py" for s in f.symbols)
+    result = PythonSymbolIndex.from_plan(plan, side="head").query(
+        target.symbol_id, direction="callers"
+    )
+    assert result.completeness == "partial"
+    assert any(item.startswith("index_budget:") for item in result.omissions)
+    assert "unresolved:dynamic_binding" in result.omissions
+
+
+def test_base_relationships_keep_base_head_identity_for_changed_callers():
+    base = {
+        "service.py": "def save(): return 1\n",
+        "caller.py": "from service import save\ndef run(): return save()\n",
+    }
+    head = {
+        "service.py": "def save(): return 2\n",
+        "caller.py": "from service import save\ndef run(): return save()\n",
+    }
+    plan = build_review_plan(
+        MemorySnapshot(head, base), [changed("service.py"), changed("caller.py")], list(head)
+    )
+    base_edges = [
+        edge for edge in plan.relationships if edge.kind == "call" and edge.side == "base"
+    ]
+    assert len(base_edges) == 1
+    assert (base_edges[0].base, base_edges[0].head) == ("1" * 40, "2" * 40)
+    assert (
+        PythonSymbolIndex.from_plan(plan, side="base")
+        .query(base_edges[0].target_symbol_id, direction="callers")
+        .completeness
+        == "partial"
+    )
+
+
+def test_python_dynamic_attribute_and_parse_failure_are_explicit_unknowns():
+    sources = {"dynamic.py": "def run(obj):\n    return obj.save()\n", "bad.py": "def ???"}
+    plan = build_review_plan(
+        MemorySnapshot(sources), [changed("dynamic.py"), changed("bad.py")], list(sources)
+    )
+    assert any(
+        u.reason == "dynamic_attribute" and u.name == "save" for u in plan.unresolved_references
+    )
+    assert "parse_failed" in plan.limitations
+    dynamic_symbol = next(
+        s
+        for f in plan.files
+        if f.path == "dynamic.py" and f.side == "head"
+        for s in f.symbols
+        if s.name == "run"
+    )
+    index = PythonSymbolIndex(
+        plan.files,
+        plan.relationships,
+        side="head",
+        unresolved_references=plan.unresolved_references,
+    )
+    result = index.query(dynamic_symbol.symbol_id, direction="callees")
+    assert result.completeness == "partial"
+    assert "unresolved:dynamic_attribute" in result.omissions
+    failed_index = PythonSymbolIndex(plan.files, plan.relationships, side="head")
+    assert (
+        "parse_failed"
+        in failed_index.query(dynamic_symbol.symbol_id, direction="callees").omissions
+    )
+
+
+def test_symbol_identity_is_side_and_snapshot_bound_and_queries_report_limits():
+    cache = SourceIndexCache()
+    head = cache.parse("a.py", "def a(): return b()\ndef b(): return 1", "head", "1" * 40, "2" * 40)
+    base = cache.parse("a.py", "def a(): return b()\ndef b(): return 1", "base", "1" * 40, "2" * 40)
+    assert head.symbols[0].symbol_id != base.symbols[0].symbol_id
+    assert (head.symbols[0].base, head.symbols[0].head, head.symbols[0].side) == (
+        "1" * 40,
+        "2" * 40,
+        "head",
+    )
+    caller = next(s for s in head.symbols if s.name == "a")
+    target = next(s for s in head.symbols if s.name == "b")
+    edge = next(
+        e
+        for e in resolve_python_relationships((head,), {"a.py"}, side="head")[0]
+        if e.source_symbol_id == caller.symbol_id and e.target_symbol_id == target.symbol_id
+    )
+    index = PythonSymbolIndex(
+        (head,),
+        (edge,),
+        side="head",
+        max_depth=1,
+        max_results=1,
+        index_omissions=("index_scope_incomplete",),
+    )
+    result = index.query(caller.symbol_id, direction="callees", depth=2, limit=5)
+    assert result.completeness == "partial"
+    assert {"index_scope_incomplete", "depth_limit"} <= set(result.omissions)
+    assert result.searched_scope == ("a.py",)
+    other_side = PythonSymbolIndex((head,), (edge,), side="base")
+    assert other_side.query(caller.symbol_id, direction="callees").completeness == "partial"
+
+
+def test_plan_byte_limit_reports_missing_index_scope():
+    sources = {"a.py": "def a(): return 1\n", "b.py": "def b(): return 2\n"}
+    plan = build_review_plan(
+        MemorySnapshot(sources), [changed("a.py")], list(sources), index_char_limit=5
+    )
+    assert "repository_index_budget_exhausted" in plan.limitations
+    assert any(c.reason == "index_budget" for c in plan.coverage)
+    assert any(omission.startswith("index_budget:") for omission in plan.index_omissions)
+
+
+def test_fragment_spans_map_back_to_the_source_lines_they_cover():
+    patch = "@@ -10,4 +10,5 @@\n keep1\n-old line\n+new line\n keep2\n+" + ("z" * 400) + "\n"
     file = ChangedFile(filename="a.py", status=FileStatus.MODIFIED, patch=patch)
     plan = build_review_plan(
         MemorySnapshot({"a.py": "def f():\n    return 1\n"}), [file], ["a.py"], token_budget=128
@@ -327,7 +602,7 @@ def test_plan_budget_lines_separate_per_unit_cap_from_measured_total():
     files = [changed(p) for p in sources]
     plan = build_review_plan(MemorySnapshot(sources), files, list(sources), token_budget=256)
     lines = {line.name: line for line in plan.budgets.lines}
-    assert plan.version == "syntax-plan-v2"
+    assert plan.version == "syntax-plan-v3"
     assert lines["diff_fragments_per_unit"].limit == 256
     assert lines["diff_fragments_per_unit"].used <= 256
     assert lines["diff_fragments_total"].limit is None

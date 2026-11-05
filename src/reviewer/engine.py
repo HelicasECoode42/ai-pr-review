@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import re
+from threading import Event
 from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
@@ -56,15 +57,38 @@ def _canonical_sha256(value: object) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _provider_config_sha256(provider) -> str:
+    """Hash safe provider settings used to decide whether unit checkpoints apply."""
+    client = getattr(provider, "_client", None)
+    return _canonical_sha256({
+        "provider_type": f"{type(provider).__module__}.{type(provider).__qualname__}",
+        "model": getattr(provider, "model", None) or getattr(provider, "_model", None),
+        "endpoint": str(getattr(client, "base_url", "")),
+        "reasoning_effort": getattr(provider, "_reasoning_effort", None),
+        "thinking_enabled": getattr(provider, "_thinking_enabled", None),
+        "max_output_tokens": getattr(provider, "_max_output_tokens", None),
+        "stream": getattr(provider, "_stream", None),
+    })
+
+
 def _grounded_trace_identity(pr, files, snapshot, *, reviewer_version, prompt_addendum,
                              policy_id, policy_status, policy_content_sha256,
                              trace_input_identity=None,
-                             missing_evidence_followup=False):
+                             missing_evidence_followup=False,
+                             raw_discovery_scope="intent",
+                             raw_discovery=False,
+                             repository_index_enabled=False,
+                             grounded_critic_enabled=False, critic_batch_cap=8,
+                             critic_output_token_limit=1024, critic_model=""):
     """Fingerprint only review inputs and executable policy, never retain their text."""
     from pathlib import Path
 
     from src.reviewer.criteria import CRITERIA_VERSION
-    from src.reviewer.grounded_review import DISCOVERY_SYSTEM, VERIFY_SYSTEM
+    from src.reviewer.discovery_lenses import LENS_DISCOVERY_SYSTEM
+    from src.reviewer.grounded_review import (
+        DISCOVERY_SYSTEM, INDEX_ATTRIBUTION_CONTRACT, RAW_DISCOVERY_SYSTEM,
+        VERIFY_SYSTEM,
+    )
 
     metadata = {
         "repository": pr.repo, "pr_number": pr.number,
@@ -88,9 +112,12 @@ def _grounded_trace_identity(pr, files, snapshot, *, reviewer_version, prompt_ad
     runtime_paths = (
         Path(__file__),
         Path(__file__).with_name("grounded_review.py"),
+        Path(__file__).with_name("discovery_lenses.py"),
         Path(__file__).with_name("criteria.py"),
+        Path(__file__).with_name("critic.py"),
         Path(__file__).with_name("unit_review.py"),
         source_root / "analyzer" / "repository_context.py",
+        source_root / "analyzer" / "symbol_index.py",
         source_root / "application" / "review.py",
         source_root / "application" / "strategy_policy.py",
         source_root / "reviewer" / "provider.py",
@@ -157,16 +184,34 @@ def _grounded_trace_identity(pr, files, snapshot, *, reviewer_version, prompt_ad
             "status": policy_status,
             "effective_policy_sha256": effective_policy_sha,
             "grounded_missing_evidence_followup": bool(missing_evidence_followup),
+            "raw_discovery_scope": raw_discovery_scope,
+            "raw_discovery": bool(raw_discovery),
+            "repository_index_enabled": bool(repository_index_enabled),
+            "grounded_critic_enabled": bool(grounded_critic_enabled),
+            "critic_batch_cap": int(critic_batch_cap),
+            "critic_output_token_limit": int(critic_output_token_limit),
+            "critic_model": str(critic_model),
             "effective_review_strategy_sha256": _canonical_sha256({
                 "effective_policy_sha256": effective_policy_sha,
                 "grounded_missing_evidence_followup": bool(missing_evidence_followup),
+                "raw_discovery_scope": raw_discovery_scope,
+                "repository_index_enabled": bool(repository_index_enabled),
+                "grounded_critic_enabled": bool(grounded_critic_enabled),
+                "critic_batch_cap": int(critic_batch_cap),
+                "critic_output_token_limit": int(critic_output_token_limit),
+                "critic_model": str(critic_model),
+                "raw_discovery": bool(raw_discovery),
+                "symbol_index_schema": "python-binding-v1",
             }),
         },
         "criteria_sha256": hashlib.sha256(CRITERIA_VERSION.encode("utf-8")).hexdigest(),
         "runtime_sha256": runtime_hash.hexdigest(),
-        "prompt_sha256": hashlib.sha256(
-            (DISCOVERY_SYSTEM + VERIFY_SYSTEM + prompt_addendum).encode("utf-8")
-        ).hexdigest(),
+        "prompt_sha256": hashlib.sha256((
+            (RAW_DISCOVERY_SYSTEM + LENS_DISCOVERY_SYSTEM if raw_discovery
+             else DISCOVERY_SYSTEM)
+            + VERIFY_SYSTEM + prompt_addendum
+            + (INDEX_ATTRIBUTION_CONTRACT if repository_index_enabled else "")
+        ).encode("utf-8")).hexdigest(),
         "reviewer_version": reviewer_version,
     }
 
@@ -528,6 +573,7 @@ def review_with_ai(
     verify_rule_signals: bool = False,
     enable_critic: bool = False,
     critic_provider: ReviewModelProvider | None = None,
+    critic_batch_cap: int = 8,
     gh_client: "GitHubClient | None" = None,
     enable_evidence_gate: bool = True,
     review_context: "ReviewContext | None" = None,
@@ -539,6 +585,7 @@ def review_with_ai(
     unit_evidence_tokens: int = 3000,
     unit_checkpoint_path: str | None = None,
     unit_max_attempts: int = 2,
+    unit_cancel: Event | None = None,
     unit_provider_factory=None,
     repository_snapshot=None,
     follow_changes: bool = False,
@@ -553,14 +600,13 @@ def review_with_ai(
     trace_input_identity: dict | None = None,
     grounded_missing_evidence_followup: bool = False,
     raw_discovery: bool = False,
+    repository_index_enabled: bool = False,
 ) -> ReviewReport:
     try:
         grounded_route = follow_changes and not two_stage and (
             repository_snapshot is not None or (pr.head_sha and pr.base_sha)
         )
         unsupported = []
-        if grounded_route and enable_critic:
-            unsupported.append("critic")
         if grounded_route and verify_rule_signals:
             unsupported.append("rule_signal_verification")
         if unsupported:
@@ -577,12 +623,19 @@ def review_with_ai(
             max_documentation_tokens=documentation_patch_tokens,
         )
         if grounded_route:
+            from src.reviewer.critic import GroundedCriticBudget
+            from src.reviewer.discovery_lenses import LENS_DISCOVERY_SYSTEM
             from src.reviewer.grounded_review import (
                 DISCOVERY_SYSTEM,
+                INDEX_ATTRIBUTION_CONTRACT,
+                RAW_DISCOVERY_SYSTEM,
                 VERIFY_SYSTEM,
                 build_grounded_report,
                 review_grounded,
             )
+            shared_critic_budget = GroundedCriticBudget() if enable_critic else None
+            critic_identity_provider = (critic_provider or provider) if enable_critic else None
+
             def run_one_unit(unit_ctx, unit_files, snapshot):
                 unit_provider = unit_provider_factory() if unit_provider_factory else provider
                 result = None
@@ -603,6 +656,11 @@ def review_with_ai(
                         missing_evidence_followup=grounded_missing_evidence_followup,
                         missing_evidence_followup_only=grounded_missing_evidence_followup,
                         raw_discovery=raw_discovery,
+                        repository_index_enabled=repository_index_enabled,
+                        critic_provider=((critic_provider or unit_provider)
+                                         if enable_critic else None),
+                        critic_batch_cap=critic_batch_cap,
+                        critic_budget=shared_critic_budget,
                     )
                 finally:
                     if unit_provider_factory is not None:
@@ -625,6 +683,23 @@ def review_with_ai(
                     policy_content_sha256=strategy_policy_content_sha256,
                     trace_input_identity=trace_input_identity,
                     missing_evidence_followup=grounded_missing_evidence_followup,
+                    raw_discovery_scope=(
+                        "unit_context"
+                        if raw_discovery and unit_review_max_units and ctx.truncated
+                        and len(files) > 2
+                        else ("full_pr_diff" if raw_discovery else "intent")
+                    ),
+                    repository_index_enabled=repository_index_enabled,
+                    grounded_critic_enabled=enable_critic,
+                    critic_batch_cap=critic_batch_cap,
+                    critic_output_token_limit=getattr(
+                        critic_identity_provider, "_max_output_tokens", 1024
+                    ) if enable_critic else 0,
+                    critic_model=str(
+                        getattr(critic_identity_provider, "model", None)
+                        or getattr(critic_identity_provider, "_model", "")
+                    ) if enable_critic else "",
+                    raw_discovery=raw_discovery,
                 )
                 # Large diffs are reviewed one semantic unit at a time. The gate is
                 # deliberate: this path costs one review per unit, so it only runs
@@ -641,49 +716,60 @@ def review_with_ai(
                     if pr.repo and pr.number > 0 and snapshot.base and snapshot.head and model_name:
                         from src.reviewer.criteria import CRITERIA_VERSION
 
-                        provider_client = getattr(provider, "_client", None)
-                        endpoint = str(getattr(provider_client, "base_url", ""))
+                        critic_model_name = (
+                            getattr(critic_identity_provider, "model", None)
+                            or getattr(critic_identity_provider, "_model", "")
+                        )
+                        critic_output_token_limit = getattr(
+                            critic_identity_provider, "_max_output_tokens", 1024
+                        )
                         checkpoint_identity = {
                             "repo": pr.repo,
                             "pr_number": pr.number,
                             "base_sha": snapshot.base,
                             "head_sha": snapshot.head,
                             "reviewer_version": reviewer_version,
+                            "runtime_sha256": trace_identity["runtime_sha256"],
                             "strategy": (
-                                "grounded-unit-v2:intent-plan-v2:"
+                                "grounded-unit-v3:intent-plan-v2:"
                                 "missing-evidence-followup-"
                                 f"{int(grounded_missing_evidence_followup)}:"
-                                "one-discovery-one-verification"
+                                f"repository-index-{int(repository_index_enabled)}:"
+                                "python-binding-v1:"
+                                "one-discovery-one-verification:critic-"
+                                f"{int(enable_critic)}-batch-{critic_batch_cap}-"
+                                f"{critic_model_name}-output-{critic_output_token_limit}"
                             ),
                             "strategy_policy_id": strategy_policy_id,
                             "strategy_policy_content_sha256": trace_identity["policy"][
                                 "effective_policy_sha256"
                             ],
+                            "raw_discovery": bool(raw_discovery),
+                            "raw_discovery_scope": trace_identity["policy"][
+                                "raw_discovery_scope"
+                            ],
                             "model": str(model_name),
                             "provider_type": (
                                 f"{type(provider).__module__}.{type(provider).__qualname__}"
                             ),
-                            "provider_config_hash": hashlib.sha256(
-                                json.dumps(
-                                    {
-                                        "endpoint": endpoint,
-                                        "reasoning_effort": getattr(
-                                            provider, "_reasoning_effort", None
-                                        ),
-                                        "thinking_enabled": getattr(
-                                            provider, "_thinking_enabled", None
-                                        ),
-                                        "max_output_tokens": getattr(
-                                            provider, "_max_output_tokens", None
-                                        ),
-                                        "stream": getattr(provider, "_stream", None),
-                                    },
-                                    sort_keys=True,
-                                    separators=(",", ":"),
-                                ).encode("utf-8")
-                            ).hexdigest(),
+                            "provider_config_hash": _provider_config_sha256(provider),
+                            "critic_provider_type": (
+                                f"{type(critic_identity_provider).__module__}."
+                                f"{type(critic_identity_provider).__qualname__}"
+                                if enable_critic else None
+                            ),
+                            "critic_provider_config_hash": (
+                                _provider_config_sha256(critic_identity_provider)
+                                if enable_critic else None
+                            ),
+                            "critic_output_token_limit": (
+                                critic_output_token_limit if enable_critic else 0
+                            ),
                             "prompt_hash": hashlib.sha256((
-                                DISCOVERY_SYSTEM + VERIFY_SYSTEM + prompt_addendum
+                                (RAW_DISCOVERY_SYSTEM + LENS_DISCOVERY_SYSTEM
+                                 if raw_discovery else DISCOVERY_SYSTEM)
+                                + VERIFY_SYSTEM + prompt_addendum
+                                + (INDEX_ATTRIBUTION_CONTRACT if repository_index_enabled else "")
                                 + build_user_prompt("<unit-context>", max_suggestions, language,
                                                     cross_file_evidence=True)
                             ).encode("utf-8")).hexdigest(),
@@ -708,20 +794,36 @@ def review_with_ai(
                             "max_suggestions_per_file": max_suggestions_per_file,
                         }
 
+                    effective_unit_workers = (
+                        unit_review_workers if unit_provider_factory is not None else 1
+                    )
                     merged, unit_details = run_units_for_review(
                         lambda unit_ctx, unit_files: run_one_unit(
                             unit_ctx, unit_files, snapshot
                         ),
                         snapshot, files,
                         token_budget=ctx.patch_token_budget or repository_evidence_tokens,
-                        max_units=unit_review_max_units, max_workers=unit_review_workers,
+                        max_units=unit_review_max_units, max_workers=effective_unit_workers,
                         cost_ceiling_tokens=unit_review_cost_ceiling_tokens,
                         checkpoint_path=unit_checkpoint_path,
                         checkpoint_identity=checkpoint_identity,
                         max_attempts=unit_max_attempts,
+                        cancel=unit_cancel,
                     )
+                    if unit_provider_factory is None and unit_review_workers > 1:
+                        unit_details["worker_limit_reason"] = (
+                            "shared_provider_without_factory_forced_serial"
+                        )
+                        warnings.append(
+                            "Per-unit review ran serially because no per-worker provider "
+                            "factory was supplied."
+                        )
                     if merged is not None:
                         merged.bundle["unit_details"] = unit_details
+                        if unit_details.get("worker_limit_reason"):
+                            merged.bundle["unit_worker_limit_reason"] = unit_details[
+                                "worker_limit_reason"
+                            ]
                         checkpoint_failed = bool(unit_details.get("unit_checkpoint_failed"))
                         unit_incomplete = (
                             bool(unit_details.get("units_failed"))
@@ -743,7 +845,7 @@ def review_with_ai(
                             "unit_checkpoint_failed" if checkpoint_failed else
                             "unit_review_incomplete" if unit_incomplete else degradation_reason
                         )
-                        return build_grounded_report(
+                        report = build_grounded_report(
                             pr, files, findings, merged, ctx, reviewer_version=reviewer_version,
                             execution_status="degraded" if unit_degraded else execution_status,
                             report_confidence="partial" if unit_degraded else report_confidence,
@@ -754,6 +856,16 @@ def review_with_ai(
                             analyzer_warnings=warnings,
                             trace_identity=trace_identity,
                         )
+                        coverage = unit_details.get("hunk_coverage", {})
+                        if isinstance(coverage, dict):
+                            for key in (
+                                "hunks_static_scanned", "hunks_model_exposed",
+                                "hunks_model_review_completed", "hunks_pending_budget",
+                                "hunks_partial", "hunks_excluded", "hunks_unavailable",
+                            ):
+                                if isinstance(coverage.get(key), int):
+                                    report.metrics[key] = coverage[key]
+                        return report
                     if unit_details.get("unit_review_skipped_cost"):
                         # Refused before spending anything; the reason is recorded
                         # rather than the run silently costing 73 CNY.
@@ -765,13 +877,19 @@ def review_with_ai(
                             f"{unit_details['units_planned']} units exceeds the ceiling "
                             f"{unit_details['cost_ceiling_tokens']:,}."
                         )
-                result = review_grounded(pr, files, provider, snapshot, ctx, max_suggestions,
-                                         language, repository_evidence_tokens, verify_behavior,
-                                         max_suggestions_per_file=max_suggestions_per_file,
-                                         contract_domains=contract_domains,
-                                         prompt_addendum=prompt_addendum,
-                                         missing_evidence_followup=grounded_missing_evidence_followup,
-                                         raw_discovery=raw_discovery)
+                result = review_grounded(
+                    pr, files, provider, snapshot, ctx, max_suggestions,
+                    language, repository_evidence_tokens, verify_behavior,
+                    max_suggestions_per_file=max_suggestions_per_file,
+                    contract_domains=contract_domains,
+                    prompt_addendum=prompt_addendum,
+                    missing_evidence_followup=grounded_missing_evidence_followup,
+                    raw_discovery=raw_discovery,
+                    repository_index_enabled=repository_index_enabled,
+                    critic_provider=((critic_provider or provider) if enable_critic else None),
+                    critic_batch_cap=critic_batch_cap,
+                    critic_budget=shared_critic_budget,
+                )
                 result.bundle["missing_evidence_followup_enabled"] = bool(
                     grounded_missing_evidence_followup
                 )
@@ -786,6 +904,12 @@ def review_with_ai(
                 if skip_details:
                     report.metrics["unit_review_skipped_cost"] = 1
                     report.metrics["unit_review_estimated_tokens"] = skip_details["estimated_tokens"]
+                    skip_coverage = skip_details.get("hunk_coverage", {})
+                    if isinstance(skip_coverage, dict):
+                        report.metrics["hunks_pending_budget"] = skip_coverage.get(
+                            "hunks_pending_budget", 0
+                        )
+                        report.repository_context["unit_review_coverage"] = skip_coverage
                 return report
             if repository_snapshot is not None:
                 return grounded(repository_snapshot)

@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 
@@ -282,6 +283,16 @@ Citations must use exact code from the supplied diff or evidence. Use at least o
 confirmed behavior. Source reasoning is not a claim that a test was executed.
 """
 
+INDEX_ATTRIBUTION_CONTRACT = (
+    "Static index output only locates code; it does not prove a defect or that the PR caused it. "
+    "For a confirmed candidate, cite the exact changed HEAD anchor and the paired BASE line from "
+    "the same diff hunk, and describe the concrete behavior difference. A difference between two "
+    "expressions is not by itself proof that the candidate's trigger or failure path was introduced. "
+    "If the evidence cannot establish that this PR changed that path, return needs_context; never "
+    "infer introduced from a call edge or two unrelated code excerpts. The host records bounded "
+    "behavior differences only and does not label opt-in findings introduced."
+)
+
 
 @dataclass
 class GroundedResult:
@@ -377,7 +388,6 @@ def _dismissal_rests_on_judgement(item) -> bool:
     return bool(_WEAK_JUDGEMENT.search(reason))
 
 
-_RULE_TITLE = re.compile(r"^\[TQ\d{3}\] ")
 _MOCK_CLAIM = re.compile(r"\b(mock(ed|s)?|patch(ed|es)?)\b", re.IGNORECASE)
 _AGREES_PATCH_MISSES = re.compile(
     r"\b(bypass(ed|es)?|real function|local (binding|import|name)|imported by name|"
@@ -398,9 +408,26 @@ def _rule_rebuttals(rule_candidates) -> dict[str, set[str]]:
     return rebutted
 
 
-def _contradicted_by_rule(suggestion, rebutted) -> str | None:
+def _rule_candidate_key(file_path, line, title, reason, evidence) -> tuple | None:
+    """Identity of a host-created deterministic candidate, never a model claim."""
+    if (not isinstance(file_path, str) or isinstance(line, bool) or not isinstance(line, int)
+            or not isinstance(title, str) or not isinstance(reason, str)):
+        return None
+    if not isinstance(evidence, (list, tuple)) or any(not isinstance(item, str) for item in evidence):
+        return None
+    return file_path, line, title, reason, tuple(evidence)
+
+
+def _suggestion_rule_candidate_key(suggestion) -> tuple | None:
+    return _rule_candidate_key(
+        suggestion.file_path, suggestion.line, suggestion.title,
+        suggestion.reason, suggestion.evidence,
+    )
+
+
+def _contradicted_by_rule(suggestion, rebutted, *, host_rule_fact=False) -> str | None:
     """A model claim that a name is mocked, where TQ001 proved the patch misses it."""
-    if _RULE_TITLE.match(suggestion.title):
+    if host_rule_fact:
         return None
     text = suggestion.title + "\n" + suggestion.reason
     for name in rebutted.get(suggestion.file_path, ()):
@@ -865,7 +892,161 @@ def _missing_evidence_accounting(plan, bundle):
     return result
 
 
-def _execute_intent_tasks(bundle, requests, plan, snapshot, query_keys, changed_paths):
+def _bounded_python_index_search(snapshot, files):
+    """Resolve an existing search request inside changed + lexical-hit files only."""
+    from src.analyzer.symbol_index import (
+        PythonSymbolIndex,
+        parse_python,
+        resolve_python_relationships,
+    )
+
+    parsed_by_side: dict[tuple[str, str], object] = {}
+    total_source_bytes = 0
+    max_index_files = 12
+    max_file_bytes = 100_000
+    max_total_bytes = 400_000
+
+    def resolve(symbol, side, limit):
+        nonlocal total_source_bytes
+        started = time.monotonic()
+        errors_before = len(snapshot.audit().get("errors", []))
+        lexical_hits = snapshot.search(symbol, side=side, limit=limit)
+        search_errors = snapshot.audit().get("errors", [])[errors_before:]
+        side_changed_paths = sorted({
+            file.filename if side == "head" else (file.previous_filename or file.filename)
+            for file in files
+        })
+        ordered_paths = list(dict.fromkeys(
+            side_changed_paths + [path for path, _ in lexical_hits]
+        ))
+        # The index is shared across all existing search requests in this review.
+        # Parsing must not silently multiply the repository read budget by the
+        # number of hypotheses or discovery rounds.
+        scope_paths = list(dict.fromkeys(
+            [path for (indexed_side, path) in parsed_by_side if indexed_side == side]
+            + ordered_paths
+        ))
+        omissions = ["scope_limited_to_changed_and_search_hits"]
+        if len(scope_paths) > max_index_files:
+            omissions.append("index_file_limit")
+            scope_paths = scope_paths[:max_index_files]
+        parsed_bytes = 0
+        for path in scope_paths:
+            key = (side, path)
+            if key in parsed_by_side:
+                continue
+            if len(parsed_by_side) >= max_index_files:
+                omissions.append("index_file_limit")
+                break
+            try:
+                text = snapshot.read(path, side)
+            except Exception:
+                text = None
+            if text is None:
+                omissions.append(f"source_unavailable:{path}")
+                continue
+            size = len(text.encode("utf-8"))
+            if size > max_file_bytes or total_source_bytes + size > max_total_bytes:
+                omissions.append(f"index_byte_limit:{path}")
+                continue
+            total_source_bytes += size
+            parsed_bytes += size
+            parsed_by_side[key] = parse_python(path, text, side, snapshot.base, snapshot.head)
+        parsed = [
+            parsed_by_side[(indexed_side, path)]
+            for indexed_side, path in parsed_by_side
+            if indexed_side == side
+        ]
+        python_files = tuple(source for source in parsed if source.parser == "python-ast")
+        if len(python_files) != len(parsed):
+            omissions.append("non_python_or_parse_failed")
+        if any("parse_failed" in source.limitations for source in python_files):
+            omissions.append("parse_failed")
+        relationships, unresolved, edge_omissions = resolve_python_relationships(
+            python_files, set(scope_paths), side=side,
+        )
+        omissions.extend(edge_omissions)
+        if unresolved:
+            omissions.append("unresolved_or_ambiguous_bindings")
+        index = PythonSymbolIndex(
+            python_files, relationships, side=side,
+            index_omissions=tuple(dict.fromkeys(omissions)),
+            unresolved_references=unresolved,
+        )
+        symbols = [symbol_ref for source in python_files for symbol_ref in source.symbols
+                   if symbol_ref.name == symbol]
+        source_ranges = {
+            symbol_ref.symbol_id: (source.path, side, symbol_ref.start, symbol_ref.end)
+            for source in python_files for symbol_ref in source.symbols
+        }
+        relation_rows = []
+        caller_hits = []
+        if len(symbols) == 1:
+            query = index.query(symbols[0].symbol_id, direction="callers", depth=1,
+                                limit=limit)
+            omissions.extend(query.omissions)
+            for edge in query.relationships:
+                relation_rows.append({
+                    "source": edge.source, "target": edge.target, "kind": edge.kind,
+                    "strength": edge.strength, "provenance": edge.provenance,
+                    "evidence_level": edge.evidence_level,
+                    "source_symbol_id": edge.source_symbol_id,
+                    "target_symbol_id": edge.target_symbol_id,
+                    "source_start": edge.source_start, "source_end": edge.source_end,
+                    "target_start": edge.target_start, "target_end": edge.target_end,
+                })
+                if edge.source_start:
+                    caller_hits.append((edge.source, edge.source_start, edge.source_symbol_id))
+        elif len(symbols) > 1:
+            omissions.append("ambiguous_symbol_target")
+        else:
+            omissions.append("symbol_definition_not_in_index_scope")
+
+        # Preserve the established lexical search as the request's baseline.
+        # Indexed callers may use only slots left after those hits, so weak or
+        # repeated edges cannot reorder away evidence the non-indexed path found.
+        baseline_hits = list(dict.fromkeys(lexical_hits))[:limit]
+        baseline_ranges = set()
+        for path, line in baseline_hits:
+            source_range = next((value for symbol_id, value in source_ranges.items()
+                                 if value[0] == path and value[2] <= line <= value[3]), None)
+            baseline_ranges.add(source_range or (path, side, line, line))
+        indexed_candidates = []
+        seen_index_ranges = set(baseline_ranges)
+        for path, line, source_symbol_id in caller_hits:
+            key = source_ranges.get(source_symbol_id) or (path, side, line, line)
+            if key not in seen_index_ranges:
+                seen_index_ranges.add(key)
+                indexed_candidates.append((path, line))
+        remaining_slots = max(0, limit - len(baseline_hits))
+        index_extra_hits = indexed_candidates[:remaining_slots]
+        extra_omitted = len(indexed_candidates) - len(index_extra_hits)
+        return {
+            "hits": baseline_hits + index_extra_hits,
+            "baseline_hits": baseline_hits,
+            "index_extra_hits": index_extra_hits,
+            "index_extra_omitted": ({
+                "count": extra_omitted, "reason": "no_return_slot",
+            } if extra_omitted else {}),
+            "search_errors": search_errors,
+            "index": {
+                "schema": "python-binding-v1", "status": "partial",
+                "side": side, "base_sha": snapshot.base, "head_sha": snapshot.head,
+                "searched_scope": sorted({source.path for source in parsed}),
+                "completeness": "partial",
+                "omissions": list(dict.fromkeys(omissions)),
+                "files_parsed": len(parsed), "source_bytes_parsed": parsed_bytes,
+                "source_bytes_run_total": total_source_bytes,
+                "scan_ms": round((time.monotonic() - started) * 1000, 3),
+                "relationships": relation_rows,
+            },
+        }
+
+    return resolve
+
+
+def _execute_intent_tasks(bundle, requests, plan, snapshot, query_keys, changed_paths,
+                          search_resolver=None):
     """Validate and execute one bounded batch of hypothesis-bound source queries."""
     hypotheses = {item["id"]: item for item in plan["hypotheses"]}
     ranked_requests = sorted(
@@ -974,7 +1155,9 @@ def _execute_intent_tasks(bundle, requests, plan, snapshot, query_keys, changed_
         executable.append((request, priority))
 
     before_refs = {item["evidence_ref"] for item in bundle.excerpts}
-    outcomes = bundle.execute([request for request, _ in executable])
+    outcomes = bundle.execute(
+        [request for request, _ in executable], search_resolver=search_resolver
+    )
     for (request, priority), outcome in zip(executable, outcomes, strict=True):
         task_evidence_refs = outcome.get("evidence_refs", [])
         omission_reason = outcome.get("omission_reason")
@@ -1026,6 +1209,199 @@ def _unit_coverage(snapshot, files, context: ReviewContext, audit: dict) -> dict
         return None
 
 
+def _apply_grounded_critic(result_parts, provider, *, batch_cap, repository_index_enabled,
+                           critic_budget=None):
+    """Run one evidence-bound critic batch after the ordinary host gate."""
+    candidates, pending, kept_ids, kept, decisions, bundle = result_parts
+    trace = {"status": "not_triggered", "reason": "no_eligible_candidate", "items": []}
+    def append_pending_once(suggestion):
+        if not any(
+            (item.file_path, item.line, item.title)
+            == (suggestion.file_path, suggestion.line, suggestion.title)
+            for item in pending
+        ):
+            pending.append(suggestion.model_copy(update={"source": "ai_needs_context"}))
+    if provider is None:
+        return
+    from src.reviewer.critic import (
+        GroundedCriticDecision,
+        critique_grounded_batch,
+    )
+
+    excerpts = {item.get("evidence_ref"): item for item in bundle.get("excerpts", [])
+                if isinstance(item.get("evidence_ref"), str)}
+    decisions_by_id = {item.get("candidate_id"): item for item in decisions
+                       if isinstance(item, dict)}
+    host_rule_ids = set(bundle.get("host_rule_candidate_ids", []))
+    triggered = []
+    trigger_reasons = {}
+    suggestions_by_id = dict(zip(kept_ids, kept))
+    for candidate in candidates:
+        index = candidate.get("candidate_id")
+        source_suggestion = candidate.get("suggestion")
+        if not isinstance(index, int) or isinstance(index, bool) or index in host_rule_ids:
+            continue
+        eligible_for_critic = (
+            candidate.get("status") == "confirmed"
+            or candidate.get("validation_reason") == "causal_attribution_unproven"
+        )
+        if not eligible_for_critic or not isinstance(source_suggestion, dict):
+            continue
+        suggestion = suggestions_by_id.get(index)
+        if suggestion is None:
+            try:
+                suggestion = ReviewSuggestion.model_validate(source_suggestion)
+            except Exception:
+                continue
+        if suggestion.severity not in {Severity.HIGH, Severity.CRITICAL}:
+            continue
+        decision = decisions_by_id.get(index, {})
+        refs = []
+        for citation in decision.get("evidence", []):
+            if not isinstance(citation, dict):
+                continue
+            for ref_id, excerpt in excerpts.items():
+                if (citation.get("path") == excerpt.get("path")
+                        and citation.get("side") == excerpt.get("side")
+                        and isinstance(citation.get("line"), int)
+                        and excerpt.get("start_line", 0) <= citation["line"]
+                        <= excerpt.get("end_line", 0)):
+                    refs.append(ref_id)
+        refs = list(dict.fromkeys(refs))
+        if not refs:
+            continue
+        evidence = [{"evidence_ref_id": ref, "content": excerpts[ref].get("code", "")}
+                    for ref in refs if ref in excerpts]
+        if not evidence:
+            continue
+        triggered.append((index, suggestion, evidence))
+        trigger_reasons[index] = "high_or_critical_verified_candidate"
+
+    if not triggered:
+        bundle["grounded_critic"] = trace
+        return
+    cap = min(8, max(1, int(batch_cap)))
+    selected, skipped = triggered[:cap], triggered[cap:]
+    trace = {
+        "status": "triggered", "reason": "host_severity_trigger",
+        "batch_cap": cap,
+        "selected_candidate_ids": [item[0] for item in selected],
+        "items": [],
+    }
+    for index, suggestion, _ in skipped:
+        candidates[next(i for i, item in enumerate(candidates)
+                        if item.get("candidate_id") == index)].update(
+                            status="needs_context", reason="critic_skipped_budget"
+                        )
+        append_pending_once(suggestion)
+        trace["items"].append({
+            "candidate_id": index, "status": "skipped_budget",
+            "reason": "critic_batch_cap_exceeded",
+        })
+    if critic_budget is not None and not critic_budget.claim_batch():
+        trace.update(status="skipped", reason="critic_run_budget_exhausted")
+        for index, suggestion, _ in selected:
+            candidate = next(item for item in candidates if item.get("candidate_id") == index)
+            candidate.update(status="needs_context", reason="critic_run_budget_exhausted")
+            append_pending_once(suggestion)
+            trace["items"].append({
+                "candidate_id": index, "status": "skipped_budget",
+                "reason": "critic_run_budget_exhausted",
+            })
+        held = {
+            item.get("candidate_id") for item in candidates
+            if item.get("reason") in {
+                "critic_skipped_budget", "critic_run_budget_exhausted",
+            }
+        }
+        survivors = [(index, suggestion) for index, suggestion in zip(kept_ids, kept)
+                     if index not in held]
+        kept_ids[:] = [index for index, _ in survivors]
+        kept[:] = [suggestion for _, suggestion in survivors]
+        bundle["grounded_critic"] = trace
+        return
+    batch = critique_grounded_batch(provider, selected, batch_cap=cap)
+    trace["raw_response"] = batch.raw_response
+    if batch.error:
+        trace.update(status="unavailable", reason=batch.error)
+        for index, suggestion, _ in selected:
+            candidate = next(item for item in candidates if item.get("candidate_id") == index)
+            candidate.update(status="needs_context", reason="critic_unavailable")
+            append_pending_once(suggestion)
+            trace["items"].append({
+                "candidate_id": index, "status": "unavailable", "reason": batch.error,
+            })
+    else:
+        verdicts = {item.candidate_id: item for item in batch.items}
+        for index, suggestion, _ in selected:
+            verdict = verdicts.get(index)
+            if verdict is None:
+                reason = "critic_missing_candidate_verdict"
+                decision = "needs_context"
+                refs = []
+            else:
+                reason = verdict.reason
+                decision = verdict.decision.value
+                refs = verdict.evidence_ref_ids
+            hold = decision in {
+                GroundedCriticDecision.REFUTE.value,
+                GroundedCriticDecision.NEEDS_CONTEXT.value,
+                GroundedCriticDecision.ABSTAIN.value,
+            } or verdict is None or verdict.semantic_assessment.value != "supported"
+            # The index can locate code but cannot establish PR causality.
+            # A critic confirmation therefore cannot clear the host's unknown
+            # attribution state, even when its semantic assessment is supported.
+            if repository_index_enabled and decision == GroundedCriticDecision.CONFIRM.value:
+                hold = True
+            trace["items"].append({
+                "candidate_id": index,
+                "status": "shadow_refutation_pending" if decision == "refute" else decision,
+                "decision": decision,
+                "confidence_metadata": verdict.confidence if verdict else 0.0,
+                "semantic_assessment": (
+                    verdict.semantic_assessment.value if verdict else "insufficient"
+                ),
+                "semantic_consistent": bool(
+                    verdict is not None
+                    and (
+                        (decision == "confirm"
+                         and verdict.semantic_assessment.value == "supported")
+                        or (decision == "refute"
+                            and verdict.semantic_assessment.value == "contradicted")
+                        or (decision in {"needs_context", "abstain"}
+                            and verdict.semantic_assessment.value == "insufficient")
+                    )
+                ),
+                "goal_coverage": verdict.goal_coverage if verdict else "unknown",
+                "reason": reason,
+                "evidence_ref_ids": refs,
+                "trigger_reason": trigger_reasons[index],
+            })
+            if hold:
+                candidate = next(item for item in candidates if item.get("candidate_id") == index)
+                candidate.update(status="needs_context", reason=(
+                    "critic_refutation_shadow_only" if decision == "refute"
+                    else "critic_cannot_resolve_index_attribution"
+                    if repository_index_enabled and decision == "confirm"
+                    else "critic_needs_context"
+                ))
+                append_pending_once(suggestion)
+        held = {item["candidate_id"] for item in trace["items"]
+                if item["status"] in {"shadow_refutation_pending", "needs_context", "abstain"}}
+    held = {
+        item.get("candidate_id") for item in candidates
+        if item.get("reason") in {
+            "critic_skipped_budget", "critic_run_budget_exhausted", "critic_unavailable",
+            "critic_refutation_shadow_only", "critic_needs_context",
+        }
+    }
+    survivors = [(index, suggestion) for index, suggestion in zip(kept_ids, kept)
+                 if index not in held]
+    kept_ids[:] = [index for index, _ in survivors]
+    kept[:] = [suggestion for _, suggestion in survivors]
+    bundle["grounded_critic"] = trace
+
+
 def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewContext,
                     max_suggestions=20, language="en",
                     evidence_tokens=6000, verify_behavior=True, max_suggestions_per_file=5,
@@ -1034,7 +1410,10 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
                     prompt_addendum: str = "",
                     missing_evidence_followup: bool = False,
                     missing_evidence_followup_only: bool = False,
-                    raw_discovery: bool = False) -> GroundedResult:
+                    raw_discovery: bool = False,
+                    repository_index_enabled: bool = False,
+                    critic_provider=None, critic_batch_cap: int = 8,
+                    critic_budget=None) -> GroundedResult:
     """Ground discovery and verification in a frozen snapshot.
 
     Publication here is decided by proof, not by the model's self-reported
@@ -1060,6 +1439,9 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
         available_sources.add("pr:description")
     intent_plan = None
     intent_query_keys = set()
+    search_resolver = (
+        _bounded_python_index_search(snapshot, files) if repository_index_enabled else None
+    )
     force_final_reason = None
     # Round budgets are parameters because each round re-sends the whole prompt
     # and the evidence bundle: on a small unit one round each is enough, and the
@@ -1068,10 +1450,30 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
     # minimal prompt. It is an experiment flag; verification/criteria still run.
     discovery_budget = 0 if raw_discovery else max(1, discovery_rounds)
     rule_rebuttals: dict[str, set[str]] = {}
+    host_rule_candidate_keys = set()
     # The diff text the model sees. In the raw lane discovery, verification and
     # the citation check all use the same full diff, so a line discovery quoted
     # is never judged "not shown" because the budgeted context clipped it.
-    diff_text = _raw_discovery_prompt(pr, files) if raw_discovery else context.text
+    is_unit_context = getattr(getattr(context, "budgets", None), "scope", None) == (
+        "build_unit_context"
+    )
+    raw_discovery_scope = (
+        "unit_context" if is_unit_context else "full_pr_diff"
+    ) if raw_discovery else None
+    if raw_discovery and is_unit_context:
+        # Unit review has already selected exact bounded fragments. Rebuilding
+        # prompts from ChangedFile.patch here would silently expand each unit
+        # back to the full file diff and invalidate its coverage accounting.
+        diff_text = "\n".join([
+            f"# Pull request {getattr(pr, 'repo', '')}#{getattr(pr, 'number', '')}",
+            f"Title: {getattr(pr, 'title', '') or ''}",
+            "## Description",
+            str(getattr(pr, "body", None) or "(empty)"),
+            "## Unit diff",
+            context.text,
+        ])
+    else:
+        diff_text = _raw_discovery_prompt(pr, files) if raw_discovery else context.text
     if raw_discovery:
         # Two samples with different inputs, unioned: the diff-only prompt keeps
         # local defects undiluted, diff+evidence finds cross-file ones. Their
@@ -1103,6 +1505,13 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
         from src.analyzer.test_quality_lane import collect_test_quality_candidates
         from src.reviewer.candidate_dedupe import dedupe_candidates
         rule_candidates = collect_test_quality_candidates(snapshot, files)
+        host_rule_candidate_keys = {
+            key for item in rule_candidates
+            if (key := _rule_candidate_key(
+                item.get("file"), item.get("line"), item.get("title"),
+                item.get("reason"), item.get("evidence"),
+            )) is not None
+        }
         rule_rebuttals = _rule_rebuttals(rule_candidates)
         for rule_item in rule_candidates:
             target = rule_item.get("target")
@@ -1244,7 +1653,8 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
                 intent_plan = _new_intent_plan("partial")
                 _record_intent_error(intent_plan, "unbound_task")
             newly_added = _execute_intent_tasks(
-                bundle, requests, intent_plan, snapshot, intent_query_keys, changed_paths
+                bundle, requests, intent_plan, snapshot, intent_query_keys, changed_paths,
+                search_resolver=search_resolver,
             )
             if not newly_added:
                 force_final_reason = "no_new_evidence"
@@ -1289,8 +1699,11 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
     candidates, pending, kept, decisions = [], [], [], []
     seen = set()
     eligible = []
+    host_rule_candidate_ids: set[int] = set()
     paths = {f.filename: f for f in files}
     for index, suggestion in enumerate(payload.suggestions):
+        if _suggestion_rule_candidate_key(suggestion) in host_rule_candidate_keys:
+            host_rule_candidate_ids.add(index)
         identity = (suggestion.file_path, suggestion.line, suggestion.title.casefold())
         item = {"candidate_id": index, "suggestion": suggestion.model_dump(mode="json")}
         if identity in seen:
@@ -1319,6 +1732,8 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
         seen.add(identity); candidates.append(item)
 
     verification_calls, failed = 0, False
+    kept_ids: list[int] = []
+    duplicate_of: dict[int, int | None] = {}
     # Verification gets its own headroom: candidate definitions, callers and
     # requested reads were being dropped as evidence_budget_exhausted because
     # discovery's initial windows had already filled the shared budget.
@@ -1346,7 +1761,10 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
                     "return decisions now."
                 )
             try:
-                response = _json(provider, VERIFY_SYSTEM, prompt)
+                verify_system = VERIFY_SYSTEM + (
+                    "\n\n" + INDEX_ATTRIBUTION_CONTRACT if repository_index_enabled else ""
+                )
+                response = _json(provider, verify_system, prompt)
                 verification_calls += 1
                 requested = response.get("context_requests") or []
                 missing_requests = response.get("missing_evidence_requests") or []
@@ -1429,6 +1847,7 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
                             newly_added = _execute_intent_tasks(
                                 bundle, executable_requests, intent_plan, snapshot,
                                 intent_query_keys, changed_paths,
+                                search_resolver=search_resolver,
                             )
                             if newly_added:
                                 intent_plan["status"] = "evidence_collected"
@@ -1505,7 +1924,7 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
                         intent_plan["status"] = "partial"
                     newly_added = _execute_intent_tasks(
                         bundle, requested, intent_plan, snapshot, intent_query_keys,
-                        changed_paths,
+                        changed_paths, search_resolver=search_resolver,
                     )
                     if newly_added:
                         intent_plan["status"] = "evidence_collected"
@@ -1559,10 +1978,10 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
             intent_plan["status"] = (
                 "assessed" if all_assessed and not intent_plan["errors"] else "partial"
             )
-        kept_ids, duplicate_of = [], {}
         for index, suggestion in eligible:
             item = verdicts.get(index, {"candidate_id": index, "decision": "needs_context", "reason": "No verdict returned"})
             decision = item.get("decision")
+            item = {**item, "verifier_decision": decision}
             evidence, counter = item.get("evidence") or [], item.get("counter_evidence") or []
             call_path = item.get("call_path")
             if isinstance(call_path, str) and call_path.strip():
@@ -1576,6 +1995,9 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
                 decision=decision, item=item, evidence=evidence, counter=counter,
                 snapshot=snapshot, bundle=bundle, files=files, sent_text=diff_text,
                 contract_domains=contract_domains,
+                repository_index_enabled=(repository_index_enabled
+                                          and index not in host_rule_candidate_ids),
+                anchor_path=suggestion.file_path, anchor_line=suggestion.line,
             )
             by_name = {verdict.name: verdict for verdict in filters}
             validated = by_name["source_provenance"].passed
@@ -1584,9 +2006,12 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
             if witness_block is not None:
                 witness_blocked += 1
             contradicted = (
-                _contradicted_by_rule(suggestion, rule_rebuttals) if decision == "confirmed" else None
+                _contradicted_by_rule(
+                    suggestion, rule_rebuttals,
+                    host_rule_fact=index in host_rule_candidate_ids,
+                ) if decision == "confirmed" else None
             )
-            is_rule_fact = bool(_RULE_TITLE.match(suggestion.title))
+            is_rule_fact = index in host_rule_candidate_ids
             if is_rule_fact:
                 # A rule finding is an AST fact, not a runtime-failure claim. The
                 # verifier judged these by "does the test fail?" and dismissed
@@ -1614,6 +2039,10 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
                 item = {**item, "decision": "needs_context",
                         "validation_reason": "insufficient_behavior_chain_or_source_evidence"}
                 decision = "needs_context"
+            elif decision == "confirmed" and repository_index_enabled and not is_rule_fact:
+                item = {**item, "decision": "needs_context", "attribution": "unknown",
+                        "validation_reason": "causal_attribution_unproven"}
+                decision = "needs_context"
             elif decision == "dismissed" and _dismissal_rests_on_judgement(item):
                 # An "intended / minor / benign" verdict concedes the failure can
                 # happen: it may lower severity, never remove the finding.
@@ -1630,8 +2059,17 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
                     "source_evidence_valid": validated, "counter_evidence_valid": counter_valid,
                     "criteria_version": CRITERIA_VERSION,
                     "filter_verdicts": [verdict.as_dict() for verdict in filters]}
+            if repository_index_enabled and not is_rule_fact:
+                item["attribution"] = "unknown"
+                difference = by_name.get("behavior_difference_support")
+                item["behavior_difference_supported"] = bool(difference and difference.passed)
             decisions.append(item)
-            candidates[index].update(status=decision, reason=item.get("reason", ""))
+            candidates[index].update(
+                status=decision,
+                reason=item.get("reason", ""),
+                verifier_decision=item.get("verifier_decision", decision),
+                validation_reason=item.get("validation_reason"),
+            )
             if decision == "confirmed" and is_rule_fact:
                 kept_ids.append(index)
                 duplicate_of[index] = None
@@ -1660,7 +2098,7 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
         folded = set()
         for index, suggestion in zip(kept_ids, kept):
             target = duplicate_of.get(index)
-            if _RULE_TITLE.match(suggestion.title):
+            if index in host_rule_candidate_ids:
                 continue
             if (isinstance(target, int) and not isinstance(target, bool) and target != index
                     and target in confirmed and target not in folded):
@@ -1669,32 +2107,60 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
                                          reason="duplicate_of_confirmed_candidate",
                                          duplicate_of=target)
                 pending.append(suggestion.model_copy(update={"source": "ai_duplicate_of_confirmed"}))
-        kept = [suggestion for index, suggestion in zip(kept_ids, kept) if index not in folded]
+        survivors = [(index, suggestion) for index, suggestion in zip(kept_ids, kept)
+                     if index not in folded]
+        kept_ids = [index for index, _ in survivors]
+        kept = [suggestion for _, suggestion in survivors]
     else:
         kept = [s for _, s in eligible]
+        kept_ids = [index for index, _ in eligible]
         for index, _ in eligible:
             candidates[index].update(status="unverified", reason="behavior_verification_disabled")
     published = []
+    published_ids = []
     counts = {}
-    for suggestion in kept:
+    for candidate_index, suggestion in zip(kept_ids, kept):
         # Deterministic rule findings are separate structural facts; they do
         # not compete with model findings for the per-file comment budget.
-        if _RULE_TITLE.match(suggestion.title):
+        if candidate_index in host_rule_candidate_ids:
             published.append(suggestion)
+            published_ids.append(candidate_index)
             continue
         count = counts.get(suggestion.file_path, 0)
         if count >= max_suggestions_per_file:
             pending.append(suggestion.model_copy(update={"source": "ai_publication_deferred"}))
             for item in candidates:
                 if item["suggestion"]["file_path"] == suggestion.file_path and item["suggestion"]["title"] == suggestion.title:
-                    item.update(publication="deferred", publication_reason="per_file_cap")
+                    item.update(status="needs_context", reason="per_file_cap",
+                                publication="deferred", publication_reason="per_file_cap")
             continue
         counts[suggestion.file_path] = count + 1
         published.append(suggestion)
+        published_ids.append(candidate_index)
     kept = published
+    kept_ids = published_ids
+    critic_context = {
+        "excerpts": bundle.excerpts,
+        "host_rule_candidate_ids": sorted(host_rule_candidate_ids),
+    }
+    if critic_provider is not None:
+        _apply_grounded_critic(
+            (candidates, pending, kept_ids, kept, decisions, critic_context),
+            critic_provider, batch_cap=critic_batch_cap,
+            repository_index_enabled=repository_index_enabled,
+            critic_budget=critic_budget,
+        )
     audit = bundle.audit()
+    if "grounded_critic" in critic_context:
+        audit["grounded_critic"] = critic_context["grounded_critic"]
     audit["intent_plan"] = intent_plan
+    audit["repository_index_enabled"] = bool(repository_index_enabled)
+    audit["symbol_index_schema"] = (
+        "python-binding-v1" if repository_index_enabled else None
+    )
     audit["missing_evidence_followup_enabled"] = bool(missing_evidence_followup)
+    if raw_discovery:
+        audit["raw_discovery_scope"] = raw_discovery_scope
     audit["witness_blocked"] = witness_blocked
     # Impact closure: was the callers' side of every change actually visible? Hunk
     # counting says how many lines were shown; this says how much of the change's
@@ -1721,10 +2187,13 @@ def _trace_hash(value):
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _trace_identity(pr, files, reviewer_version, supplied):
+def _trace_identity(pr, files, reviewer_version, supplied, *, audit=None):
     """Hash review inputs and use only stable identities in the offline trace."""
     if supplied:
         return dict(supplied)
+    audit = audit or {}
+    raw_discovery = audit.get("discovery_mode") == "raw"
+    repository_index_enabled = bool(audit.get("repository_index_enabled"))
     metadata = {
         "repository": pr.repo,
         "pr_number": pr.number,
@@ -1744,14 +2213,18 @@ def _trace_identity(pr, files, reviewer_version, supplied):
     diff_sha = _trace_hash(file_manifest)
     effective_policy = {"prompt_addendum": "", "playbook_recall_k": 5}
     from pathlib import Path
+    from src.reviewer.discovery_lenses import LENS_DISCOVERY_SYSTEM
 
     source_root = Path(__file__).parents[1]
     runtime_files = (
         Path(__file__),
         Path(__file__).with_name("engine.py"),
+        Path(__file__).with_name("discovery_lenses.py"),
         Path(__file__).with_name("criteria.py"),
+        Path(__file__).with_name("critic.py"),
         Path(__file__).with_name("unit_review.py"),
         source_root / "analyzer" / "repository_context.py",
+        source_root / "analyzer" / "symbol_index.py",
         source_root / "application" / "review.py",
         source_root / "application" / "strategy_policy.py",
         source_root / "reviewer" / "provider.py",
@@ -1781,12 +2254,22 @@ def _trace_identity(pr, files, reviewer_version, supplied):
             "policy_id": "baseline",
             "status": "baseline",
             "effective_policy_sha256": _trace_hash(effective_policy),
+            "raw_discovery": raw_discovery,
+            "raw_discovery_scope": audit.get(
+                "raw_discovery_scope", "full_pr_diff" if raw_discovery else "intent"
+            ),
+            "repository_index_enabled": repository_index_enabled,
         },
         "criteria_sha256": hashlib.sha256(CRITERIA_VERSION.encode("utf-8")).hexdigest(),
         "runtime_sha256": runtime_hash.hexdigest(),
         "prompt_sha256": hashlib.sha256(
-            (DISCOVERY_SYSTEM + VERIFY_SYSTEM).encode("utf-8")
+            ((RAW_DISCOVERY_SYSTEM + LENS_DISCOVERY_SYSTEM if raw_discovery
+              else DISCOVERY_SYSTEM) + VERIFY_SYSTEM
+             + (INDEX_ATTRIBUTION_CONTRACT if repository_index_enabled else "")).encode("utf-8")
         ).hexdigest(),
+        # Direct callers do not supply the effective addendum. This fingerprint
+        # identifies the known system prompts, not the complete sent prompt.
+        "prompt_identity_status": "partial",
         "reviewer_version": reviewer_version,
     }
 
@@ -1794,7 +2277,7 @@ def _trace_identity(pr, files, reviewer_version, supplied):
 def _review_trace(pr, files, result, context, reviewer_version):
     """Build a compact host-auditable trace; never copy source or prompt bodies."""
     identity = _trace_identity(
-        pr, files, reviewer_version, result.bundle.get("trace_identity")
+        pr, files, reviewer_version, result.bundle.get("trace_identity"), audit=result.bundle
     )
     plan = result.bundle.get("intent_plan", {})
     excerpt_by_ref = {
@@ -1824,6 +2307,9 @@ def _review_trace(pr, files, result, context, reviewer_version):
         if isinstance(query, dict):
             query = {key: query[key] for key in ("tool", "path", "side", "line", "symbol", "limit")
                      if key in query}
+        indexed = next((request.get("host_index") for request in result.bundle.get("requests", [])
+                        if request.get("normalized_query") == item.get("query")
+                        and isinstance(request.get("host_index"), dict)), None)
         tasks.append({
             "task_id": item.get("task_id") or _trace_hash({
                 "index": index, "hypothesis_id": item.get("hypothesis_id")
@@ -1841,6 +2327,7 @@ def _review_trace(pr, files, result, context, reviewer_version):
             "evidence_ref_ids": [
                 ref for ref in item.get("evidence_refs", []) if ref in excerpt_by_ref
             ],
+            **({"host_index": indexed} if indexed else {}),
         })
     omitted_tasks = [
         {
@@ -1908,6 +2395,7 @@ def _review_trace(pr, files, result, context, reviewer_version):
         "criteria_sha256": identity.get("criteria_sha256"),
         "runtime_sha256": identity.get("runtime_sha256"),
         "prompt_sha256": identity.get("prompt_sha256"),
+        "prompt_identity_status": identity.get("prompt_identity_status", "complete"),
         "intent": {
             "schema_version": plan.get("schema_version", INTENT_PLAN_SCHEMA_VERSION),
             "status": plan.get("status", "not_reported"),
@@ -1931,6 +2419,21 @@ def _review_trace(pr, files, result, context, reviewer_version):
             result.bundle.get("missing_evidence_followup_enabled", False)
         ),
         "discovery_mode": result.bundle.get("discovery_mode", "intent"),
+        "grounded_critic": (lambda critic: {
+            "status": critic.get("status"),
+            "reason": critic.get("reason"),
+            "batch_cap": critic.get("batch_cap"),
+            "selected_candidate_ids": critic.get("selected_candidate_ids", []),
+            "items": [{key: item.get(key) for key in (
+                "candidate_id", "status", "decision", "reason", "evidence_ref_ids",
+                "trigger_reason", "semantic_assessment", "semantic_consistent",
+                "goal_coverage",
+            )} for item in critic.get("items", []) if isinstance(item, dict)],
+            "raw_response_sha256": (
+                hashlib.sha256(critic["raw_response"].encode("utf-8")).hexdigest()
+                if isinstance(critic.get("raw_response"), str) else None
+            ),
+        } if isinstance(critic, dict) else None)(result.bundle.get("grounded_critic")),
         "candidate_counts": {
             "raw": len(result.candidates),
             "confirmed": sum(status == "confirmed" for status in statuses),
@@ -2053,6 +2556,21 @@ def build_grounded_report(pr, files, findings, result, context, *, reviewer_vers
         "main_review_prompt_signal_count": 0,
         "witness_blocked_count": int(result.bundle.get("witness_blocked", 0) or 0),
     }
+    critic_trace = result.bundle.get("grounded_critic")
+    if isinstance(critic_trace, dict):
+        critic_items = critic_trace.get("items", [])
+        run_metrics["critic_request_count"] = int(
+            critic_trace.get("status") in {"triggered", "unavailable"}
+        )
+        run_metrics["critic_selected_candidate_count"] = len(
+            critic_trace.get("selected_candidate_ids", [])
+        )
+        run_metrics["critic_pending_candidate_count"] = sum(
+            item.get("status") in {
+                "shadow_refutation_pending", "needs_context", "abstain",
+                "unavailable", "skipped_budget",
+            } for item in critic_items if isinstance(item, dict)
+        )
     closure = result.bundle.get("impact_closure")
     if isinstance(closure, dict):
         run_metrics["impact_closure_nodes"] = int(closure.get("closure_nodes", 0))

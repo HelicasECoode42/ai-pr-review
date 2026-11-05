@@ -1,3 +1,94 @@
+# Review V2：候选发现与核验改造计划
+
+更新：2026-11-05。目标是形成一条可追踪的最小闭环：Raw 发现与规则信号进入候选池，候选保留来源，候选绑定 read/search 取证，共享 Verification 核验，Host 按严格引用提取原文，最终进入 Confirmed、Pending 或 Dismissed。五批均未开始；每批完整交付并提交后再进入下一批，不拆成只改接口的碎片提交。默认策略在测量完成前保留。
+
+## 当前依据
+
+- 真实种子案例：`reports/evaluation/aa_factory_grounded_small/{run,requests-responses,candidate-verdict}.json`，AA-Factory PR 17。
+- 该案例有 2 次 HTTP 请求，5683 prompt tokens、1988 completion tokens、10.885 秒，估算费用约 0.03 元。候选 1 个与 gold 匹配，但模型把第 18 行 `mocker.patch` 与第 19 行参数合并成 19 行 quote；Host 严格引用校验拒绝该引用。结果为 Pending 1、Confirmed 0。不能将其表述为 Host 错误删除。
+- 离线回放该响应时，旧 quote 仍应被拒绝。模型若显式引用准确的两行范围，Host 可依据已展示的 `evidence_ref` 和精确行范围提取原文；这只满足来源约束，不保证最终 Confirmed。
+
+## 目标流程与依赖
+
+```mermaid
+flowchart LR
+  S[冻结 base/head SHA] --> B[预算内 Diff 与证据]
+  B --> R[Raw发现]
+  B --> L[规则信号]
+  R --> P[候选池：稳定ID与来源]
+  L[规则信号] --> P
+  P --> T[候选绑定 read/search]
+  T --> E[共享 Verification]
+  E --> H[Host严格引用与原文提取]
+  H --> V{判定}
+  V --> C[Confirmed]
+  V --> N[Pending]
+  V --> D[Dismissed]
+```
+
+| 批次 | 交付 | 依赖 | 验收 |
+|---|---|---|---|
+| 1 | 候选记录、trace、账本能表达 Raw/规则来源与合并成员 | 现有候选、trace、账本 | 逐条解析错误不丢整批；run 内 ID 稳定；D 统计全部原始发现，包括已发布、过滤及待核验候选 |
+| 2 | 抽取 grounded_review 的真实共享 Verification | 批次 1 的候选身份；现有在线响应与保存响应回放 | 在线和离线回放调用同一核验逻辑；精确行范围可由已展示 evidence_ref 取原文；旧 quote 仍拒绝，不猜行、不模糊放行 |
+| 3 | Raw 与规则候选在同预算上下文合流 | 批次 1 候选池；批次 2 的核验入口 | Raw 从实际 3 次调用收敛为单次配置与规则候选合流；fullpatch 不旁路；3 次集成仅作为显式实验 |
+| 4 | 取证严格绑定 candidate_id，复用已有停止与缓存机制 | 批次 1–3 | 复用现有 hypothesis/bundle/cache/no-new-evidence 停止；取消 TQ 结构事实对 verifier Confirmed 的强制覆盖；固定候选池消融 hedging 与 malformed 词过滤 |
+| 5 | 低成本同 PR、同 SHA 模型预算实验 | 前四批完成；离线回放先行 | 对照 A/B/C/D 与语义、成本、延迟、位置 proxy；每方案独立预算；无效路径在测量后删除 |
+
+## 分批实施契约
+
+### 批次 1：候选来源与完整账本（未开始）
+
+**范围**：`src/models.py`、`src/reviewer/grounded_review.py`、`src/reviewer/candidate_dedupe.py`、`src/reviewer/decision_ledger.py`、`src/reviewer/unit_review.py`，以及 `src/evaluation/funnel.py`、`src/evaluation/scoring.py` 和对应测试。候选定义、合并、恢复与统计同步调整。
+
+**接口与依赖**：扩展现有候选记录、trace 与账本，不新增第二套账本。定义 run 内稳定 candidate ID；保存每个候选的 Raw/规则来源、合并成员和后续去向。单条候选解析失败须保留同批其他记录并明确该条错误。保存全部原始发现；D 表示其中语义匹配的独立 Gold 缺陷数，召回率分母仍为 Gold 总数 N。分别报告模型、规则及合并候选的发现数。
+
+**验收**：重复处理同一 run 中同一候选产生稳定 ID；合并记录可还原所有来源成员；混合有效/无效条目保留有效记录；按原始发现核对 D，覆盖 Confirmed、Pending、Dismissed 和过滤候选。
+
+### 批次 2：共享 Verification 与严格引用（未开始）
+
+**范围**：`src/reviewer/grounded_review.py` 的核验循环、`src/reviewer/criteria.py` 的引用校验，以及 `src/evaluation/` 中的回放入口和对应测试。在线路径与回放直接复用抽取的核验实现，避免两套逻辑。
+
+**接口与依赖**：在线响应和已保存响应离线回放进入同一 Verification。新增引用形式接受模型明确给出的已展示 `evidence_ref` 与精确行范围，并从冻结证据中提取原文。现有 quote 路径保持严格校验；不按上下文猜测行号、不接受模糊匹配。此批依赖批次 1 的 candidate ID。
+
+**验收**：AA-Factory 原始响应离线回放仍拒绝跨第 18/19 行拼接的 quote；提供合法、明确的两行范围时，Host 可验证 provenance 并提取对应原文；结果不预设为 Confirmed。
+
+### 批次 3：Raw 与规则候选合流（未开始）
+
+**范围**：`src/reviewer/grounded_review.py` 的 Raw 调用及输出适配、`src/reviewer/candidate_dedupe.py`、`src/utils/config.py` 与配置传递入口。Raw 输入经过相同的上下文预算，不再直接拼入完整 patch。
+
+**接口与依赖**：Raw 配置与规则候选共用同一预算上下文和 candidate ID 空间。当前 Raw 实际执行 3 次；目标为单次 Raw 配置与规则候选合流。3 次集成仅作为显式实验配置，不能成为默认调用路径。依赖批次 1 的来源记录及批次 2 的共享核验。
+
+**验收**：运行 trace 显示单次 Raw 模式调用次数为 1；规则候选与模型候选在同一池内可追踪；fullpatch 与其他输入无旁路；显式实验模式才执行 3 次并单独计预算。
+
+### 批次 4：候选绑定取证与判据收敛（未开始）
+
+**范围**：`src/reviewer/grounded_review.py` 中任务绑定、TQ 判定覆盖和词过滤分支，`src/reviewer/criteria.py` 及对应测试。复用现有 EvidenceBundle 与 Snapshot 缓存。
+
+**接口与依赖**：read/search 任务与 evidence bundle 绑定 candidate_id；复用现有 hypothesis、bundle、cache 和 no-new-evidence 停止条件，避免重建机制。移除 TQ 结构事实对 verifier Confirmed 状态的强制覆盖，最终状态依据共享 Verification 与 Host 引用判据。hedging 和 malformed 词过滤作为固定候选池消融因素记录，不在观察结果后改过滤规则。
+
+**验收**：取证保留候选归属；多个候选可共享同一证据引用，相同证据复用缓存；无新增证据时按现有终止规则结束；TQ 结构事实不能绕过 verifier 直接确认；消融输入、过滤结果和判定可逐条复算。
+
+### 批次 5：受控模型预算实验（未开始；建议预算上限 0.50 元，未执行）
+
+| 方案 | 配置 |
+|---|---|
+| A | 现有严格策略 |
+| B | 单次 Raw |
+| C | 复用 B 的候选池，仅核验候选 |
+| D | 在 C 上加入规则候选核验 |
+
+**协议与验收**：先离线回放，再对同一 PR、同一 SHA、同模型版本和独立方案预算做小规模比较。每方案单独设定预算，不跨方案挪用。保留默认策略直至结果测量完成；禁止用 holdout 调参。记录语义 Precision/Recall、全部原始发现中的 D、位置 proxy（单列）、实际成本、请求数和延迟；人工语义裁定与位置命中分开。初始证据可见性保持一致，工具补查后的证据另行统计。C/D 复用 B 的发现产物以隔离核验影响；另列端到端完整成本。B 只评价发现能力，C/D 评价最终报告质量。零发布时 Precision 记为无定义。费用、HTTP、累计请求字节、输出 Token 和时长分别设硬上限；不完整运行单列。实验后删除没有效果且不再需要的路径。0.50 元仅为建议上限，本计划未发起付费调用，也不要求本轮授权。
+
+## 共用范围与实施约束
+
+- 仅复用现有候选、trace、账本、取证绑定、缓存和预算机制；不新增数据库、消息队列、框架或重复账本。
+- 每批完成全部实现与对应离线验收后再形成完整提交；每批交付同步更新本图和验收记录。五批当前状态均为“未开始”。
+- 除批次 5 明确描述的对照实验外，默认策略保持不变。任何模型实验均先离线、再按冻结输入测量；位置 proxy 不替代语义判定。
+- 后续条件：核心五批评测完成后，再验证一次失败 trace → 配置候选 → 固定回放 → 接受/拒绝 → 版本回滚的自改进实验，复用现有 policy/gate，不扩展新框架。核心五批不包含索引重做、大 PR 路线或 critic 重做。
+
+<details>
+<summary>历史计划：2026-11-05 前版本（原文完整保留）</summary>
+
 # Review V2：当前执行与验收计划
 
 更新：2026-10-18。A/B/C 核心与 unit JSON 结果恢复，以及阶段2意图取证和阶段3 trace→诊断 CLI 已纳入版本控制；最新提交以 `git log` 为准。目标顺序是：**①让现有工具可信；②做跨文件意图 Agent；③用失败案例改进知识与策略**。本文件维护当前执行顺序、验收与实验协议；规范约束见 [HARNESS](HARNESS.md)，带日期的运行状态与测量边界见 [STATE](STATE.md)。[PRD](PRD-review-capability-v2.md)定义目标/非目标，[HANDOFF](../HANDOFF.md)只做当前快照入口。旧 D1–D5、D2 图规划和 RSI 方案只作历史材料，不构成自动执行路线。
@@ -34,7 +125,7 @@
 
 ### 1. 让现有工具可信
 
-阶段1 A/B/C 核心修复已纳入版本控制；2026-10-19 的 P0 补齐在工作区验证，尚未提交，见 [当前状态](STATE.md) 和 [复杂度测量](evaluation/complexity-2026-10-19.md)。以下不把离线成功算作真实审查质量：
+阶段1 A/B/C 核心修复已纳入版本控制；2026-10-19 的 P0 补齐在工作区验证，尚未提交，见 [当前状态](STATE.md) 和 [复杂度测量](https://github.com/HelicasECoode42/ai-pr-review/blob/df397d5/docs/evaluation/complexity-2026-10-19.md)。以下不把离线成功算作真实审查质量：
 
 1. **A 已完成—Playbook scope**：`src/knowledge/playbook.py` 按真实 repo、逐路径语言/path/symbol 匹配；无法解析或来源超预算时 unknown；`src/application/review.py` 只读相关 changed frozen source。scoped domain 不进入全 PR prompt 或扁平 witness domain，KB-0003 synthetic 契约改为 candidate；纯自然语言 KB-0004 guidance 仍可进入 prompt。定向 scope/资源预算/parse-error 反例通过；不证明契约绑定或真实 PR 质量。
 2. **C 核心已完成，底层响应界限已在工作区补齐**：`src/analyzer/deterministic_tools.py` 对冻结 base/head 内容做 Ruff 扫描，并把新增行匹配作为候选归因；缺工具、超时等状态显式 unavailable/partial。工具诊断不等于语义 Bug 或 confirmed。本地 Git 子进程按字节/时间限额读取并终止；GitHub contents/tree 按流式字节、读取空闲时限及块间总时限限制，缺失/损坏的 tree 明示 unavailable。总时限可能被一次正在等待的读取略微越过；Windows 本地有界 Git 读取尚未验证，当前明确拒绝。
@@ -60,7 +151,7 @@
 
 每个失败案例从运行 trace 归因到可复现错误（检索漏读、边错连、提示误解、核验误删、发布错路由等），提炼 candidate 条目，附真实源 case、固定 SHA/file:line、适用范围、反证/失效条件和变更版本。候选只写隔离目录/数据集，不进入 authoritative 检索；回放后在开发集通过精度红线（建议 precision ≥0.80，同时公布 recall 和样本数）并无严重回归，才人工晋升。用 independent repo/case 做留出，任何标签/提示/KB调参均不得偷看留出；晋升后可按版本回滚。
 
-当前边界：2026-10-16 的 [dataset audit](evaluation/dataset-audit-2026-10-16.md) 记录 219 个 ReviewBench PR / 2623 TP 的数据规模，但 25 个已接触 PR 中的 15 个 holdout 已污染；14 个 holdout_eval fixture 是表达式判据合成样例，不是真实 PR/模型留出。`b7b-diagnostic.json` 的 5 PR/43 gold、位置 raw match 83.3% precision、11.63% published recall、18.60% identified recall 是可复算的定位指标，不是独立语义裁决；紧凑 artifact 缺少完整 model/config/retry/usage 协议。selection-recall 只测选材位置 proxy，不证明模型读到、更不证明识别；这些统计不能拼成同一个漏斗。新独立留出在 KB 冻结后再建，优先真实跨文件 PR。
+当前边界：2026-10-16 的 [dataset audit](https://github.com/HelicasECoode42/ai-pr-review/blob/df397d5/docs/evaluation/dataset-audit-2026-10-16.md) 记录 219 个 ReviewBench PR / 2623 TP 的数据规模，但 25 个已接触 PR 中的 15 个 holdout 已污染；14 个 holdout_eval fixture 是表达式判据合成样例，不是真实 PR/模型留出。`b7b-diagnostic.json` 的 5 PR/43 gold、位置 raw match 83.3% precision、11.63% published recall、18.60% identified recall 是可复算的定位指标，不是独立语义裁决；紧凑 artifact 缺少完整 model/config/retry/usage 协议。selection-recall 只测选材位置 proxy，不证明模型读到、更不证明识别；这些统计不能拼成同一个漏斗。新独立留出在 KB 冻结后再建，优先真实跨文件 PR。
 
 ## 功能实现清单与状态（计划拆解入口）
 
@@ -79,7 +170,7 @@
 - 同一 case 记录 N/S/D/P：`N` gold 总数；`S` 实际上下文选择覆盖（仅离线选材时标作 selection proxy）；`D` 盲化人工判定的语义发现；`P` 人工确认且真正发布。另记 FP/FN、去重重复项、每阶段 unknown/partial。所有比例附分子/分母/样本数。
 - 省 token 需 same coverage + same semantic quality threshold：记录实际 provider prompt/completion/cache tokens、费用、请求/重试、重复读取、耗时；缓存命中与逻辑 token 分开。缺 usage 计 `unknown`，不能填 0。避免通过减读 hunk 达到成本目标。
 - 顺序为无模型基线/静态工具 → fake provider 接线与失败注入 → 小规模真实审查（仅核预算后）→ 对照/消融 → 独立留出。知识库、提示和模型不可同时变化而不做归因。
-- 2026-10-19 对一个已暴露 dev PR 的两组 DeepSeek 请求已实际发出，但两组都因 completion 截断失败；另一次预算内 non-thinking 配对被 auto-review 外发检查拒绝，未发送。完整 usage、预算、manifest 核对与边界见[真实模型开发集试跑记录](evaluation/real-dev-pair-2026-10-19.md)。未知模型费用、未知远端响应和已发送请求不可撤销；超过预算或取消时停止后续阶段，报告 partial。
+- 2026-10-19 对一个已暴露 dev PR 的两组 DeepSeek 请求已实际发出，但两组都因 completion 截断失败；另一次预算内 non-thinking 配对被 auto-review 外发检查拒绝，未发送。完整 usage、预算、manifest 核对与边界见[真实模型开发集试跑记录](https://github.com/HelicasECoode42/ai-pr-review/blob/df397d5/docs/evaluation/real-dev-pair-2026-10-19.md)。未知模型费用、未知远端响应和已发送请求不可撤销；超过预算或取消时停止后续阶段，报告 partial。
 
 ## 收敛与暂缓
 
@@ -100,4 +191,7 @@
 
 ## 历史资料
 
-旧阶段草案与外部参考保留于 Git 历史/已有设计材料，可作背景，不作为本计划验收证据：[历史图规划说明](graph-planning-dataflow.md)、[历史分组边界研究](grouping-boundaries-and-options.md)、[腾讯参考实验记录](evaluation/flash-small-2026-10-14.md)、[数据与 KB 评测审计](evaluation/dataset-audit-2026-10-16.md)。旧路线中的队列、SQLite、RSI 自动晋升、完整调用图、VS Code 支持均不是当前交付承诺。
+旧阶段草案与外部参考保留于 Git 历史/已有设计材料，可作背景，不作为本计划验收证据：[历史图规划说明](graph-planning-dataflow.md)、[历史分组边界研究](grouping-boundaries-and-options.md)、[腾讯参考实验记录](https://github.com/HelicasECoode42/ai-pr-review/blob/df397d5/docs/evaluation/flash-small-2026-10-14.md)、[数据与 KB 评测审计](https://github.com/HelicasECoode42/ai-pr-review/blob/df397d5/docs/evaluation/dataset-audit-2026-10-16.md)。旧路线中的队列、SQLite、RSI 自动晋升、完整调用图、VS Code 支持均不是当前交付承诺。
+
+
+</details>

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -11,7 +12,8 @@ from src.analyzer.repository_context import EvidenceBundle, GitSnapshot, safe_so
 from src.evaluation.reviewbench import parse_diff
 from src.models import PullRequest
 from src.reviewer.engine import review_with_ai
-from src.reviewer.grounded_review import review_grounded
+from src.reviewer.criteria import _behavior_difference_support
+from src.reviewer.grounded_review import _bounded_python_index_search, review_grounded
 
 
 def git(root, *args):
@@ -68,7 +70,8 @@ def verdict(**updates):
 
 
 def run(repo, responses, *, description="", trace_input_identity=None, evidence_tokens=6000,
-        missing_evidence_followup=False, raw_discovery=False):
+        missing_evidence_followup=False, raw_discovery=False,
+        repository_index_enabled=False):
     root, base, head = repo
     snapshot = GitSnapshot(root, base, head)
     files = parse_diff(git(root, "diff", base, head))
@@ -82,7 +85,8 @@ def run(repo, responses, *, description="", trace_input_identity=None, evidence_
                             review_context=context,
                             trace_input_identity=trace_input_identity,
                             grounded_missing_evidence_followup=missing_evidence_followup,
-                            raw_discovery=raw_discovery)
+                            raw_discovery=raw_discovery,
+                            repository_index_enabled=repository_index_enabled)
     return report, provider
 
 
@@ -134,6 +138,275 @@ def test_intent_plan_executes_frozen_cross_file_task_and_verification_cites_it(r
     assert "name, age = get_profile()" in provider.calls[-1][1]
     assert intent["assessments"][0]["evidence_refs"] == intent["tasks"][0]["evidence_refs"]
     assert len(report.suggestions) == 1
+
+
+def test_opt_in_index_adds_no_read_slot_and_reports_partial_scope(repo):
+    root, base, head = repo
+    snapshot = GitSnapshot(root, base, head)
+    files = parse_diff(git(root, "diff", base, head))
+    resolver = _bounded_python_index_search(snapshot, files)
+
+    first = resolver("get_profile", "head", 4)
+    second = resolver("get_profile", "head", 4)
+
+    assert first["index"]["status"] == "partial"
+    assert first["index"]["completeness"] == "partial"
+    assert set(first["index"]["searched_scope"]) <= {"users.py", "caller.py"}
+    assert first["index"]["source_bytes_run_total"] <= 400_000
+    assert second["index"]["source_bytes_parsed"] == 0
+    assert second["index"]["source_bytes_run_total"] == first["index"]["source_bytes_run_total"]
+    assert first["hits"]  # resolved callers still enter the existing search evidence path
+
+
+def test_invalid_index_schema_fails_closed_but_keeps_normal_search_evidence(repo):
+    root, base, head = repo
+    snapshot = GitSnapshot(root, base, head)
+    bundle = EvidenceBundle(snapshot, budget=1200)
+    bundle.execute([{"tool": "search", "symbol": "get_profile", "side": "head"}],
+                   search_resolver=lambda *_: {
+                       "hits": [("caller.py", 3)],
+                       "index": {"schema": "future-unknown", "completeness": "complete"},
+                   })
+
+    request = bundle.requests[0]
+    assert request["status"] == "executed_with_evidence"
+    assert request["host_index"]["status"] == "unavailable"
+    assert request["host_index"]["completeness"] == "partial"
+    assert "invalid_index_result" in request["host_index"]["omissions"]
+    assert request["evidence_refs"]
+
+
+def test_index_preserves_all_lexical_hits_before_bounded_extras(repo):
+    root, base, head = repo
+    snapshot = GitSnapshot(root, base, head)
+    files = parse_diff(git(root, "diff", base, head))
+    resolver = _bounded_python_index_search(snapshot, files)
+
+    resolved = resolver("get_profile", "head", 4)
+    lexical = snapshot.search("get_profile", side="head", limit=4)
+
+    assert resolved["baseline_hits"] == lexical
+    assert resolved["hits"][:len(lexical)] == lexical
+    assert len(resolved["baseline_hits"]) + len(resolved["index_extra_hits"]) <= 4
+    assert len(set(resolved["index_extra_hits"])) == len(resolved["index_extra_hits"])
+
+
+def test_repeated_weak_caller_ranges_do_not_consume_multiple_slots(repo, monkeypatch):
+    from src.analyzer import symbol_index
+
+    root, base, head = repo
+    snapshot = GitSnapshot(root, base, head)
+    files = parse_diff(git(root, "diff", base, head))
+    original_resolve = symbol_index.resolve_python_relationships
+
+    def duplicate_weak_edge(*args, **kwargs):
+        relationships, unresolved, omissions = original_resolve(*args, **kwargs)
+        edge = relationships[0].model_copy(update={
+            "strength": "weak", "provenance": "lexical_search",
+            "evidence_level": "ambiguous",
+        })
+        return [edge, edge, edge.model_copy(update={"source_start": 4})], unresolved, omissions
+
+    monkeypatch.setattr(symbol_index, "resolve_python_relationships", duplicate_weak_edge)
+
+    resolved = _bounded_python_index_search(snapshot, files)("get_profile", "head", 4)
+
+    assert resolved["index_extra_hits"] == [("caller.py", 3)]
+
+
+def test_index_extras_can_add_evidence_when_lexical_baseline_is_empty(repo):
+    root, base, head = repo
+    bundle = EvidenceBundle(GitSnapshot(root, base, head), budget=6000)
+    bundle.execute([{"tool": "search", "symbol": "get_profile", "side": "head"}],
+                   search_resolver=lambda *_: {
+                       "hits": [("caller.py", 3)], "baseline_hits": [],
+                       "index_extra_hits": [("caller.py", 3)],
+                   })
+
+    request = bundle.requests[0]
+    assert request["hits"] == [{"path": "caller.py", "line": 3}]
+    assert request["evidence_refs"]
+    assert bundle.excerpts[0]["path"] == "caller.py"
+
+
+def test_full_baseline_results_stay_rendered_when_request_limit_is_full(repo):
+    root, base, head = repo
+    bundle = EvidenceBundle(GitSnapshot(root, base, head), budget=6000)
+    baseline = [
+        ("caller.py", 3), ("users.py", 1), ("helper.py", 1), ("caller.py", 4),
+    ]
+    bundle.execute([{"tool": "search", "symbol": "get_profile", "side": "head"}],
+                   search_resolver=lambda *_: {
+                       "hits": baseline, "baseline_hits": baseline,
+                       "index_extra_hits": [("users.py", 2)],
+                   })
+
+    request = bundle.requests[0]
+    rendered = bundle.render()
+    assert request["hits"] == [{"path": path, "line": line} for path, line in baseline]
+    assert all(bundle.snapshot.read(path, "head").splitlines()[line - 1] in rendered
+               for path, line in baseline)
+    assert request["index_extra_omitted"] == [{"count": 1, "reason": "no_return_slot"}]
+
+
+@pytest.mark.parametrize("baseline_hits", [[], [("caller.py", 3)]])
+def test_incomplete_lexical_search_does_not_add_index_extras(repo, baseline_hits):
+    root, base, head = repo
+    bundle = EvidenceBundle(GitSnapshot(root, base, head), budget=6000)
+    bundle.execute([{"tool": "search", "symbol": "get_profile", "side": "head"}],
+                   search_resolver=lambda *_: {
+                       "hits": baseline_hits, "baseline_hits": baseline_hits,
+                       "index_extra_hits": [("users.py", 1)],
+                       "search_errors": [{"reason": "search_output_truncated"}],
+                   })
+
+    request = bundle.requests[0]
+    assert request["status"] == "search_unavailable"
+    assert request["index_extra_omitted"] == [
+        {"count": 1, "reason": "baseline_search_incomplete"},
+    ]
+    assert all(item["path"] != "users.py" for item in request["hits"])
+    assert all(item["path"] != "users.py" for item in bundle.excerpts)
+    assert bool(request["evidence_refs"]) is bool(baseline_hits)
+
+
+def test_index_extra_budget_failure_keeps_existing_baseline_and_records_reason(repo):
+    root, base, head = repo
+    bundle = EvidenceBundle(GitSnapshot(root, base, head), budget=6000)
+    baseline_ref = bundle.add("caller.py", 3, kind="requested_symbol_reference")
+    bundle.budget = bundle.tokens + 1
+
+    bundle.execute([{"tool": "search", "symbol": "get_profile", "side": "head"}],
+                   search_resolver=lambda *_: {
+                       "hits": [("caller.py", 3)], "baseline_hits": [("caller.py", 3)],
+                       "index_extra_hits": [("users.py", 1)],
+                   })
+
+    request = bundle.requests[0]
+    assert baseline_ref in request["evidence_refs"]
+    assert any(item["evidence_ref"] == baseline_ref for item in bundle.excerpts)
+    assert request["index_extra_omitted"] == [
+        {"count": 1, "reason": "evidence_budget_exhausted"},
+    ]
+    assert all(item["path"] != "users.py" for item in request["hits"])
+    assert bundle.evicted == []
+
+
+def test_index_exception_keeps_ordinary_search_path(repo):
+    root, base, head = repo
+    bundle = EvidenceBundle(GitSnapshot(root, base, head), budget=1200)
+
+    def broken_index(*_):
+        raise RuntimeError("index parser failed")
+
+    bundle.execute([{"tool": "search", "symbol": "get_profile", "side": "head"}],
+                   search_resolver=broken_index)
+
+    request = bundle.requests[0]
+    assert request["status"] == "executed_with_evidence"
+    assert request["evidence_refs"]
+    assert "host_index" in request
+    assert request["host_index"]["omissions"] == ["index_error:RuntimeError"]
+
+
+def test_evidence_dedup_keeps_side_and_source_range_identity(repo):
+    root, base, head = repo
+    bundle = EvidenceBundle(GitSnapshot(root, base, head), budget=6000)
+
+    head_ref = bundle.add("caller.py", 3, side="head")
+    same_range_ref = bundle.add("caller.py", 3, side="head")
+    base_ref = bundle.add("caller.py", 3, side="base")
+
+    assert head_ref == same_range_ref
+    assert base_ref != head_ref
+    assert {(item["path"], item["side"], item["start_line"], item["end_line"])
+            for item in bundle.excerpts} == {
+                ("caller.py", "head", 2, 4), ("caller.py", "base", 2, 4),
+            }
+
+
+def test_default_index_off_keeps_confirmed_candidate_path_unchanged(repo):
+    report, _ = run(repo, [
+        {"intent_hypotheses": planned_hypotheses(), "context_requests": intent_search_request()},
+        {**candidate(), "intent_hypotheses": planned_hypotheses()},
+        verdict(),
+    ])
+
+    assert len(report.suggestions) == 1
+    assert report.repository_context["repository_index_enabled"] is False
+    assert not any("host_index" in request for request in report.repository_context["requests"])
+
+
+def test_opt_in_confirmed_without_paired_change_attribution_stays_pending(repo):
+    report, _ = run(repo, [
+        {"intent_hypotheses": planned_hypotheses(), "context_requests": intent_search_request()},
+        {**candidate(), "intent_hypotheses": planned_hypotheses()},
+        verdict(),
+    ], repository_index_enabled=True)
+
+    assert not report.suggestions
+    assert report.pending_suggestions
+    decision = report.behavior_verifications[0]
+    difference = next(item for item in decision["filter_verdicts"]
+                      if item["filter"] == "behavior_difference_support")
+    assert decision["attribution"] == "unknown"
+    assert decision["validation_reason"] == "causal_attribution_unproven"
+    assert difference["attribution"] == "unknown"
+    assert difference["behavior_difference_supported"] is False
+
+
+def test_unchanged_callee_does_not_make_changed_callers_failure_preexisting():
+    patch = (
+        "diff --git a/caller.py b/caller.py\n"
+        "--- a/caller.py\n+++ b/caller.py\n"
+        "@@ -1,4 +1,4 @@\n"
+        " def helper():\n     return 1\n"
+        " def caller(flag):\n"
+        "-    return helper()\n"
+        "+    return helper() if flag else 0\n"
+    )
+    files = parse_diff(patch)
+    evidence = [
+        {"path": "caller.py", "side": "base", "line": 4,
+         "quote": "return helper()"},
+        {"path": "caller.py", "side": "head", "line": 4,
+         "quote": "return helper() if flag else 0"},
+    ]
+
+    supported, reason = _behavior_difference_support(
+        evidence, files, "caller.py", 4, {},
+    )
+
+    # Equal helper bodies cannot prove the caller-path change harmless or old;
+    # helper() is outside the pure-expression evaluator, so attribution is unknown.
+    assert not supported
+    assert "unsupported" in reason or "no_supported" in reason
+
+
+@pytest.mark.parametrize(("before", "after"), [
+    ("retries < 0", "status == 'ok'"),
+    ("value < 0", "value < 0"),  # intentional behavior can be identical
+])
+def test_same_edit_block_difference_is_only_a_hint_not_introduced_attribution(before, after):
+    patch = (
+        "diff --git a/retry.py b/retry.py\n"
+        "--- a/retry.py\n+++ b/retry.py\n"
+        "@@ -1 +1 @@\n"
+        f"-{before}\n+{after}\n"
+    )
+    files = parse_diff(patch)
+    changed = after
+    evidence = [
+        {"path": "retry.py", "side": "base", "line": 1, "quote": before},
+        {"path": "retry.py", "side": "head", "line": 1, "quote": changed},
+    ]
+
+    supported, reason = _behavior_difference_support(evidence, files, "retry.py", 1, {})
+
+    expected_difference = before != after
+    assert supported is expected_difference
+    if supported:
+        assert reason == "same_edit_block_behavior_difference"
 
 
 def test_declared_missing_evidence_uses_one_existing_bounded_followup_slot(repo):
@@ -1741,7 +2014,9 @@ def test_strong_judgement_overrides_a_declared_factual_basis(repo):
     assert verification["validation_reason"] == "dismissal_rests_on_intent_or_impact"
 
 
-def test_rule_candidates_do_not_use_the_per_file_publication_cap(repo):
+def test_rule_candidates_do_not_use_the_per_file_publication_cap(repo, monkeypatch):
+    import src.analyzer.test_quality_lane as lane
+
     root, base, head = repo
     snapshot = GitSnapshot(root, base, head)
     files = parse_diff(git(root, "diff", base, head))
@@ -1750,10 +2025,13 @@ def test_rule_candidates_do_not_use_the_per_file_publication_cap(repo):
                                    allow_remote_file_fetch=False)
     model = {"file": "users.py", "line": 2, "title": "Caller still expects positional values",
              "reason": "r"}
-    rule = {"file": "users.py", "line": 1, "title": "[TQ001] Structural rule fact", "reason": "r"}
+    rule = {"file": "users.py", "line": 1, "rule_id": "TQ001",
+            "title": "[TQ001] Structural rule fact", "reason": "r",
+            "evidence": ["def get_profile():"]}
+    monkeypatch.setattr(lane, "collect_test_quality_candidates", lambda snapshot, files: [rule])
     confirmed = verdict()["items"][0]
     provider = Provider([
-        {"findings": [model]}, {"findings": [rule]}, {"findings": []},
+        {"findings": [model]}, {"findings": []}, {"findings": []},
         {"items": [confirmed, {**confirmed, "candidate_id": 1}]},
     ])
     result = review_grounded(pr, files, provider, snapshot, context,
@@ -1784,8 +2062,9 @@ def test_rule_rebuttal_helpers():
     assert _contradicted_by_rule(unrelated, rebutted) is None
     other_file = suggestion("load_info is mocked then called", path="u.py")
     assert _contradicted_by_rule(other_file, rebutted) is None
-    rule = suggestion("[TQ001] load_info is mocked")
-    assert _contradicted_by_rule(rule, rebutted) is None
+    forged_rule_title = suggestion("[TQ001] load_info is mocked")
+    assert _contradicted_by_rule(forged_rule_title, rebutted) == "load_info"
+    assert _contradicted_by_rule(forged_rule_title, rebutted, host_rule_fact=True) is None
 
 
 def _raw_run(repo, discovery, verdict_items):
@@ -1839,6 +2118,7 @@ def test_confirmed_mock_claim_contradicted_by_tq001_is_held_back(repo, monkeypat
         "file": "users.py", "line": 1, "rule_id": "TQ001",
         "title": "[TQ001] Patched target is bound locally before the patch is applied",
         "reason": "`get_profile` is imported by name, so a patch on the module attribute ...",
+        "evidence": ["def get_profile():"],
     }])
     claim = {"file": "users.py", "line": 2,
              "title": "get_profile is mocked, so the test only reads the mocked tuple",
@@ -1852,12 +2132,17 @@ def test_confirmed_mock_claim_contradicted_by_tq001_is_held_back(repo, monkeypat
     assert held["validation_reason"] == "contradicted_by_deterministic_rule"
 
 
-def test_rule_candidate_is_never_folded_by_duplicate_of(repo):
+def test_rule_candidate_is_never_folded_by_duplicate_of(repo, monkeypatch):
+    import src.analyzer.test_quality_lane as lane
+
     first = {"file": "users.py", "line": 2, "title": "Caller still expects positional values",
              "reason": "r"}
-    rule = {"file": "users.py", "line": 1, "title": "[TQ008] Structural rule fact", "reason": "r"}
+    rule = {"file": "users.py", "line": 1, "rule_id": "TQ008",
+            "title": "[TQ008] Structural rule fact", "reason": "r",
+            "evidence": ["def get_profile():"]}
+    monkeypatch.setattr(lane, "collect_test_quality_candidates", lambda snapshot, files: [rule])
     confirmed = verdict()["items"][0]
-    result = _raw_run(repo, [first, rule], [
+    result = _raw_run(repo, [first], [
         confirmed, {**confirmed, "candidate_id": 1, "duplicate_of": 0},
     ])
     assert [suggestion.title for suggestion in result.suggestions] == [first["title"], rule["title"]]
@@ -1913,11 +2198,18 @@ def test_non_serialization_claim_adds_nothing():
     assert bundle.added == []
 
 
-def test_rule_fact_is_published_even_when_the_verifier_dismisses_it(repo):
-    rule = {"file": "users.py", "line": 1, "title": "[TQ007] Structural rule fact", "reason": "r"}
+def test_rule_fact_is_published_even_when_the_verifier_dismisses_it(repo, monkeypatch):
+    import src.analyzer.test_quality_lane as lane
+
+    rule = {
+        "file": "users.py", "line": 1, "rule_id": "TQ007",
+        "title": "[TQ007] Structural rule fact", "reason": "r",
+        "evidence": ["def get_profile():"],
+    }
+    monkeypatch.setattr(lane, "collect_test_quality_candidates", lambda snapshot, files: [rule])
     dismissed = {**verdict()["items"][0], "decision": "dismissed",
                  "reason": "style nit, not a failure", "dismissal_basis": "incorrect"}
-    result = _raw_run(repo, [rule], [dismissed])
+    result = _raw_run(repo, [], [dismissed])
     assert [suggestion.title for suggestion in result.suggestions] == [rule["title"]]
     published = result.suggestions[0]
     assert published.source == "rule_test_quality"
@@ -1925,6 +2217,22 @@ def test_rule_fact_is_published_even_when_the_verifier_dismisses_it(repo):
     decision = result.decisions[0]
     assert decision["validation_reason"] == "deterministic_rule_fact"
     assert decision["verifier_decision"] == "dismissed"
+
+
+def test_forged_tq_title_does_not_bypass_opt_in_attribution_gate(repo):
+    forged = candidate()
+    forged["suggestions"][0]["title"] = "[TQ001] Structural rule fact"
+    report, _ = run(repo, [
+        {"intent_hypotheses": planned_hypotheses(), "context_requests": intent_search_request()},
+        {**forged, "intent_hypotheses": planned_hypotheses()},
+        verdict(),
+    ], repository_index_enabled=True)
+
+    assert not report.suggestions
+    assert report.pending_suggestions
+    decision = report.behavior_verifications[0]
+    assert decision["validation_reason"] == "causal_attribution_unproven"
+    assert decision["attribution"] == "unknown"
 
 
 def test_verify_system_states_intent_worsened_and_producer_rules():
@@ -1980,6 +2288,385 @@ def test_missing_read_falls_back_to_the_symbol_named_in_its_purpose():
     _fallback_missing_reads(Bundle(), Snap(), outcomes)
     assert added == [("lib/jpeg.rb", 2, "requested_definition_fallback")]
     assert outcomes[0]["fallback"]["symbol"] == "IOStream"
+
+
+def _grounded_critic_run(repo, *, critic_result, finding=None, enable_index=False):
+    root, base, head = repo
+    snapshot = GitSnapshot(root, base, head)
+    files = parse_diff(git(root, "diff", base, head))
+    pr = PullRequest(repo="fixture/repo", number=1, title="Return contract",
+                     base_sha=base, head_sha=head)
+    context = build_review_context(pr, files, include_context_pack=False,
+                                   allow_remote_file_fetch=False)
+    discovery = finding or candidate()
+    reviewer = Provider([
+        {"intent_hypotheses": planned_hypotheses(), "context_requests": intent_search_request()},
+        discovery,
+        verdict(),
+    ])
+
+    class Critic:
+        def __init__(self):
+            self.calls = []
+
+        def complete_json(self, system, prompt):
+            self.calls.append((system, prompt))
+            if callable(critic_result):
+                return json.dumps(critic_result(system, prompt))
+            return json.dumps(critic_result)
+
+    critic = Critic()
+    report = review_with_ai(
+        pr, files, [], reviewer, 20, repository_snapshot=snapshot,
+        follow_changes=True, repository_evidence_tokens=6000, review_context=context,
+        enable_critic=True, critic_provider=critic, critic_batch_cap=8,
+        repository_index_enabled=enable_index,
+    )
+    return report, reviewer, critic
+
+
+def _critic_reply(decision, confidence=0.99):
+    def reply(_system, prompt):
+        source = json.loads(prompt.split("\n\n", 1)[1])
+        assessment = {
+            "confirm": "supported",
+            "refute": "contradicted",
+            "needs_context": "insufficient",
+            "abstain": "insufficient",
+        }[decision]
+        return {"items": [{
+            "candidate_id": item["candidate_id"], "decision": decision,
+            "semantic_assessment": assessment,
+            "confidence": confidence, "reason": "synthetic critic assessment",
+            "evidence_ref_ids": [ref["evidence_ref_id"] for ref in item["evidence_refs"]],
+        } for item in source]}
+    return reply
+
+
+def test_grounded_critic_no_trigger_makes_zero_requests(repo):
+    finding = candidate()
+    finding["suggestions"][0]["severity"] = "low"
+    report, _, critic = _grounded_critic_run(repo, critic_result=_critic_reply("confirm"),
+                                              finding=finding)
+    assert critic.calls == []
+    assert report.repository_context["grounded_critic"]["status"] == "not_triggered"
+    assert len(report.suggestions) == 1
+
+
+def test_grounded_critic_confirm_does_not_raise_confidence_or_bypass_host_gate(repo):
+    report, _, critic = _grounded_critic_run(
+        repo, critic_result=_critic_reply("confirm", confidence=1.0)
+    )
+    assert len(critic.calls) == 1
+    assert report.metrics["critic_request_count"] == 1
+    assert len(report.suggestions) == 1
+    assert report.suggestions[0].confidence == pytest.approx(0.9)
+    assert report.suggestions[0].source == "ai_behavior_verified"
+    record = report.repository_context["grounded_critic"]["items"][0]
+    assert record["decision"] == "confirm"
+    assert record["confidence_metadata"] == 1.0
+
+
+def test_grounded_critic_refutation_is_shadow_only_and_candidate_stays_pending(repo):
+    report, _, critic = _grounded_critic_run(repo, critic_result=_critic_reply("refute"))
+    assert len(critic.calls) == 1
+    assert report.suggestions == []
+    assert [item.title for item in report.pending_suggestions] == [
+        "Caller still expects positional values"
+    ]
+    item = report.candidate_audit[0]
+    assert item["status"] == "needs_context"
+    assert item["reason"] == "critic_refutation_shadow_only"
+    trace_item = report.repository_context["grounded_critic"]["items"][0]
+    assert trace_item["status"] == "shadow_refutation_pending"
+    assert trace_item["evidence_ref_ids"]
+
+
+@pytest.mark.parametrize("response", [
+    {"items": [{"candidate_id": 0, "decision": "confirm", "confidence": 2.0,
+                "reason": "invalid confidence", "evidence_ref_ids": []}]},
+    {"items": [{"candidate_id": 12, "decision": "confirm", "confidence": 0.5,
+                "reason": "unknown id", "evidence_ref_ids": []}]},
+])
+def test_grounded_critic_invalid_response_keeps_selected_candidate_pending(repo, response):
+    report, _, critic = _grounded_critic_run(repo, critic_result=response)
+    assert len(critic.calls) == 1
+    assert report.suggestions == []
+    assert len(report.pending_suggestions) == 1
+    assert report.repository_context["grounded_critic"]["status"] == "unavailable"
+    assert report.candidate_audit[0]["status"] == "needs_context"
+
+
+def test_grounded_critic_provider_failure_keeps_raw_candidate_pending(repo):
+    from src.reviewer.provider import ProviderError
+
+    class Failing:
+        def __init__(self):
+            self.calls = 0
+
+        def complete_json(self, _system, _prompt):
+            self.calls += 1
+            raise ProviderError("shared budget exhausted", kind="input_budget_exhausted")
+
+    root, base, head = repo
+    snapshot = GitSnapshot(root, base, head)
+    files = parse_diff(git(root, "diff", base, head))
+    pr = PullRequest(repo="fixture/repo", number=1, title="Return contract",
+                     base_sha=base, head_sha=head)
+    context = build_review_context(pr, files, include_context_pack=False,
+                                   allow_remote_file_fetch=False)
+    reviewer = Provider([
+        {"intent_hypotheses": planned_hypotheses(), "context_requests": intent_search_request()},
+        candidate(), verdict(),
+    ])
+    critic = Failing()
+    report = review_with_ai(
+        pr, files, [], reviewer, 20, repository_snapshot=snapshot,
+        follow_changes=True, review_context=context, enable_critic=True,
+        critic_provider=critic,
+    )
+    assert critic.calls == 1
+    assert report.suggestions == []
+    assert len(report.pending_suggestions) == 1
+    trace = report.repository_context["grounded_critic"]
+    assert trace["status"] == "unavailable"
+    assert trace["reason"] == "input_budget_exhausted"
+    assert report.candidate_audit[0]["reason"] == "critic_unavailable"
+
+
+def test_grounded_critic_index_mode_assesses_semantics_without_promoting_pending(repo):
+    report, _, critic = _grounded_critic_run(
+        repo, critic_result=_critic_reply("confirm"), enable_index=True
+    )
+    assert len(critic.calls) == 1
+    assert report.suggestions == []
+    assert report.pending_suggestions
+    item = report.repository_context["grounded_critic"]["items"][0]
+    assert item["semantic_assessment"] == "supported"
+    assert report.behavior_verifications[0]["attribution"] == "unknown"
+    assert report.candidate_audit[0]["status"] == "needs_context"
+    assert report.candidate_audit[0]["reason"] == "critic_cannot_resolve_index_attribution"
+
+
+def test_grounded_critic_without_separate_provider_uses_main_provider(repo):
+    root, base, head = repo
+    snapshot = GitSnapshot(root, base, head)
+    files = parse_diff(git(root, "diff", base, head))
+    pr = PullRequest(repo="fixture/repo", number=1, title="Return contract",
+                     base_sha=base, head_sha=head)
+    context = build_review_context(pr, files, include_context_pack=False,
+                                   allow_remote_file_fetch=False)
+    critic_reply = _critic_reply("confirm")
+    reviewer = Provider([
+        {"intent_hypotheses": planned_hypotheses(), "context_requests": intent_search_request()},
+        candidate(), verdict(), critic_reply,
+    ])
+
+    report = review_with_ai(
+        pr, files, [], reviewer, 20, repository_snapshot=snapshot,
+        follow_changes=True, review_context=context, enable_critic=True,
+    )
+
+    assert len(reviewer.calls) == 4
+    assert "adversarial reviewer" in reviewer.calls[-1][0]
+    assert len(report.suggestions) == 1
+    assert report.repository_context["grounded_critic"]["status"] == "triggered"
+
+
+def test_grounded_critic_publication_cap_preserves_candidate_ids(tmp_path):
+    for args in (("init",), ("config", "user.email", "fixture@example.invalid"),
+                 ("config", "user.name", "Fixture")):
+        git(tmp_path, *args)
+    for path in ("a.py", "b.py"):
+        (tmp_path / path).write_text("def value():\n    return 1\n")
+    git(tmp_path, "add", ".")
+    git(tmp_path, "commit", "-m", "base")
+    base = git(tmp_path, "rev-parse", "HEAD")
+    for path in ("a.py", "b.py"):
+        (tmp_path / path).write_text("def value():\n    return 2\n")
+    git(tmp_path, "add", ".")
+    git(tmp_path, "commit", "-m", "head")
+    head = git(tmp_path, "rev-parse", "HEAD")
+    snapshot = GitSnapshot(tmp_path, base, head)
+    files = parse_diff(git(tmp_path, "diff", base, head))
+    pr = PullRequest(repo="fixture/repo", number=1, title="Return value changed",
+                     base_sha=base, head_sha=head)
+    context = build_review_context(pr, files, include_context_pack=False,
+                                   allow_remote_file_fetch=False)
+    findings = [
+        {"file_path": "a.py", "line": 2, "severity": "high", "confidence": .8,
+         "title": title, "reason": "Return value changed", "recommendation": "Check callers",
+         "evidence": ["return 2"], "failure_scenario": "value returns a different integer"}
+        for title in ("A candidate", "B candidate")
+    ] + [{"file_path": "b.py", "line": 2, "severity": "high", "confidence": .8,
+          "title": "C candidate", "reason": "Return value changed",
+          "recommendation": "Check callers",
+          "evidence": ["return 2"], "failure_scenario": "value returns a different integer"}]
+    discovery = {"summary": "Return values changed", "risk_level": "high",
+                 "suggestions": findings}
+
+    def verification(_system, prompt):
+        source = json.loads(prompt.split("\n## Changed diff\n", 1)[0])
+        items = []
+        for entry in source["candidates"]:
+            index = entry["candidate_id"]
+            path = entry["candidate"]["file_path"]
+            items.append({
+                **verdict()["items"][0], "candidate_id": index,
+                "trigger": f"{path} value() is called", "call_path": [f"{path}:2"],
+                "expected_behavior": "returns 1", "actual_behavior": "returns 2",
+                "introduced_by": "return expression changed",
+                "reason": "The changed return value contradicts the prior behavior",
+                "evidence": [
+                    {"path": path, "side": "head", "line": 2, "quote": "    return 2"},
+                    {"path": path, "side": "base", "line": 2, "quote": "    return 1"},
+                ],
+                "counter_evidence": [],
+            })
+        return {"items": items}
+
+    critic_payloads = []
+
+    def critique_selected(_system, prompt):
+        source = json.loads(prompt.split("\n\n", 1)[1])
+        critic_payloads.append(source)
+        return {"items": [{
+            "candidate_id": entry["candidate_id"],
+            "decision": "confirm" if entry["candidate_id"] == 0 else "refute",
+            "semantic_assessment": (
+                "supported" if entry["candidate_id"] == 0 else "contradicted"
+            ),
+            "goal_coverage": "unknown", "confidence": .9,
+            "reason": "synthetic decision",
+            "evidence_ref_ids": [ref["evidence_ref_id"] for ref in entry["evidence_refs"]],
+        } for entry in source]}
+
+    reviewer = Provider([discovery, verification, critique_selected])
+    report = review_with_ai(
+        pr, files, [], reviewer, 10, repository_snapshot=snapshot,
+        follow_changes=True, review_context=context, max_suggestions_per_file=1,
+        enable_critic=True,
+    )
+
+    assert [item.title for item in report.suggestions] == ["A candidate"]
+    assert "C candidate" not in [item.title for item in report.suggestions]
+    critic_trace = report.repository_context["grounded_critic"]
+    assert critic_trace["selected_candidate_ids"] == [0, 2]
+    assert len(critic_payloads) == 1
+    prompted_candidates = {
+        entry["candidate_id"]: entry["candidate"]["title"]
+        for entry in critic_payloads[0]
+    }
+    assert prompted_candidates == {0: "A candidate", 2: "C candidate"}
+    assert "B candidate" not in prompted_candidates.values()
+    by_title = {item["suggestion"]["title"]: item for item in report.candidate_audit}
+    assert by_title["B candidate"]["reason"] == "per_file_cap"
+    assert by_title["C candidate"]["reason"] == "critic_refutation_shadow_only"
+    assert [item.title for item in report.pending_suggestions] == ["B candidate", "C candidate"]
+
+
+def test_critic_checkpoint_identity_tracks_output_limit_and_provider_config(
+    tmp_path, monkeypatch,
+):
+    from src.reviewer import unit_review
+
+    for args in (("init",), ("config", "user.email", "fixture@example.invalid"),
+                 ("config", "user.name", "Fixture")):
+        git(tmp_path, *args)
+    for index in range(3):
+        (tmp_path / f"module_{index}.py").write_text(
+            f"def value_{index}():\n    return 'before_{index}'\n"
+        )
+    git(tmp_path, "add", ".")
+    git(tmp_path, "commit", "-m", "base")
+    base = git(tmp_path, "rev-parse", "HEAD")
+    for index in range(3):
+        (tmp_path / f"module_{index}.py").write_text(
+            f"def value_{index}():\n    return 'after_{index}'\n"
+        )
+    git(tmp_path, "add", ".")
+    git(tmp_path, "commit", "-m", "head")
+    head = git(tmp_path, "rev-parse", "HEAD")
+    snapshot = GitSnapshot(tmp_path, base, head)
+    files = parse_diff(git(tmp_path, "diff", base, head))
+    pr = PullRequest(repo="fixture/repo", number=1, title="Unit review",
+                     base_sha=base, head_sha=head)
+    context = build_review_context(
+        pr, files, include_context_pack=False, allow_remote_file_fetch=False,
+        max_patch_tokens=1,
+    )
+    assert context.truncated
+    identities = []
+
+    def capture_identity(*_args, **kwargs):
+        identities.append(kwargs["checkpoint_identity"])
+        return None, {"unit_review_skipped_cost": True, "estimated_tokens": 0,
+                      "units_where_attempted": 0, "units_planned": 0}
+
+    monkeypatch.setattr(unit_review, "run_units_for_review", capture_identity)
+
+    class ConfiguredProvider(Provider):
+        model = "main-model"
+        _max_output_tokens = 2048
+
+        def __init__(self, output_tokens, endpoint):
+            super().__init__([{"summary": "No findings", "risk_level": "low", "suggestions": []}])
+            self._client = SimpleNamespace(base_url=endpoint)
+            self._max_output_tokens = output_tokens
+
+    for output_tokens, endpoint in ((512, "https://critic-a.example"),
+                                    (1024, "https://critic-b.example")):
+        reviewer = ConfiguredProvider(2048, "https://main.example")
+        critic = ConfiguredProvider(output_tokens, endpoint)
+        review_with_ai(
+            pr, files, [], reviewer, 10, repository_snapshot=snapshot,
+            follow_changes=True, review_context=context, unit_review_max_units=1,
+            unit_checkpoint_path=str(tmp_path / "units.jsonl"),
+            enable_critic=True, critic_provider=critic,
+        )
+
+    assert identities[0]["critic_output_token_limit"] == 512
+    assert identities[1]["critic_output_token_limit"] == 1024
+    assert (
+        identities[0]["critic_provider_config_hash"]
+        != identities[1]["critic_provider_config_hash"]
+    )
+
+
+def test_grounded_critic_missing_semantic_axis_fails_closed(repo):
+    reply = _critic_reply("confirm")
+    def incomplete(_system, prompt):
+        payload = reply(_system, prompt)
+        for item in payload["items"]:
+            item.pop("semantic_assessment")
+        return payload
+
+    report, _, critic = _grounded_critic_run(repo, critic_result=incomplete)
+    assert len(critic.calls) == 1
+    assert report.suggestions == []
+    assert len(report.pending_suggestions) == 1
+    trace_item = report.repository_context["grounded_critic"]["items"][0]
+    assert trace_item["semantic_assessment"] == "insufficient"
+    assert trace_item["goal_coverage"] == "unknown"
+
+
+def test_grounded_critic_contradicted_assessment_cannot_confirm_candidate(repo):
+    def overreach(_system, prompt):
+        source = json.loads(prompt.split("\n\n", 1)[1])
+        return {"items": [{
+            "candidate_id": item["candidate_id"], "decision": "confirm",
+            "semantic_assessment": "contradicted", "goal_coverage": "unknown",
+            "confidence": 1.0,
+            "reason": "The candidate claims all callers fail, but cited excerpts show one caller.",
+            "evidence_ref_ids": [ref["evidence_ref_id"] for ref in item["evidence_refs"]],
+        } for item in source]}
+
+    report, _, _ = _grounded_critic_run(repo, critic_result=overreach)
+    assert report.suggestions == []
+    trace_item = report.repository_context["grounded_critic"]["items"][0]
+    assert trace_item["semantic_consistent"] is False
+    assert trace_item["semantic_assessment"] == "contradicted"
+    assert len(report.pending_suggestions) == 1
 
 
 def test_raw_verification_gets_extra_evidence_headroom(repo):

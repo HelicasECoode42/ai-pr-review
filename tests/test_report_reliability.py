@@ -2,14 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
-from unittest.mock import MagicMock
-
 import pytest
 
 from src.models import (
-    ChangedFile,
-    FileStatus,
     PullRequest,
     ReviewReport,
     Severity,
@@ -38,23 +33,10 @@ def sample_pr() -> PullRequest:
     )
 
 
-@pytest.fixture
-def sample_files() -> list[ChangedFile]:
-    return [
-        ChangedFile(
-            filename="src/main.py",
-            status=FileStatus.MODIFIED,
-            additions=5,
-            deletions=2,
-            patch="@@ -1,3 +1,5 @@\n+print(\"hello\")\n+print(\"world\")\n",
-        ),
-    ]
-
-
 # ── Path coverage tests ────────────────────────────────
 
-def test_ai_failure_still_produces_report(sample_pr: PullRequest) -> None:
-    """Level 1→2 fallback: AI fails, rule-only report is generated."""
+def test_rule_only_builder_produces_a_readable_report(sample_pr: PullRequest) -> None:
+    """The rule-only builder returns a report with a nonempty summary."""
     report = build_rule_only_report(sample_pr, [], [])
     assert report is not None
     assert isinstance(report, ReviewReport)
@@ -164,15 +146,6 @@ def test_validate_report_detects_confidence_vs_syntax(
 
 
 # ── report_confidence path coverage ────────────────────
-
-def test_report_confidence_is_always_set(sample_pr: PullRequest) -> None:
-    """Every report path must set report_confidence to a valid value."""
-    report = build_rule_only_report(sample_pr, [], [])
-    assert report.report_confidence in {"normal", "fallback", "partial", "failed"}
-
-    report2 = build_diagnostic_report(pr=sample_pr, error="test")
-    assert report2.report_confidence in {"normal", "fallback", "partial", "failed"}
-
 
 def test_report_confidence_normal(sample_pr: PullRequest) -> None:
     """Normal rule-only report -> confidence=normal."""

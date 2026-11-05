@@ -34,7 +34,7 @@ from src.reviewer.witness import WitnessResult, evaluate_equivalence, expression
 
 # Version of the confirmation rules. Bump it whenever a filter or a threshold
 # changes: a report records which rules produced it (H6).
-CRITERIA_VERSION = "grounded-v4: bounded-witness+chain+provenance+contract"
+CRITERIA_VERSION = "grounded-v7: bounded-witness+chain+provenance+contract+optin-behavior-difference+critic-shadow-gate"
 
 _CONFIRMED_CHAIN_FIELDS = (
     "trigger", "expected_behavior", "actual_behavior", "introduced_by", "reason",
@@ -177,6 +177,70 @@ def domain_violation(witness: dict, domains: dict[str, str]) -> str | None:
     return None
 
 
+def _behavior_difference_support(evidence, files, anchor_path, anchor_line,
+                                contract_domains) -> tuple[bool, str]:
+    """Find a bounded behavior difference at the edited line; this is not attribution."""
+    if not anchor_path or isinstance(anchor_line, bool) or not isinstance(anchor_line, int):
+        return False, "invalid_changed_anchor"
+    file = next((item for item in files if item.filename == anchor_path), None)
+    if file is None:
+        return False, "anchor_not_in_changed_file"
+    from src.analyzer.diff_parser import parse_file_hunks
+
+    hunks = parse_file_hunks(file)
+    head_change_blocks, base_change_blocks = {}, {}
+    for hunk_index, hunk in enumerate(hunks):
+        old_line, new_line = hunk.old_start, hunk.new_start
+        block = 0
+        in_change = False
+        for raw in hunk.raw.splitlines()[1:]:
+            if raw.startswith("\\"):
+                continue
+            if raw.startswith("-") and not raw.startswith("---"):
+                if not in_change:
+                    block += 1
+                    in_change = True
+                base_change_blocks[old_line] = (hunk_index, block)
+                old_line += 1
+            elif raw.startswith("+") and not raw.startswith("+++"):
+                if not in_change:
+                    block += 1
+                    in_change = True
+                head_change_blocks[new_line] = (hunk_index, block)
+                new_line += 1
+            elif raw.startswith(" "):
+                old_line += 1
+                new_line += 1
+                in_change = False
+            else:
+                in_change = False
+    if anchor_line not in head_change_blocks:
+        return False, "anchor_is_not_added_code"
+    candidates = [item for item in evidence if isinstance(item, dict)
+                  and item.get("path") == anchor_path]
+    bases = [item for item in candidates if item.get("side") == "base"
+             and base_change_blocks.get(item.get("line")) == head_change_blocks[anchor_line]]
+    heads = [item for item in candidates if item.get("side") == "head"
+             and item.get("line") == anchor_line]
+    if not bases or not heads:
+        return False, "missing_same_hunk_base_head_citations"
+    for base in bases:
+        before = expression_from_quote(str(base.get("quote", "")))
+        if not before:
+            continue
+        for head in heads:
+            after = expression_from_quote(str(head.get("quote", "")))
+            if not after:
+                continue
+            result = evaluate_equivalence(before, after)
+            if result.status == "differs":
+                violation = domain_violation(result.witness, contract_domains or {})
+                if violation:
+                    continue
+                return True, "same_edit_block_behavior_difference"
+    return False, "no_supported_same_hunk_behavior_witness"
+
+
 def confirmation_verdicts(
     *,
     decision: str,
@@ -188,6 +252,9 @@ def confirmation_verdicts(
     files,
     sent_text: str,
     contract_domains: dict[str, str] | None = None,
+    repository_index_enabled: bool = False,
+    anchor_path: str | None = None,
+    anchor_line: int | None = None,
 ) -> list[FilterVerdict]:
     """Run the chain in order and return every verdict, pass or fail."""
     chain_ok = all(
@@ -283,6 +350,15 @@ def confirmation_verdicts(
         "decision is one of confirmed/dismissed/needs_context" if decision in _VALID_DECISIONS
         else f"unknown decision {decision!r}",
     ))
+    if repository_index_enabled and decision == "confirmed":
+        supported, reason = _behavior_difference_support(
+            cited, files, anchor_path, anchor_line, contract_domains
+        )
+        verdicts.append(FilterVerdict(
+            "behavior_difference_support", supported,
+            reason if supported else "behavior difference is unsupported: " + reason,
+            {"behavior_difference_supported": supported, "attribution": "unknown"},
+        ))
     return verdicts
 
 

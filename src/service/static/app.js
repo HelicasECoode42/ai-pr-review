@@ -63,16 +63,6 @@ function parseURL() {
   }
 }
 
-function fillDemo() {
-  document.getElementById("repo").value = "openclaw/openclaw";
-  document.getElementById("pr-number").value = "80419";
-  document.getElementById("pr-url").value = "https://github.com/openclaw/openclaw/pull/80419";
-  document.getElementById("language").value = "zh";
-  document.getElementById("use-ai").value = "0";
-  hideError();
-  hideResults();
-}
-
 async function loadDemoReport() {
   setLoading(true, "Loading demo report…");
   hideError();
@@ -224,8 +214,9 @@ function renderResults() {
 
   // GitHub link
   const ghLink = document.getElementById("gh-link");
-  if (r.pr && r.pr.html_url) {
-    ghLink.href = r.pr.html_url;
+  const prUrl = r.pr && safeWebUrl(r.pr.html_url);
+  if (prUrl) {
+    ghLink.href = prUrl;
     ghLink.classList.remove("hidden");
   } else {
     ghLink.classList.add("hidden");
@@ -242,7 +233,7 @@ function renderResults() {
   const candidates = r.pending_suggestions || [];
   pending.innerHTML = candidates.length ? `<h3>Needs additional context (${candidates.length})</h3>
     <p>Unconfirmed candidates; excluded from verified findings and inline comments.</p>
-    ${candidates.map(s => `<p><strong>${escHtml(s.title)}</strong> — ${escHtml(s.file_path)}:${s.line ?? ""}</p>`).join("")}` : "";
+    ${candidates.map(s => `<p><strong>${escHtml(s.title)}</strong> — ${escHtml(s.file_path)}:${escHtml(s.line ?? "")}</p>`).join("")}` : "";
   renderCompleteness((r.completeness || []));
   renderMarkdown(_markdown);
 
@@ -270,13 +261,16 @@ function renderSuggestions(suggestions) {
   const sevOrder = { critical: 0, high: 1, medium: 2, low: 3 };
   const sorted = [...suggestions].sort((a, b) => (sevOrder[a.severity] || 4) - (sevOrder[b.severity] || 4));
 
-  list.innerHTML = sorted.map((s, i) => `
-    <div class="suggestion-card" data-sev="${s.severity}" data-idx="${i}">
+  list.innerHTML = sorted.map((s, i) => {
+    const severity = Object.hasOwn(sevOrder, s.severity) ? s.severity : "low";
+    const line = s.line ? String(s.line) : "";
+    return `
+    <div class="suggestion-card" data-sev="${severity}" data-idx="${i}">
       <div class="header">
-        <span class="sev-badge sev-${s.severity}">${s.severity}</span>
+        <span class="sev-badge sev-${severity}">${severity}</span>
         <span class="conf-badge">${Math.round(s.confidence * 100)}% confidence</span>
-        <a class="file-link" href="${buildBlobUrl(s.file_path, s.line)}" target="_blank" rel="noopener">
-          ${s.file_path}${s.line ? ":" + s.line : ""}
+        <a class="file-link" href="${escapeHtml(buildBlobUrl(s.file_path, s.line))}" target="_blank" rel="noopener">
+          ${escHtml(s.file_path)}${line ? ":" + escHtml(line) : ""}
         </a>
         <button class="copy-btn" onclick="copySuggestion(${i})">📋 Copy comment</button>
       </div>
@@ -284,7 +278,8 @@ function renderSuggestions(suggestions) {
       <div class="reason">${escHtml(s.reason || "")}</div>
       ${s.recommendation ? `<div class="recommendation">💡 ${escHtml(s.recommendation)}</div>` : ""}
     </div>
-  `).join("");
+  `;
+  }).join("");
 
   _suggestionsCache = sorted;
 }
@@ -338,11 +333,49 @@ function renderCompleteness(items) {
 // ── Markdown ──
 function renderMarkdown(md) {
   const el = document.getElementById("report-html");
-  if (typeof marked !== "undefined") {
-    marked.setOptions({ breaks: true });
-    el.innerHTML = marked.parse(md);
-  } else {
-    el.innerHTML = `<pre>${escHtml(md)}</pre>`;
+  try {
+    if (typeof marked === "undefined" || typeof marked.parse !== "function" || !marked.Renderer) {
+      throw new Error("Markdown renderer unavailable");
+    }
+
+    const renderer = new marked.Renderer();
+    renderer.html = token => escapeHtml(typeof token === "string" ? token : token.text || "");
+    renderer.image = token => escapeHtml(token.text || "");
+    renderer.link = token => {
+      const label = escapeHtml(token.text || "");
+      const href = safeMarkdownUrl(token.href);
+      if (!href) return label;
+      const title = token.title ? ` title="${escapeHtml(token.title)}"` : "";
+      return `<a href="${escapeHtml(href)}"${title}>${label}</a>`;
+    };
+
+    const html = marked.parse(String(md || ""), { breaks: true, renderer });
+    if (typeof html !== "string") throw new Error("Markdown renderer returned no HTML");
+    el.style.whiteSpace = "";
+    el.innerHTML = html;
+  } catch (_) {
+    // Keep reports readable when the rich renderer is missing or fails.
+    el.innerHTML = "";
+    el.textContent = String(md || "");
+    el.style.whiteSpace = "pre-wrap";
+  }
+}
+
+function safeMarkdownUrl(raw) {
+  return safeUrl(raw, ["http:", "https:", "mailto:"]);
+}
+
+function safeWebUrl(raw) {
+  return safeUrl(raw, ["http:", "https:"]);
+}
+
+function safeUrl(raw, allowedProtocols) {
+  if (typeof raw !== "string" || /[\u0000-\u0020\u007f]/.test(raw)) return null;
+  try {
+    const url = new URL(raw, document.baseURI);
+    return allowedProtocols.includes(url.protocol.toLowerCase()) ? url.href : null;
+  } catch (_) {
+    return null;
   }
 }
 
@@ -350,7 +383,10 @@ function renderMarkdown(md) {
 function buildBlobUrl(filePath, line) {
   const r = _report;
   if (!r || !r.pr || !r.pr.head_sha || !r.pr.repo) return "#";
-  let url = `https://github.com/${r.pr.repo}/blob/${r.pr.head_sha}/${filePath}`;
+  const repo = String(r.pr.repo).split("/").map(encodeURIComponent).join("/");
+  const sha = encodeURIComponent(String(r.pr.head_sha));
+  const path = String(filePath || "").split("/").map(encodeURIComponent).join("/");
+  let url = `https://github.com/${repo}/blob/${sha}/${path}`;
   if (line) url += `#L${line}`;
   return url;
 }
@@ -360,6 +396,16 @@ function escHtml(s) {
   const d = document.createElement("div");
   d.textContent = s;
   return d.innerHTML;
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, char => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[char]);
 }
 
 // ── Tab switching ──
@@ -451,10 +497,9 @@ async function loadHistory() {
     noop.classList.add("hidden");
 
     // Trend summary
-    const levels = _historyCache.map(e => e.risk_level);
-    const recent = levels.slice(0, 5);
+    const levels = _historyCache.map(e => safeRiskLevel(e.risk_level));
     const totalReviews = _historyCache.length;
-    const totalSuggestions = _historyCache.reduce((s, e) => s + e.suggestions_count, 0);
+    const totalSuggestions = _historyCache.reduce((s, e) => s + safeCount(e.suggestions_count), 0);
     const avgSuggestions = totalReviews ? (totalSuggestions / totalReviews).toFixed(1) : 0;
 
     // Risk trend: count risk levels
@@ -477,16 +522,23 @@ async function loadHistory() {
 
     // Table
     const rows = _historyCache.map((e, i) => {
-      const date = (e.analyzed_at || "").replace(/(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/, "$1-$2-$3 $4:$5");
+      const date = String(e.analyzed_at || "").replace(/(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/, "$1-$2-$3 $4:$5");
+      const historyUrl = safeWebUrl(e.html_url) || "#";
+      const risk = safeRiskLevel(e.risk_level);
+      const prNumber = safeCount(e.pr_number);
+      const files = safeCount(e.files_count);
+      const additions = safeCount(e.additions);
+      const deletions = safeCount(e.deletions);
+      const suggestionCount = safeCount(e.suggestions_count);
       return `
         <tr class="history-row" onclick="loadHistoryEntry(${i})" style="cursor:pointer">
-          <td><a href="${escHtml(e.html_url || '#')}" onclick="event.stopPropagation()" target="_blank" rel="noopener">#${e.pr_number}</a></td>
+          <td><a href="${escapeHtml(historyUrl)}" onclick="event.stopPropagation()" target="_blank" rel="noopener">#${prNumber}</a></td>
           <td>${escHtml(e.title || "")}</td>
-          <td>${date}</td>
-          <td><span class="sev-badge sev-${e.risk_level}">${riskLabel[e.risk_level] || e.risk_level}</span></td>
-          <td>${e.files_count} files</td>
-          <td>+${e.additions}/-${e.deletions}</td>
-          <td>${e.suggestions_count} suggestions</td>
+          <td>${escHtml(date)}</td>
+          <td><span class="sev-badge sev-${risk}">${riskLabel[risk]}</span></td>
+          <td>${files} files</td>
+          <td>+${additions}/-${deletions}</td>
+          <td>${suggestionCount} suggestions</td>
           <td>${e.used_ai ? "✅" : "⏭️"}</td>
         </tr>`;
     }).join("");
@@ -589,11 +641,12 @@ async function loadTimeline() {
     const totals = { low: 0, medium: 0, high: 0, critical: 0 };
     let totalFiles = 0, totalAdds = 0, totalDels = 0, totalFindings = 0;
     prs.forEach(p => {
-      totals[p.risk_level] = (totals[p.risk_level] || 0) + 1;
-      totalFiles += p.files_count;
-      totalAdds += p.additions;
-      totalDels += p.deletions;
-      totalFindings += p.findings_count;
+      const risk = safeRiskLevel(p.risk_level);
+      totals[risk] += 1;
+      totalFiles += safeCount(p.files_count);
+      totalAdds += safeCount(p.additions);
+      totalDels += safeCount(p.deletions);
+      totalFindings += safeCount(p.findings_count);
     });
     summary.innerHTML = `
       <div class="history-summary-grid">
@@ -610,21 +663,28 @@ async function loadTimeline() {
 
     // Timeline
     const rows = prs.map((p, i) => {
+      const risk = safeRiskLevel(p.risk_level);
+      const timelineUrl = safeWebUrl(p.html_url) || "#";
+      const prNumber = safeCount(p.pr_number);
+      const files = safeCount(p.files_count);
+      const additions = safeCount(p.additions);
+      const deletions = safeCount(p.deletions);
+      const findings = safeCount(p.findings_count);
       const findingsHtml = (p.top_findings || []).map(f =>
-        `<span class="finding-tag sev-${f.severity}">${f.title}</span>`
+        `<span class="finding-tag sev-${["critical", "high", "medium", "low"].includes(f.severity) ? f.severity : "low"}">${escHtml(f.title)}</span>`
       ).join(" ");
       return `
         <div class="timeline-item">
-          <div class="tl-dot sev-${p.risk_level}"></div>
+          <div class="tl-dot sev-${risk}"></div>
           <div class="tl-content">
             <div class="tl-header">
-              <a href="${escHtml(p.html_url || '#')}" target="_blank" rel="noopener">
-                <strong>#${p.pr_number}</strong> ${escHtml(p.title)}
+              <a href="${escapeHtml(timelineUrl)}" target="_blank" rel="noopener">
+                <strong>#${prNumber}</strong> ${escHtml(p.title)}
               </a>
-              <span class="sev-badge sev-${p.risk_level}">${riskLabel[p.risk_level]}</span>
+              <span class="sev-badge sev-${risk}">${riskLabel[risk]}</span>
             </div>
             <div class="tl-meta">
-              ${p.author ? escHtml(p.author) + " · " : ""}${p.files_count} files · +${p.additions}/-${p.deletions} · ${p.findings_count} findings
+              ${p.author ? escHtml(p.author) + " · " : ""}${files} files · +${additions}/-${deletions} · ${findings} findings
             </div>
             ${findingsHtml ? `<div class="tl-findings">${findingsHtml}</div>` : ""}
           </div>
@@ -640,6 +700,15 @@ async function loadTimeline() {
     loading.classList.add("hidden");
     btn.disabled = false;
   }
+}
+
+function safeCount(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? Math.trunc(number) : 0;
+}
+
+function safeRiskLevel(value) {
+  return ["low", "medium", "high", "critical"].includes(value) ? value : "low";
 }
 
 function fillTimelineDemo() {

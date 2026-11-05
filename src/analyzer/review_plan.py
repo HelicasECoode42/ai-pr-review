@@ -6,7 +6,6 @@ resolve within the supplied snapshot inventory; ambiguous symbols stay weak.
 
 from __future__ import annotations
 
-import ast
 import hashlib
 import json
 import posixpath
@@ -19,33 +18,18 @@ from pydantic import Field
 from src.analyzer.context_builder import count_tokens
 from src.analyzer.diff_parser import parse_file_hunks
 from src.analyzer.repository_context import Snapshot, safe_source_path
+from src.analyzer.symbol_index import (
+    Relationship,
+    SourceFile,
+    UnresolvedReference,
+    parse_python,
+    resolve_python_relationships,
+)
+from src.analyzer.symbol_index import (
+    SymbolRef as SourceSymbol,
+)
 from src.application.protocol import BudgetLine, BudgetReport, Coverage, FrozenContract, Omission
 from src.models import ChangedFile, DiffHunk, FileStatus
-
-
-class SourceSymbol(FrozenContract):
-    name: str
-    start: int
-    end: int
-
-
-class SourceFile(FrozenContract):
-    path: str
-    side: Literal["head", "base"]
-    content_hash: str
-    parser: str
-    symbols: tuple[SourceSymbol, ...] = ()
-    imports: tuple[str, ...] = ()
-    calls: tuple[str, ...] = ()
-    limitations: tuple[str, ...] = ()
-
-
-class Relationship(FrozenContract):
-    source: str
-    target: str
-    kind: str
-    strength: Literal["strong", "weak"]
-    symbol: str | None = None
 
 
 class EvidenceRef(FrozenContract):
@@ -80,6 +64,10 @@ class ChangeSlice(FrozenContract):
     hunk_index: int
     fragment_index: int
     fragment: str
+    fragment_start_byte: int = Field(ge=0)
+    fragment_end_byte: int = Field(ge=0)
+    hunk_byte_length: int = Field(ge=0)
+    fragment_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     lines: LineSpan = Field(default_factory=LineSpan)
     symbols: tuple[str, ...] = ()
     evidence: tuple[EvidenceRef, ...] = ()
@@ -157,13 +145,15 @@ class CoverageSummary(FrozenContract):
 
 
 class ReviewPlan(FrozenContract):
-    version: str = "syntax-plan-v2"
+    version: str = "syntax-plan-v3"
     base: str = Field(pattern=r"^[0-9a-f]{40}$")
     head: str = Field(pattern=r"^[0-9a-f]{40}$")
     token_budget: int = Field(gt=0)
     units: tuple[ReviewUnit, ...]
     files: tuple[SourceFile, ...]
     relationships: tuple[Relationship, ...]
+    unresolved_references: tuple[UnresolvedReference, ...] = ()
+    index_omissions: tuple[str, ...] = ()
     coverage: tuple[Coverage, ...]
     limitations: tuple[str, ...]
     cuts: CutReport = Field(default_factory=CutReport)
@@ -175,53 +165,11 @@ def _hash(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
 
 
-def _python(path: str, text: str, side: str) -> SourceFile:
-    try:
-        tree = ast.parse(text)
-    except (SyntaxError, ValueError, RecursionError):
-        return SourceFile(
-            path=path,
-            side=side,
-            content_hash=_hash(text),
-            parser="python-ast",
-            limitations=("parse_failed",),
-        )
-    symbols, imports, calls = [], set(), set()
-    package = path.split("/")[:-1]
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            symbols.append(
-                SourceSymbol(
-                    name=node.name,
-                    start=min([node.lineno, *[d.lineno for d in node.decorator_list]]),
-                    end=node.end_lineno,
-                )
-            )
-        elif isinstance(node, ast.Import):
-            imports.update(a.name.replace(".", "/") for a in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            prefix = package[: len(package) - node.level + 1] if node.level else []
-            stem = "/".join([*prefix, *(node.module or "").split(".")]).strip("/")
-            imports.add(stem)
-            imports.update(stem + "/" + a.name for a in node.names if a.name != "*")
-        elif isinstance(node, ast.Call):
-            if isinstance(node.func, ast.Name):
-                calls.add(node.func.id)
-            elif isinstance(node.func, ast.Attribute):
-                calls.add(node.func.attr)
-    return SourceFile(
-        path=path,
-        side=side,
-        content_hash=_hash(text),
-        parser="python-ast",
-        symbols=tuple(sorted(symbols, key=lambda s: (s.start, s.name))),
-        imports=tuple(sorted(imports)),
-        calls=tuple(sorted(calls)),
-        limitations=("references_are_syntactic_not_runtime_calls",),
-    )
+def _python(path: str, text: str, side: str, base: str, head: str) -> SourceFile:
+    return parse_python(path, text, side, base, head)
 
 
-def _typescript(path: str, text: str, side: str) -> SourceFile:
+def _typescript(path: str, text: str, side: str, base: str, head: str) -> SourceFile:
     # Grammar is optional: absence is explicit, never a regex pretending to be AST.
     try:
         import tree_sitter_typescript
@@ -230,6 +178,8 @@ def _typescript(path: str, text: str, side: str) -> SourceFile:
         return SourceFile(
             path=path,
             side=side,
+            base=base,
+            head=head,
             content_hash=_hash(text),
             parser="unavailable",
             limitations=("typescript_grammar_not_installed",),
@@ -256,11 +206,31 @@ def _typescript(path: str, text: str, side: str) -> SourceFile:
         }:
             name = n.child_by_field_name("name")
             if name:
+                symbol_name = raw[name.start_byte : name.end_byte].decode()
+                start, end = n.start_point.row + 1, n.end_point.row + 1
+                kind = (
+                    "class"
+                    if n.type
+                    in {"class_declaration", "interface_declaration", "type_alias_declaration"}
+                    else "function"
+                )
+                identity = json.dumps(
+                    [base, head, side, path, symbol_name, kind, start, end, _hash(text)],
+                    separators=(",", ":"),
+                )
                 symbols.append(
                     SourceSymbol(
-                        name=raw[name.start_byte : name.end_byte].decode(),
-                        start=n.start_point.row + 1,
-                        end=n.end_point.row + 1,
+                        base=base,
+                        head=head,
+                        side=side,
+                        path=path,
+                        language="typescript",
+                        qualified_scope=symbol_name,
+                        kind=kind,
+                        start=start,
+                        end=end,
+                        content_hash=_hash(text),
+                        symbol_id=hashlib.sha256(identity.encode()).hexdigest(),
                     )
                 )
         elif n.type in {"import_statement", "export_statement"}:
@@ -277,24 +247,28 @@ def _typescript(path: str, text: str, side: str) -> SourceFile:
     return SourceFile(
         path=path,
         side=side,
+        base=base,
+        head=head,
         content_hash=_hash(text),
         parser="tree-sitter-typescript",
-        symbols=tuple(sorted(symbols, key=lambda s: (s.start, s.name))),
+        symbols=tuple(sorted(symbols, key=lambda s: (s.start, s.qualified_scope))),
         imports=tuple(sorted(imports)),
         calls=tuple(sorted(calls)),
         limitations=tuple(limits),
     )
 
 
-def _index(path: str, text: str, side: str) -> SourceFile:
+def _index(path: str, text: str, side: str, base: str, head: str) -> SourceFile:
     suffix = PurePosixPath(path).suffix
     if suffix == ".py":
-        return _python(path, text, side)
+        return _python(path, text, side, base, head)
     if suffix in {".ts", ".tsx"}:
-        return _typescript(path, text, side)
+        return _typescript(path, text, side, base, head)
     return SourceFile(
         path=path,
         side=side,
+        base=base,
+        head=head,
         content_hash=_hash(text),
         parser="unavailable",
         limitations=("language_relationships_not_supported",),
@@ -308,15 +282,15 @@ class SourceIndexCache:
         if max_entries < 1:
             raise ValueError("Index cache must have positive capacity")
         self.max_entries = max_entries
-        self.entries: dict[tuple[str, str, str], SourceFile] = {}
+        self.entries: dict[tuple[str, str, str, str, str], SourceFile] = {}
         self.hits = 0
 
-    def parse(self, path: str, text: str, side: str) -> SourceFile:
-        key = (path, side, _hash(text))
+    def parse(self, path: str, text: str, side: str, base: str = "", head: str = "") -> SourceFile:
+        key = (path, side, _hash(text), base, head)
         if key in self.entries:
             self.hits += 1
             return self.entries[key]
-        parsed = _index(path, text, side)
+        parsed = _index(path, text, side, base, head)
         if len(self.entries) >= self.max_entries:
             del self.entries[next(iter(self.entries))]
         self.entries[key] = parsed
@@ -382,7 +356,7 @@ def _span_for(
 
 def _split_hunk(
     hunk: DiffHunk, token_budget: int, limitations: set[str]
-) -> list[tuple[str, LineSpan]]:
+) -> list[tuple[str, LineSpan, int, int]]:
     """Split one hunk into budget-sized fragments, byte-preserving and in order.
 
     Every fragment also reports the source line span it covers. A pathological
@@ -390,13 +364,16 @@ def _split_hunk(
     marked as cutting a diff line rather than pretending to be whole lines.
     """
     meta = _hunk_line_meta(hunk)
-    out: list[tuple[str, LineSpan]] = []
+    out: list[tuple[str, LineSpan, int, int]] = []
     buffer = ""
     pieces: list[tuple[int, bool]] = []
+    fragment_start_byte = 0
 
     def flush() -> None:
-        nonlocal buffer, pieces
-        out.append((buffer, _span_for(pieces, meta)))
+        nonlocal buffer, pieces, fragment_start_byte
+        end_byte = fragment_start_byte + len(buffer.encode("utf-8"))
+        out.append((buffer, _span_for(pieces, meta), fragment_start_byte, end_byte))
+        fragment_start_byte = end_byte
         buffer = ""
         pieces = []
 
@@ -447,10 +424,18 @@ def _cut_report(units: list[ReviewUnit], relationships: tuple[Relationship, ...]
                 SplitSymbol(path=path, symbol=name, units=unit_count, fragments=fragment_count)
             )
     cut, external = [], []
-    for e in relationships:
+    # Base and head may carry the same path-level topology. Keep one such edge
+    # in the measurement while preserving both side-bound edges in ReviewPlan.
+    measured_edges = {}
+    for edge in relationships:
+        key = (edge.source, edge.target, edge.kind, edge.strength, edge.symbol)
+        measured_edges.setdefault(key, edge)
+    for e in measured_edges.values():
         if e.source not in unit_of or e.target not in unit_of:
             continue
-        symbol_hit = e.kind == "symbol_reference" and e.symbol in changed_symbols[e.target]
+        symbol_hit = (
+            e.kind in {"symbol_reference", "call"} and e.symbol in changed_symbols[e.target]
+        )
         if not unit_of[e.source] & unit_of[e.target]:
             cut.append(
                 CutEdge(
@@ -462,9 +447,9 @@ def _cut_report(units: list[ReviewUnit], relationships: tuple[Relationship, ...]
                     targets_changed_symbol=bool(symbol_hit),
                 )
             )
-    for e in relationships:
+    for e in measured_edges.values():
         if (
-            e.kind == "symbol_reference"
+            e.kind in {"symbol_reference", "call"}
             and e.strength == "weak"
             and e.target in unit_of
             and e.symbol in changed_symbols[e.target]
@@ -531,29 +516,7 @@ def build_review_plan(
             continue
         chars += len(text)
         contents[(path, "head")] = text
-        indexed[path] = cache.parse(path, text, "head")
-    edges = set()
-    definitions = defaultdict(set)
-    for path, source in indexed.items():
-        for symbol in source.symbols:
-            definitions[symbol.name].add(path)
-        for stem in source.imports:
-            targets = _resolve(stem, path, set(indexed))
-            for target in targets:
-                edges.add((path, target, "import", "strong" if len(targets) == 1 else "weak", None))
-    for path, source in indexed.items():
-        for call in source.calls:
-            targets = definitions[call] - {path}
-            if len(targets) > 20:
-                limitations.add("ambiguous_symbol_reference_limit")
-                targets = set(sorted(targets)[:20])
-            for target in sorted(targets):
-                # Bare matching is always weak without binding/type resolution.
-                edges.add((path, target, "symbol_reference", "weak", call))
-    relationships = tuple(
-        Relationship(source=e[0], target=e[1], kind=e[2], strength=e[3], symbol=e[4])
-        for e in sorted(edges, key=lambda e: tuple(str(v) for v in e))
-    )
+        indexed[path] = cache.parse(path, text, "head", snapshot.base, snapshot.head)
     slices = []
     for file in sorted(files, key=lambda f: f.filename):
         if not safe_source_path(file.filename):
@@ -579,7 +542,9 @@ def build_review_plan(
                 old_text = snapshot.read(old_path, "base")
                 if old_text is not None and chars + len(old_text) <= index_char_limit:
                     chars += len(old_text)
-                    old_source = cache.parse(old_path, old_text, "base")
+                    old_source = cache.parse(
+                        old_path, old_text, "base", snapshot.base, snapshot.head
+                    )
                     indexed["base:" + old_path] = old_source
                     if side == "base":
                         text = old_text
@@ -629,7 +594,10 @@ def build_review_plan(
                 )
             # Oversized hunks split without dropping a byte. Each fragment keeps
             # the source lines it covers and whether its edge cuts a diff line.
-            for part, (fragment, span) in enumerate(_split_hunk(hunk, token_budget, limitations)):
+            hunk_byte_length = len(hunk.raw.encode("utf-8"))
+            for part, (fragment, span, start_byte, end_byte) in enumerate(
+                _split_hunk(hunk, token_budget, limitations)
+            ):
                 slices.append(
                     ChangeSlice(
                         slice_id=_hash(hid + ":" + str(part)),
@@ -639,6 +607,10 @@ def build_review_plan(
                         hunk_index=number,
                         fragment_index=part,
                         fragment=fragment,
+                        fragment_start_byte=start_byte,
+                        fragment_end_byte=end_byte,
+                        hunk_byte_length=hunk_byte_length,
+                        fragment_sha256=hashlib.sha256(fragment.encode("utf-8")).hexdigest(),
                         lines=span,
                         symbols=tuple(s.name for s in symbols),
                         evidence=refs,
@@ -655,6 +627,46 @@ def build_review_plan(
                         reason="definition_source_unavailable",
                     )
                 )
+    relationships_list = []
+    unresolved = []
+    all_sources = tuple(indexed.values())
+    for side in ("head", "base"):
+        side_files = tuple(source for source in all_sources if source.side == side)
+        if side_files:
+            side_inventory = {source.path for source in side_files}
+            call_edges, unresolved_refs, edge_omissions = resolve_python_relationships(
+                side_files, side_inventory, side=side
+            )
+            relationships_list.extend(call_edges)
+            unresolved.extend(unresolved_refs)
+            limitations.update(edge_omissions)
+            for source in side_files:
+                for stem in source.imports:
+                    targets = _resolve(stem, source.path, side_inventory)
+                    for target in targets:
+                        relationships_list.append(
+                            Relationship(
+                                source=source.path,
+                                target=target,
+                                kind="import",
+                                strength="strong" if len(targets) == 1 else "weak",
+                                provenance="import_binding",
+                                evidence_level="exact_binding"
+                                if len(targets) == 1
+                                else "ambiguous",
+                                side=side,
+                                base=snapshot.base,
+                                head=snapshot.head,
+                            )
+                        )
+    if unresolved:
+        limitations.add("python_references_unresolved_or_ambiguous")
+    relationships = tuple(
+        sorted(
+            {r.model_dump_json(): r for r in relationships_list}.values(),
+            key=lambda e: (e.source, e.target, e.kind, e.symbol or "", e.source_start or 0),
+        )
+    )
     adjacency = defaultdict(set)
     for edge in relationships:
         if edge.strength == "strong":
@@ -703,7 +715,7 @@ def build_review_plan(
                 snapshot.head,
                 token_budget,
                 [s.slice_id for s in chosen],
-                "syntax-plan-v2",
+                "syntax-plan-v3",
             ],
             separators=(",", ":"),
         )
@@ -746,7 +758,6 @@ def build_review_plan(
             and not coverage_summary.unaccounted_files
         }
     )
-    head_files = [key for key in indexed if not key.startswith("base:")]
     budgets = BudgetReport(
         scope="build_review_plan",
         lines=(
@@ -771,8 +782,8 @@ def build_review_plan(
             BudgetLine(
                 name="indexed_files",
                 limit=index_file_limit,
-                used=len(head_files),
-                covers="head files parsed for relationships; base copies are not extra inventory",
+                used=len(indexed),
+                covers="head and explicitly read base source files in the shared file limit",
             ),
             BudgetLine(
                 name="indexed_source_chars",
@@ -787,6 +798,16 @@ def build_review_plan(
             if c.status != "planned"
         ),
     )
+    index_omissions = tuple(
+        sorted(
+            {
+                f"{coverage_item.reason}:{coverage_item.path}"
+                for coverage_item in coverage
+                if coverage_item.reason in {"index_budget", "head_unavailable"}
+            }
+            | {omission for omission in limitations if omission == "relationship_edge_limit"}
+        )
+    )
     return ReviewPlan(
         base=snapshot.base,
         head=snapshot.head,
@@ -794,6 +815,8 @@ def build_review_plan(
         units=tuple(units),
         files=tuple(indexed[k] for k in sorted(indexed)),
         relationships=relationships,
+        unresolved_references=tuple(unresolved),
+        index_omissions=index_omissions,
         coverage=tuple(coverage),
         limitations=tuple(sorted(limitations)),
         cuts=_cut_report(units, relationships),

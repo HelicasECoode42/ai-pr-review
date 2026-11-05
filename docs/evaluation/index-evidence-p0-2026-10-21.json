@@ -1,0 +1,957 @@
+{
+  "protocol": "same frozen snapshot, request sequence, order, and EvidenceBundle budget; only resolver flag differs; model prompt is not invoked",
+  "provider_calls": 0,
+  "cost": {
+    "model_api": 0,
+    "api_usd": 0
+  },
+  "real_dev": {
+    "case": "allan-mobley-jr/gimmes PR 468",
+    "base": "08efd0bbc34fd29de2a4077f07d24f3dc02a63b6",
+    "head": "e1477f8b3f18c1de6ff87dbca9465a7b106dc193",
+    "changed_paths": [
+      "src/gimmes/cli.py",
+      "src/gimmes/config.py",
+      "src/gimmes/strategy/staleness.py",
+      "tests/unit/test_staleness.py"
+    ],
+    "query_source": "mechanically selected changed Python function name; no gold read",
+    "budget_tokens": 6000,
+    "request_sequence": [
+      {
+        "hypothesis_id": "H1",
+        "purpose": "Inspect callers of the changed function",
+        "tool": "search",
+        "symbol": "check_staleness",
+        "side": "head"
+      }
+    ],
+    "posthoc_gold_range_score": {
+      "off": {
+        "gold_range_source": "offline post-hoc only",
+        "total_ranges": 10,
+        "full_gold_ranges_in_bundle_excerpts": 1,
+        "cross_file_ranges": 7,
+        "full_cross_file_ranges_in_bundle_excerpts": 1,
+        "semantic_precision_recall": "N/A"
+      },
+      "on": {
+        "gold_range_source": "offline post-hoc only",
+        "total_ranges": 10,
+        "full_gold_ranges_in_bundle_excerpts": 1,
+        "cross_file_ranges": 7,
+        "full_cross_file_ranges_in_bundle_excerpts": 1,
+        "semantic_precision_recall": "N/A"
+      }
+    },
+    "variants": {
+      "off": {
+        "outcomes": [
+          {
+            "status": "executed_with_evidence",
+            "normalized_query": {
+              "tool": "search",
+              "symbol": "check_staleness",
+              "side": "head",
+              "limit": 4
+            },
+            "hits": [
+              {
+                "path": "src/gimmes/cli.py",
+                "line": 305
+              },
+              {
+                "path": "src/gimmes/strategy/staleness.py",
+                "line": 45
+              },
+              {
+                "path": "tests/unit/test_staleness.py",
+                "line": 11
+              }
+            ],
+            "evidence_refs": [
+              "d3119cfda57c8ea1a0d11ce1570b129f7d47dc8525da2982f801dca835beaf94"
+            ],
+            "reused": false,
+            "omission_reason": "evidence_budget_exhausted"
+          }
+        ],
+        "host_task_statuses": [
+          "executed_with_evidence"
+        ],
+        "excerpts": [
+          {
+            "path": "src/gimmes/cli.py",
+            "side": "head",
+            "start_line": 257,
+            "end_line": 338,
+            "evidence_ref": "d3119cfda57c8ea1a0d11ce1570b129f7d47dc8525da2982f801dca835beaf94",
+            "sha256": "bdcd8520bb5f6219c2a0247bad96dee4a050c497e3b3a514d111a6fcaa26fc88",
+            "kind": "requested_symbol_reference"
+          }
+        ],
+        "renderable_context_chars": 6085,
+        "evidence_tokens": 4347,
+        "snapshot_reads_before_request": 10,
+        "snapshot_reads_added_by_request": 0,
+        "snapshot_bytes_added_by_request": 0,
+        "snapshot_cache_files_total": 10,
+        "snapshot_cache_bytes_total": 373950,
+        "snapshot_search_call_count_total": 8,
+        "snapshot_search_call_count_before_request": 7,
+        "snapshot_search_call_count_for_request": 1,
+        "snapshot_search_elapsed_ms_for_request": 25.012,
+        "snapshot_errors": [],
+        "host_index": [],
+        "request_elapsed_ms": 61.977
+      },
+      "on": {
+        "outcomes": [
+          {
+            "status": "executed_with_evidence",
+            "normalized_query": {
+              "tool": "search",
+              "symbol": "check_staleness",
+              "side": "head",
+              "limit": 4
+            },
+            "hits": [
+              {
+                "path": "tests/unit/test_staleness.py",
+                "line": 38
+              },
+              {
+                "path": "tests/unit/test_staleness.py",
+                "line": 51
+              },
+              {
+                "path": "tests/unit/test_staleness.py",
+                "line": 65
+              },
+              {
+                "path": "tests/unit/test_staleness.py",
+                "line": 80
+              }
+            ],
+            "evidence_refs": [
+              "2cbc7d33e7b19417810d3d51511a3d4597894cb62131afdfdb88d451acc2864e",
+              "6f1dbeaf3ae5051d71c002af081bb8ddeb4880061b9a76f327afb8f1d8e321f6",
+              "5e485f7b4af73cb71fb094700cde95e3cb5f4906922696d99a3758c34a9bc542",
+              "1f8c911e3318056e78b1670d2e6ca58a7335b956362b009dea6e2a18483b6d22"
+            ],
+            "reused": false,
+            "omission_reason": null
+          }
+        ],
+        "host_task_statuses": [
+          "executed_with_evidence"
+        ],
+        "excerpts": [
+          {
+            "path": "tests/unit/test_staleness.py",
+            "side": "head",
+            "start_line": 17,
+            "end_line": 32,
+            "evidence_ref": "ed4eab6e6b4d7f1f4fdf329b93c73956cdeae364fc4b1d4fe80cd9ebdcd7cd40",
+            "sha256": "f70d527c50b00d5484400a76da035a73465ffff458071f122392729205341b40",
+            "kind": "changed_definition"
+          },
+          {
+            "path": "src/gimmes/strategy/staleness.py",
+            "side": "base",
+            "start_line": 16,
+            "end_line": 20,
+            "evidence_ref": "e7afa88b218e3a120a99e7b709f28747894afe616ea99fba7fc69fc5722e025f",
+            "sha256": "c7cf999b0953da2a6d8df42919704c5609179cb7dca8ed0447a7cbf1eab826dd",
+            "kind": "previous_definition"
+          },
+          {
+            "path": "tests/unit/test_staleness.py",
+            "side": "head",
+            "start_line": 36,
+            "end_line": 41,
+            "evidence_ref": "2cbc7d33e7b19417810d3d51511a3d4597894cb62131afdfdb88d451acc2864e",
+            "sha256": "3162967be2aa4fe4e99d38b9c4f5a6ec5a0992a3ed578a8b122a9f4563be9ab7",
+            "kind": "requested_symbol_reference"
+          },
+          {
+            "path": "tests/unit/test_staleness.py",
+            "side": "head",
+            "start_line": 43,
+            "end_line": 55,
+            "evidence_ref": "6f1dbeaf3ae5051d71c002af081bb8ddeb4880061b9a76f327afb8f1d8e321f6",
+            "sha256": "746f60fc9bccfb876a4d190fe5caf8ea0b827c0f72fd1544454575e7919c6c3c",
+            "kind": "requested_symbol_reference"
+          },
+          {
+            "path": "tests/unit/test_staleness.py",
+            "side": "head",
+            "start_line": 57,
+            "end_line": 70,
+            "evidence_ref": "5e485f7b4af73cb71fb094700cde95e3cb5f4906922696d99a3758c34a9bc542",
+            "sha256": "2fa0908817ea602f332eed85e84801014633760d65b2f87ebdc76a07514f2884",
+            "kind": "requested_symbol_reference"
+          },
+          {
+            "path": "tests/unit/test_staleness.py",
+            "side": "head",
+            "start_line": 72,
+            "end_line": 84,
+            "evidence_ref": "1f8c911e3318056e78b1670d2e6ca58a7335b956362b009dea6e2a18483b6d22",
+            "sha256": "8de7893d2c026b64714a5324bca876a4e17978a6a3875137def7ffbfb4e32159",
+            "kind": "requested_symbol_reference"
+          }
+        ],
+        "renderable_context_chars": 6799,
+        "evidence_tokens": 5028,
+        "snapshot_reads_before_request": 10,
+        "snapshot_reads_added_by_request": 0,
+        "snapshot_bytes_added_by_request": 0,
+        "snapshot_cache_files_total": 10,
+        "snapshot_cache_bytes_total": 373950,
+        "snapshot_search_call_count_total": 8,
+        "snapshot_search_call_count_before_request": 7,
+        "snapshot_search_call_count_for_request": 1,
+        "snapshot_search_elapsed_ms_for_request": 26.777,
+        "snapshot_errors": [],
+        "host_index": [
+          {
+            "schema": "python-binding-v1",
+            "status": "partial",
+            "side": "head",
+            "completeness": "partial",
+            "searched_scope": [
+              "src/gimmes/config.py",
+              "src/gimmes/strategy/staleness.py",
+              "tests/unit/test_staleness.py"
+            ],
+            "files_parsed": 3,
+            "source_bytes_parsed": 49765,
+            "source_bytes_run_total": 49765,
+            "scan_ms": 43.081,
+            "omissions": [
+              "scope_limited_to_changed_and_search_hits",
+              "index_byte_limit:src/gimmes/cli.py",
+              "unresolved_or_ambiguous_bindings",
+              "unresolved:dynamic_attribute",
+              "unresolved:unresolved_name",
+              "unresolved:ambiguous_binding",
+              "result_limit"
+            ],
+            "relationships": [
+              {
+                "source": "tests/unit/test_staleness.py",
+                "source_start": 38,
+                "source_end": 38,
+                "target": "src/gimmes/strategy/staleness.py",
+                "target_start": 45,
+                "target_end": 114,
+                "provenance": "lexical_search",
+                "evidence_level": "ambiguous",
+                "strength": "weak"
+              },
+              {
+                "source": "tests/unit/test_staleness.py",
+                "source_start": 51,
+                "source_end": 53,
+                "target": "src/gimmes/strategy/staleness.py",
+                "target_start": 45,
+                "target_end": 114,
+                "provenance": "lexical_search",
+                "evidence_level": "ambiguous",
+                "strength": "weak"
+              },
+              {
+                "source": "tests/unit/test_staleness.py",
+                "source_start": 65,
+                "source_end": 67,
+                "target": "src/gimmes/strategy/staleness.py",
+                "target_start": 45,
+                "target_end": 114,
+                "provenance": "lexical_search",
+                "evidence_level": "ambiguous",
+                "strength": "weak"
+              },
+              {
+                "source": "tests/unit/test_staleness.py",
+                "source_start": 80,
+                "source_end": 82,
+                "target": "src/gimmes/strategy/staleness.py",
+                "target_start": 45,
+                "target_end": 114,
+                "provenance": "lexical_search",
+                "evidence_level": "ambiguous",
+                "strength": "weak"
+              }
+            ]
+          }
+        ],
+        "request_elapsed_ms": 51.814
+      }
+    }
+  },
+  "fixtures": [
+    {
+      "case": "alias_helpful",
+      "budget_tokens": 6000,
+      "request_sequence": [
+        {
+          "hypothesis_id": "H1",
+          "purpose": "Inspect the fixed symbol query",
+          "tool": "search",
+          "symbol": "fetch_record",
+          "side": "head"
+        }
+      ],
+      "manual_fixture_relation": "synthetic host evidence-budget boundary",
+      "variants": {
+        "off": {
+          "outcomes": [
+            {
+              "status": "executed_with_evidence",
+              "normalized_query": {
+                "tool": "search",
+                "symbol": "fetch_record",
+                "side": "head",
+                "limit": 4
+              },
+              "hits": [
+                {
+                  "path": "api.py",
+                  "line": 1
+                },
+                {
+                  "path": "entry.py",
+                  "line": 1
+                }
+              ],
+              "evidence_refs": [
+                "642c299dfc8aab9aaafce84b016657b662f6f1f8c77d8cd038a0208e5afa89e7",
+                "1e0debe6bb54859610c798f076ff0bcf127b5c0c67eab42b0f3bac6dcd043163"
+              ],
+              "reused": false,
+              "omission_reason": null
+            }
+          ],
+          "host_task_statuses": [
+            "executed_with_evidence"
+          ],
+          "excerpts": [
+            {
+              "path": "entry.py",
+              "side": "head",
+              "start_line": 1,
+              "end_line": 6,
+              "evidence_ref": "1e0debe6bb54859610c798f076ff0bcf127b5c0c67eab42b0f3bac6dcd043163",
+              "sha256": "c8560c8cef23a265a48109a80048cd0dc90b516ac7e8a7ed79c39c442488a543",
+              "kind": "requested_symbol_reference"
+            },
+            {
+              "path": "api.py",
+              "side": "head",
+              "start_line": 1,
+              "end_line": 2,
+              "evidence_ref": "642c299dfc8aab9aaafce84b016657b662f6f1f8c77d8cd038a0208e5afa89e7",
+              "sha256": "c75bada97c01047575bf02825f8c0f65897e1a62b07489c98111ad60f258972d",
+              "kind": "requested_symbol_reference"
+            }
+          ],
+          "renderable_context_chars": 954,
+          "evidence_tokens": 828,
+          "snapshot_reads_before_request": 2,
+          "snapshot_reads_added_by_request": 1,
+          "snapshot_bytes_added_by_request": 33,
+          "snapshot_cache_files_total": 3,
+          "snapshot_cache_bytes_total": 228,
+          "snapshot_search_call_count_total": 2,
+          "snapshot_search_call_count_before_request": 1,
+          "snapshot_search_call_count_for_request": 1,
+          "snapshot_search_elapsed_ms_for_request": 19.979,
+          "snapshot_errors": [],
+          "host_index": [],
+          "request_elapsed_ms": 31.269
+        },
+        "on": {
+          "outcomes": [
+            {
+              "status": "executed_with_evidence",
+              "normalized_query": {
+                "tool": "search",
+                "symbol": "fetch_record",
+                "side": "head",
+                "limit": 4
+              },
+              "hits": [
+                {
+                  "path": "entry.py",
+                  "line": 3
+                },
+                {
+                  "path": "api.py",
+                  "line": 1
+                },
+                {
+                  "path": "entry.py",
+                  "line": 1
+                }
+              ],
+              "evidence_refs": [
+                "1e0debe6bb54859610c798f076ff0bcf127b5c0c67eab42b0f3bac6dcd043163",
+                "642c299dfc8aab9aaafce84b016657b662f6f1f8c77d8cd038a0208e5afa89e7"
+              ],
+              "reused": false,
+              "omission_reason": null
+            }
+          ],
+          "host_task_statuses": [
+            "executed_with_evidence"
+          ],
+          "excerpts": [
+            {
+              "path": "entry.py",
+              "side": "head",
+              "start_line": 1,
+              "end_line": 6,
+              "evidence_ref": "1e0debe6bb54859610c798f076ff0bcf127b5c0c67eab42b0f3bac6dcd043163",
+              "sha256": "c8560c8cef23a265a48109a80048cd0dc90b516ac7e8a7ed79c39c442488a543",
+              "kind": "requested_symbol_reference"
+            },
+            {
+              "path": "api.py",
+              "side": "head",
+              "start_line": 1,
+              "end_line": 2,
+              "evidence_ref": "642c299dfc8aab9aaafce84b016657b662f6f1f8c77d8cd038a0208e5afa89e7",
+              "sha256": "c75bada97c01047575bf02825f8c0f65897e1a62b07489c98111ad60f258972d",
+              "kind": "requested_symbol_reference"
+            }
+          ],
+          "renderable_context_chars": 1077,
+          "evidence_tokens": 828,
+          "snapshot_reads_before_request": 2,
+          "snapshot_reads_added_by_request": 1,
+          "snapshot_bytes_added_by_request": 33,
+          "snapshot_cache_files_total": 3,
+          "snapshot_cache_bytes_total": 228,
+          "snapshot_search_call_count_total": 2,
+          "snapshot_search_call_count_before_request": 1,
+          "snapshot_search_call_count_for_request": 1,
+          "snapshot_search_elapsed_ms_for_request": 21.51,
+          "snapshot_errors": [],
+          "host_index": [
+            {
+              "schema": "python-binding-v1",
+              "status": "partial",
+              "side": "head",
+              "completeness": "partial",
+              "searched_scope": [
+                "api.py",
+                "entry.py"
+              ],
+              "files_parsed": 2,
+              "source_bytes_parsed": 148,
+              "source_bytes_run_total": 148,
+              "scan_ms": 33.867,
+              "omissions": [
+                "scope_limited_to_changed_and_search_hits"
+              ],
+              "relationships": [
+                {
+                  "source": "entry.py",
+                  "source_start": 3,
+                  "source_end": 3,
+                  "target": "api.py",
+                  "target_start": 1,
+                  "target_end": 2,
+                  "provenance": "import_binding",
+                  "evidence_level": "exact_binding",
+                  "strength": "strong"
+                }
+              ]
+            }
+          ],
+          "request_elapsed_ms": 34.257
+        }
+      }
+    },
+    {
+      "case": "no_hit",
+      "budget_tokens": 6000,
+      "request_sequence": [
+        {
+          "hypothesis_id": "H1",
+          "purpose": "Inspect the fixed symbol query",
+          "tool": "search",
+          "symbol": "never_called",
+          "side": "head"
+        }
+      ],
+      "manual_fixture_relation": "the requested identifier is absent",
+      "variants": {
+        "off": {
+          "outcomes": [
+            {
+              "status": "executed_no_evidence",
+              "normalized_query": {
+                "tool": "search",
+                "symbol": "never_called",
+                "side": "head",
+                "limit": 4
+              },
+              "hits": [],
+              "evidence_refs": [],
+              "reused": false,
+              "omission_reason": null
+            }
+          ],
+          "host_task_statuses": [
+            "executed_no_evidence"
+          ],
+          "excerpts": [
+            {
+              "path": "entry.py",
+              "side": "head",
+              "start_line": 1,
+              "end_line": 5,
+              "evidence_ref": "0c705c2988fe64e0f95743adeeeccd9c9870d2391fec4125cf9cd6b22ca5e7ab",
+              "sha256": "ae29042fb366c957a0df27d86f5c2a96b884badec20f9ad32cf8e23ee88a0288",
+              "kind": "changed_definition"
+            },
+            {
+              "path": "entry.py",
+              "side": "base",
+              "start_line": 1,
+              "end_line": 2,
+              "evidence_ref": "f48f722e2c5082267dbc7e8ddc4c0be2c15c2831a9b2ce7a58c360ac0b505b32",
+              "sha256": "5f724f20b4a9c777caaac19c2fa8fe84ff2c80a031642f228b053a4b16a6ee49",
+              "kind": "previous_definition"
+            }
+          ],
+          "renderable_context_chars": 903,
+          "evidence_tokens": 785,
+          "snapshot_reads_before_request": 2,
+          "snapshot_reads_added_by_request": 0,
+          "snapshot_bytes_added_by_request": 0,
+          "snapshot_cache_files_total": 2,
+          "snapshot_cache_bytes_total": 103,
+          "snapshot_search_call_count_total": 2,
+          "snapshot_search_call_count_before_request": 1,
+          "snapshot_search_call_count_for_request": 1,
+          "snapshot_search_elapsed_ms_for_request": 24.721,
+          "snapshot_errors": [],
+          "host_index": [],
+          "request_elapsed_ms": 24.951
+        },
+        "on": {
+          "outcomes": [
+            {
+              "status": "executed_no_evidence",
+              "normalized_query": {
+                "tool": "search",
+                "symbol": "never_called",
+                "side": "head",
+                "limit": 4
+              },
+              "hits": [],
+              "evidence_refs": [],
+              "reused": false,
+              "omission_reason": null
+            }
+          ],
+          "host_task_statuses": [
+            "executed_no_evidence"
+          ],
+          "excerpts": [
+            {
+              "path": "entry.py",
+              "side": "head",
+              "start_line": 1,
+              "end_line": 5,
+              "evidence_ref": "0c705c2988fe64e0f95743adeeeccd9c9870d2391fec4125cf9cd6b22ca5e7ab",
+              "sha256": "ae29042fb366c957a0df27d86f5c2a96b884badec20f9ad32cf8e23ee88a0288",
+              "kind": "changed_definition"
+            },
+            {
+              "path": "entry.py",
+              "side": "base",
+              "start_line": 1,
+              "end_line": 2,
+              "evidence_ref": "f48f722e2c5082267dbc7e8ddc4c0be2c15c2831a9b2ce7a58c360ac0b505b32",
+              "sha256": "5f724f20b4a9c777caaac19c2fa8fe84ff2c80a031642f228b053a4b16a6ee49",
+              "kind": "previous_definition"
+            }
+          ],
+          "renderable_context_chars": 1063,
+          "evidence_tokens": 785,
+          "snapshot_reads_before_request": 2,
+          "snapshot_reads_added_by_request": 0,
+          "snapshot_bytes_added_by_request": 0,
+          "snapshot_cache_files_total": 2,
+          "snapshot_cache_bytes_total": 103,
+          "snapshot_search_call_count_total": 2,
+          "snapshot_search_call_count_before_request": 1,
+          "snapshot_search_call_count_for_request": 1,
+          "snapshot_search_elapsed_ms_for_request": 22.703,
+          "snapshot_errors": [],
+          "host_index": [
+            {
+              "schema": "python-binding-v1",
+              "status": "partial",
+              "side": "head",
+              "completeness": "partial",
+              "searched_scope": [
+                "entry.py"
+              ],
+              "files_parsed": 1,
+              "source_bytes_parsed": 69,
+              "source_bytes_run_total": 69,
+              "scan_ms": 23.262,
+              "omissions": [
+                "scope_limited_to_changed_and_search_hits",
+                "symbol_definition_not_in_index_scope"
+              ],
+              "relationships": []
+            }
+          ],
+          "request_elapsed_ms": 23.405
+        }
+      }
+    },
+    {
+      "case": "same_name_ambiguous",
+      "budget_tokens": 6000,
+      "request_sequence": [
+        {
+          "hypothesis_id": "H1",
+          "purpose": "Inspect the fixed symbol query",
+          "tool": "search",
+          "symbol": "fetch_record",
+          "side": "head"
+        }
+      ],
+      "manual_fixture_relation": "synthetic host evidence-budget boundary",
+      "variants": {
+        "off": {
+          "outcomes": [
+            {
+              "status": "executed_with_evidence",
+              "normalized_query": {
+                "tool": "search",
+                "symbol": "fetch_record",
+                "side": "head",
+                "limit": 4
+              },
+              "hits": [
+                {
+                  "path": "alpha.py",
+                  "line": 1
+                },
+                {
+                  "path": "beta.py",
+                  "line": 1
+                },
+                {
+                  "path": "entry.py",
+                  "line": 1
+                }
+              ],
+              "evidence_refs": [
+                "30e43f95953cd49c7c4f2d5d68f570279c72016743b590e134f883af354ee4e1",
+                "c434a12ab1d840767bc95454090cc9e5cbc6fd628402b7866e23fd366f45bcd2",
+                "dd81602ead1f87beee566d597e8b2f0782fcfe87de9261f8d5d3aa1c53f92eb9"
+              ],
+              "reused": false,
+              "omission_reason": null
+            }
+          ],
+          "host_task_statuses": [
+            "executed_with_evidence"
+          ],
+          "excerpts": [
+            {
+              "path": "entry.py",
+              "side": "head",
+              "start_line": 1,
+              "end_line": 7,
+              "evidence_ref": "dd81602ead1f87beee566d597e8b2f0782fcfe87de9261f8d5d3aa1c53f92eb9",
+              "sha256": "3ca2727f527c685eb27629b5fc24b5cea5d70e15202e046721813397f264d76c",
+              "kind": "requested_symbol_reference"
+            },
+            {
+              "path": "alpha.py",
+              "side": "head",
+              "start_line": 1,
+              "end_line": 2,
+              "evidence_ref": "30e43f95953cd49c7c4f2d5d68f570279c72016743b590e134f883af354ee4e1",
+              "sha256": "97f539cd2ebc3fa32c33285abb06015240f85d0805916223023d47208bd07ea8",
+              "kind": "requested_symbol_reference"
+            },
+            {
+              "path": "beta.py",
+              "side": "head",
+              "start_line": 1,
+              "end_line": 2,
+              "evidence_ref": "c434a12ab1d840767bc95454090cc9e5cbc6fd628402b7866e23fd366f45bcd2",
+              "sha256": "043456e9afa918b21433b3c8e13cfa9537bcda64140fbd86fcf12b816465fdd7",
+              "kind": "requested_symbol_reference"
+            }
+          ],
+          "renderable_context_chars": 1403,
+          "evidence_tokens": 1275,
+          "snapshot_reads_before_request": 2,
+          "snapshot_reads_added_by_request": 2,
+          "snapshot_bytes_added_by_request": 70,
+          "snapshot_cache_files_total": 4,
+          "snapshot_cache_bytes_total": 379,
+          "snapshot_search_call_count_total": 2,
+          "snapshot_search_call_count_before_request": 1,
+          "snapshot_search_call_count_for_request": 1,
+          "snapshot_search_elapsed_ms_for_request": 20.298,
+          "snapshot_errors": [],
+          "host_index": [],
+          "request_elapsed_ms": 41.712
+        },
+        "on": {
+          "outcomes": [
+            {
+              "status": "executed_with_evidence",
+              "normalized_query": {
+                "tool": "search",
+                "symbol": "fetch_record",
+                "side": "head",
+                "limit": 4
+              },
+              "hits": [
+                {
+                  "path": "alpha.py",
+                  "line": 1
+                },
+                {
+                  "path": "beta.py",
+                  "line": 1
+                },
+                {
+                  "path": "entry.py",
+                  "line": 1
+                }
+              ],
+              "evidence_refs": [
+                "30e43f95953cd49c7c4f2d5d68f570279c72016743b590e134f883af354ee4e1",
+                "c434a12ab1d840767bc95454090cc9e5cbc6fd628402b7866e23fd366f45bcd2",
+                "dd81602ead1f87beee566d597e8b2f0782fcfe87de9261f8d5d3aa1c53f92eb9"
+              ],
+              "reused": false,
+              "omission_reason": null
+            }
+          ],
+          "host_task_statuses": [
+            "executed_with_evidence"
+          ],
+          "excerpts": [
+            {
+              "path": "entry.py",
+              "side": "head",
+              "start_line": 1,
+              "end_line": 7,
+              "evidence_ref": "dd81602ead1f87beee566d597e8b2f0782fcfe87de9261f8d5d3aa1c53f92eb9",
+              "sha256": "3ca2727f527c685eb27629b5fc24b5cea5d70e15202e046721813397f264d76c",
+              "kind": "requested_symbol_reference"
+            },
+            {
+              "path": "alpha.py",
+              "side": "head",
+              "start_line": 1,
+              "end_line": 2,
+              "evidence_ref": "30e43f95953cd49c7c4f2d5d68f570279c72016743b590e134f883af354ee4e1",
+              "sha256": "97f539cd2ebc3fa32c33285abb06015240f85d0805916223023d47208bd07ea8",
+              "kind": "requested_symbol_reference"
+            },
+            {
+              "path": "beta.py",
+              "side": "head",
+              "start_line": 1,
+              "end_line": 2,
+              "evidence_ref": "c434a12ab1d840767bc95454090cc9e5cbc6fd628402b7866e23fd366f45bcd2",
+              "sha256": "043456e9afa918b21433b3c8e13cfa9537bcda64140fbd86fcf12b816465fdd7",
+              "kind": "requested_symbol_reference"
+            }
+          ],
+          "renderable_context_chars": 1550,
+          "evidence_tokens": 1275,
+          "snapshot_reads_before_request": 2,
+          "snapshot_reads_added_by_request": 2,
+          "snapshot_bytes_added_by_request": 70,
+          "snapshot_cache_files_total": 4,
+          "snapshot_cache_bytes_total": 379,
+          "snapshot_search_call_count_total": 2,
+          "snapshot_search_call_count_before_request": 1,
+          "snapshot_search_call_count_for_request": 1,
+          "snapshot_search_elapsed_ms_for_request": 20.586,
+          "snapshot_errors": [],
+          "host_index": [
+            {
+              "schema": "python-binding-v1",
+              "status": "partial",
+              "side": "head",
+              "completeness": "partial",
+              "searched_scope": [
+                "alpha.py",
+                "beta.py",
+                "entry.py"
+              ],
+              "files_parsed": 3,
+              "source_bytes_parsed": 242,
+              "source_bytes_run_total": 242,
+              "scan_ms": 42.26,
+              "omissions": [
+                "scope_limited_to_changed_and_search_hits",
+                "ambiguous_symbol_target"
+              ],
+              "relationships": []
+            }
+          ],
+          "request_elapsed_ms": 42.762
+        }
+      }
+    },
+    {
+      "case": "evidence_budget_boundary",
+      "budget_tokens": 1,
+      "request_sequence": [
+        {
+          "hypothesis_id": "H1",
+          "purpose": "Inspect the fixed symbol query",
+          "tool": "search",
+          "symbol": "fetch_record",
+          "side": "head"
+        }
+      ],
+      "manual_fixture_relation": "synthetic host evidence-budget boundary",
+      "variants": {
+        "off": {
+          "outcomes": [
+            {
+              "status": "executed_no_evidence",
+              "normalized_query": {
+                "tool": "search",
+                "symbol": "fetch_record",
+                "side": "head",
+                "limit": 4
+              },
+              "hits": [
+                {
+                  "path": "api.py",
+                  "line": 1
+                },
+                {
+                  "path": "entry.py",
+                  "line": 1
+                }
+              ],
+              "evidence_refs": [],
+              "reused": false,
+              "omission_reason": "evidence_budget_exhausted"
+            }
+          ],
+          "host_task_statuses": [
+            "executed_no_evidence"
+          ],
+          "excerpts": [],
+          "renderable_context_chars": 343,
+          "evidence_tokens": 0,
+          "snapshot_reads_before_request": 2,
+          "snapshot_reads_added_by_request": 1,
+          "snapshot_bytes_added_by_request": 33,
+          "snapshot_cache_files_total": 3,
+          "snapshot_cache_bytes_total": 228,
+          "snapshot_search_call_count_total": 2,
+          "snapshot_search_call_count_before_request": 1,
+          "snapshot_search_call_count_for_request": 1,
+          "snapshot_search_elapsed_ms_for_request": 21.848,
+          "snapshot_errors": [],
+          "host_index": [],
+          "request_elapsed_ms": 32.916
+        },
+        "on": {
+          "outcomes": [
+            {
+              "status": "executed_no_evidence",
+              "normalized_query": {
+                "tool": "search",
+                "symbol": "fetch_record",
+                "side": "head",
+                "limit": 4
+              },
+              "hits": [
+                {
+                  "path": "entry.py",
+                  "line": 3
+                },
+                {
+                  "path": "api.py",
+                  "line": 1
+                },
+                {
+                  "path": "entry.py",
+                  "line": 1
+                }
+              ],
+              "evidence_refs": [],
+              "reused": false,
+              "omission_reason": "evidence_budget_exhausted"
+            }
+          ],
+          "host_task_statuses": [
+            "executed_no_evidence"
+          ],
+          "excerpts": [],
+          "renderable_context_chars": 545,
+          "evidence_tokens": 0,
+          "snapshot_reads_before_request": 2,
+          "snapshot_reads_added_by_request": 1,
+          "snapshot_bytes_added_by_request": 33,
+          "snapshot_cache_files_total": 3,
+          "snapshot_cache_bytes_total": 228,
+          "snapshot_search_call_count_total": 2,
+          "snapshot_search_call_count_before_request": 1,
+          "snapshot_search_call_count_for_request": 1,
+          "snapshot_search_elapsed_ms_for_request": 21.552,
+          "snapshot_errors": [],
+          "host_index": [
+            {
+              "schema": "python-binding-v1",
+              "status": "partial",
+              "side": "head",
+              "completeness": "partial",
+              "searched_scope": [
+                "api.py",
+                "entry.py"
+              ],
+              "files_parsed": 2,
+              "source_bytes_parsed": 148,
+              "source_bytes_run_total": 148,
+              "scan_ms": 32.484,
+              "omissions": [
+                "scope_limited_to_changed_and_search_hits"
+              ],
+              "relationships": [
+                {
+                  "source": "entry.py",
+                  "source_start": 3,
+                  "source_end": 3,
+                  "target": "api.py",
+                  "target_start": 1,
+                  "target_end": 2,
+                  "provenance": "import_binding",
+                  "evidence_level": "exact_binding",
+                  "strength": "strong"
+                }
+              ]
+            }
+          ],
+          "request_elapsed_ms": 32.907
+        }
+      }
+    }
+  ]
+}

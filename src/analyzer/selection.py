@@ -1,10 +1,9 @@
 """Choose which hunks to review under a token budget, by value density.
 
-Context building used to truncate in file order, which is arbitrary: the tail was
-dropped regardless of whether it mattered, and the only defence was an omission
-list. When the diff does not fit, choosing what to review is a knapsack problem,
-so it is solved as one - greedily, by value per token, because the sizes are tiny
-and the ordering is stable.
+This selector provides a value-aware alternative to the context builder's
+file-order truncation. When a diff does not fit, choosing what to review is a
+knapsack problem, so it is solved greedily by value per token because the sizes
+are tiny and the ordering is stable.
 
 The value function is a declared policy, not a hidden heuristic:
 

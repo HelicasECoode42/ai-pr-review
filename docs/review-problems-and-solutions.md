@@ -78,13 +78,13 @@ PR metadata + diff
 ### 数据契约
 
 **P1 · gold 口径手写漂移。** 同一份官方 JSON 是 `11 introduced + 3 exacerbated + 2 pre-existing`，裁决文档写 `12+2+2`；分母都是 14 但标签靠人记。
-→ 证据：[`evaluation/real-dev-pair-2026-10-19.md`](evaluation/real-dev-pair-2026-10-19.md)、[`evaluation/grounded-missing-evidence-ablation-budget3-v2-result.md`](evaluation/grounded-missing-evidence-ablation-budget3-v2-result.md)
+→ 证据：[`evaluation/real-dev-pair-2026-10-19.md`](https://github.com/HelicasECoode42/ai-pr-review/blob/df397d5/docs/evaluation/real-dev-pair-2026-10-19.md)、[`evaluation/grounded-missing-evidence-ablation-budget3-v2-result.md`](https://github.com/HelicasECoode42/ai-pr-review/blob/df397d5/docs/evaluation/grounded-missing-evidence-ablation-budget3-v2-result.md)
 
 **P2 · S 不可重建。** 历史真实配对没有保存 serialized prompt，report 里也没有行级暴露范围，只能写 `S = unknown`；事后无法区分"没送进去"和"送进去了没发现"。
-→ 证据：[`evaluation/real-dev-pair-2026-10-19.md`](evaluation/real-dev-pair-2026-10-19.md) 的 prompt exposure 段
+→ 证据：[`evaluation/real-dev-pair-2026-10-19.md`](https://github.com/HelicasECoode42/ai-pr-review/blob/df397d5/docs/evaluation/real-dev-pair-2026-10-19.md) 的 prompt exposure 段
 
 **P3 · D 位置匹配太粗。** 同文件同区间可以放一条描述完全不同缺陷的候选。CrabTrap 位置 D=3、语义 D=0；AA-Factory 位置与语义命中 id 不同。
-→ 证据：[`evaluation/raw-model-baseline-2026-10-20.md`](evaluation/raw-model-baseline-2026-10-20.md)、[`evaluation/d-forced-checks-2026-10-20.md`](evaluation/d-forced-checks-2026-10-20.md)
+→ 证据：[`evaluation/raw-model-baseline-2026-10-20.md`](https://github.com/HelicasECoode42/ai-pr-review/blob/df397d5/docs/evaluation/raw-model-baseline-2026-10-20.md)、[`evaluation/d-forced-checks-2026-10-20.md`](https://github.com/HelicasECoode42/ai-pr-review/blob/df397d5/docs/evaluation/d-forced-checks-2026-10-20.md)
 
 **P4 · 付费实验被脏工作区阻塞。** `src/evaluation/paired.py` 在 `git status` 非空时直接拒绝运行（"Paired evaluation requires a clean committed reviewer"）；工作区曾有 86 处未提交改动，导致可归因实验无法开始。
 → 证据：`paired.py` 的 clean-tree gate
@@ -92,18 +92,18 @@ PR metadata + diff
 ### S 层
 
 **P5 · Go 证据窗口确定性错误。** `func (r *T) name(...) RetType {` 的 receiver/返回类型让 brace 启发式失效；fallback 把 SQL `IN (`、Go `len(` 当函数名；假 symbol 被 `follow()` 拿去 search，烧掉证据预算；每文件只 seed 前 2 个 hunk，导致 helper 所在第 3 个 hunk 永不读取。CrabTrap gold #1 的 371/395 因此进不了 prompt。
-→ 证据：[`evaluation/data-contract-2026-10-20.md`](evaluation/data-contract-2026-10-20.md)、anchor 复现表
+→ 证据：[`evaluation/data-contract-2026-10-20.md`](https://github.com/HelicasECoode42/ai-pr-review/blob/df397d5/docs/evaluation/data-contract-2026-10-20.md)、anchor 复现表
 
 **P6 · S 的剩余缺口是预算性的。** pika 57.9%、chronicle 60%、agents-config 33.3%；未可见主因是文档类排除与超预算截断。已测过的两条路都更差：per-file 预算摊薄（S 74→70）、unit 全量切片（9/146 units、558k tokens）。
-→ 证据：[`evaluation/funnel-2026-10-20.md`](evaluation/funnel-2026-10-20.md)、`src/utils/config.py` 的 unit 注释
+→ 证据：[`evaluation/funnel-2026-10-20.md`](https://github.com/HelicasECoode42/ai-pr-review/blob/df397d5/docs/evaluation/funnel-2026-10-20.md)、`src/utils/config.py` 的 unit 注释
 
 ### D 层
 
 **P7 · harness 在压制 D。** 同一模型、同一输入：raw 单次最小调用 D_sem 30.4%，harness 8.7%；raw 成本低约 40%。harness 的 hypotheses/工具循环/多阶段/schema/verification 组合把弱候选压掉了。
-→ 证据：[`evaluation/raw-model-baseline-2026-10-20.md`](evaluation/raw-model-baseline-2026-10-20.md)
+→ 证据：[`evaluation/raw-model-baseline-2026-10-20.md`](https://github.com/HelicasECoode42/ai-pr-review/blob/df397d5/docs/evaluation/raw-model-baseline-2026-10-20.md)
 
 **P8 · prompt 纪律无效。** 强制"调用方/错误分支/生命周期"三问后，两臂 D_sem 完全相同（2/23），只多了约 10% 成本；模型照格式写了理由，但没有新发现。
-→ 证据：[`evaluation/d-forced-checks-2026-10-20.md`](evaluation/d-forced-checks-2026-10-20.md)
+→ 证据：[`evaluation/d-forced-checks-2026-10-20.md`](https://github.com/HelicasECoode42/ai-pr-review/blob/df397d5/docs/evaluation/d-forced-checks-2026-10-20.md)
 
 **P9 · 证据的作用是分类型的。** 跨文件 case 需要证据（CrabTrap raw diff 0→3），局部 case 被证据稀释（AA 4→3）。不能全局"多给证据"。
 → 证据：同上 raw 基线表
@@ -114,12 +114,12 @@ PR metadata + diff
 ### P 层
 
 **P11 · 已识别的 TP 被核验扣下。** AA-Factory 两条语义命中都是 pending、0 published；历史 b7b 也有 `matched_but_withheld`（5 dev 里 3 条，identified 18.6% → published 11.6%）。
-→ 证据：[`evaluation/d-forced-checks-2026-10-20.md`](evaluation/d-forced-checks-2026-10-20.md)、`reports/real-run/b7b-diagnostic.json`
+→ 证据：[`evaluation/d-forced-checks-2026-10-20.md`](https://github.com/HelicasECoode42/ai-pr-review/blob/df397d5/docs/evaluation/d-forced-checks-2026-10-20.md)、`reports/real-run/b7b-diagnostic.json`
 
 ### 评测与工程
 
 **P12 · 评测只有终点、没有漏斗。** 之前只有 published 的 P/R，没有 N/S/D/P 分层，导致每次改动无法归因；可离线测的可靠性工作获得正反馈，真正影响 recall 的 S/D 被推迟。
-→ 证据：[`evaluation/funnel-2026-10-20.md`](evaluation/funnel-2026-10-20.md) 的动机段
+→ 证据：[`evaluation/funnel-2026-10-20.md`](https://github.com/HelicasECoode42/ai-pr-review/blob/df397d5/docs/evaluation/funnel-2026-10-20.md) 的动机段
 
 **P13 · 测试数增长与真实损失路径错位。** 577 个测试全绿的同时，Go 证据窗口 bug 长期存在；CI 最低 Ruff 还被 `tests/fixtures` 的故意不完整源码打红。
 → 证据：[`tests/test_evidence_window.py`](../tests/test_evidence_window.py)、`pyproject.toml` 的 per-file-ignores
@@ -272,11 +272,11 @@ REVIEW_THINKING_ENABLED=false .venv/bin/python scripts/evaluation/raw_model_base
 
 **证据与报告**
 
-- [`evaluation/data-contract-2026-10-20.md`](evaluation/data-contract-2026-10-20.md)
-- [`evaluation/funnel-2026-10-20.md`](evaluation/funnel-2026-10-20.md)
-- [`evaluation/d-baseline-crabtrap-2026-10-20.md`](evaluation/d-baseline-crabtrap-2026-10-20.md)
-- [`evaluation/d-forced-checks-2026-10-20.md`](evaluation/d-forced-checks-2026-10-20.md)
-- [`evaluation/raw-model-baseline-2026-10-20.md`](evaluation/raw-model-baseline-2026-10-20.md)
+- [`evaluation/data-contract-2026-10-20.md`](https://github.com/HelicasECoode42/ai-pr-review/blob/df397d5/docs/evaluation/data-contract-2026-10-20.md)
+- [`evaluation/funnel-2026-10-20.md`](https://github.com/HelicasECoode42/ai-pr-review/blob/df397d5/docs/evaluation/funnel-2026-10-20.md)
+- [`evaluation/d-baseline-crabtrap-2026-10-20.md`](https://github.com/HelicasECoode42/ai-pr-review/blob/df397d5/docs/evaluation/d-baseline-crabtrap-2026-10-20.md)
+- [`evaluation/d-forced-checks-2026-10-20.md`](https://github.com/HelicasECoode42/ai-pr-review/blob/df397d5/docs/evaluation/d-forced-checks-2026-10-20.md)
+- [`evaluation/raw-model-baseline-2026-10-20.md`](https://github.com/HelicasECoode42/ai-pr-review/blob/df397d5/docs/evaluation/raw-model-baseline-2026-10-20.md)
 - [`STATE.md`](STATE.md)（带日期的当前状态与证据边界）
 
 **测试**

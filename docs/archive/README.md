@@ -11,7 +11,7 @@
 | [`architecture-and-positioning-review.md`](architecture-and-positioning-review.md) | 项目盘点与诊断：为什么效果差、与别的 harness / 腾讯架构对比 |
 | [`review-loop-design.md`](review-loop-design.md) | 审查闭环：发现 → 取证 → 核验 → 判定，指标定义与安全 |
 | [`self-improving-plan.md`](self-improving-plan.md) | RSI 详细设计（发布工程 + playbook 增量 + 门禁） |
-| [`../evaluation/identification-baseline.md`](../evaluation/identification-baseline.md) | 错误识别基线（已知答案实测 + 真实运行手工判定） |
+| [`../evaluation/identification-baseline.md`](https://github.com/HelicasECoode42/ai-pr-review/blob/df397d5/docs/evaluation/identification-baseline.md) | 错误识别基线（已知答案实测 + 真实运行手工判定） |
 | [`../evaluation-protocol.md`](../evaluation-protocol.md) | 评测协议 |
 | [`../error-handling-policy.md`](../error-handling-policy.md) | 降级与错误处理政策 |
 | [`../review-guide.md`](../review-guide.md) | 使用与审查判据说明 |

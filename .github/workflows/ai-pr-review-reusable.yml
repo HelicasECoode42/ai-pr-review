@@ -102,6 +102,18 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
 
+      - name: Checkout trusted reviewer source
+        id: trusted_reviewer_checkout
+        uses: actions/checkout@v4
+        with:
+          repository: HelicasECoode42/ai-pr-review
+          ref: ${{ inputs.reviewer_ref }}
+          path: _trusted_reviewer
+
+      - name: Resolve checked out reviewer commit
+        id: trusted_reviewer
+        run: echo "sha=$(git -C _trusted_reviewer rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Resolve PR number
         id: pr
         run: |
@@ -112,7 +124,14 @@ jobs:
           fi
           echo "number=${pr}" >> "$GITHUB_OUTPUT"
 
+      - name: Create isolated report directory
+        id: report_dir
+        run: |
+          report_dir="$(mktemp -d "$RUNNER_TEMP/ai-pr-review.XXXXXX")"
+          echo "path=${report_dir}" >> "$GITHUB_OUTPUT"
+
       - name: Run the reviewer from the tool repository
+        id: review
         # Inputs reach the shell only through env vars: interpolating ${{ }} straight
         # into a run script would let a caller-controlled value inject commands.
         env:
@@ -121,20 +140,23 @@ jobs:
           OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
           REVIEW_MODEL: ${{ secrets.REVIEW_MODEL }}
           CRITIC_MODEL: ${{ secrets.CRITIC_MODEL }}
+          AI_PR_REVIEW_TRUSTED_CI: "1"
+          TRUSTED_PLAYBOOK_PATH: ${{ github.workspace }}/_trusted_reviewer/knowledge/playbook.md
+          REPORT_DIR: ${{ steps.report_dir.outputs.path }}
           MAX_REVIEW_INPUT_TOKENS: ${{ inputs.max_input_tokens }}
           MAX_INPUT_TOKEN_UPPER_BOUND: ${{ inputs.max_input_token_upper_bound }}
           # Caller checkout dotenv must not redirect durable writes into outputs.
           DECISION_LEDGER_ENABLED: "true"
-          DECISION_LEDGER_PATH: reports/decision-ledger.jsonl
+          DECISION_LEDGER_PATH: ${{ steps.report_dir.outputs.path }}/decision-ledger.jsonl
           STRATEGY_POLICY_STORE_DIR: ${{ inputs.strategy_policy_store_dir }}
           INPUT_LANGUAGE: ${{ inputs.language }}
           INPUT_MAX_SUGGESTIONS: ${{ inputs.max_suggestions }}
           INPUT_REVIEWER_REF: ${{ inputs.reviewer_ref }}
+          INPUT_REVIEWER_COMMIT: ${{ steps.trusted_reviewer.outputs.sha }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           TARGET_REPO: ${{ github.repository }}
         run: |
-          mkdir -p reports
-          args=(--format json --output reports/pr-review.json
+          args=(--format json --output "${REPORT_DIR}/pr-review.json"
                 --max-suggestions "${INPUT_MAX_SUGGESTIONS}")
           # The CLI validates --language against en|zh, so "auto" means omit it.
           if [ "${INPUT_LANGUAGE}" != "auto" ]; then
@@ -142,25 +164,46 @@ jobs:
           fi
           # One model run: the JSON report is the source for both the summary
           # comment and the optional inline comments.
-          uvx --from "git+https://github.com/HelicasECoode42/ai-pr-review@${INPUT_REVIEWER_REF}" \
+          uvx --from "git+https://github.com/HelicasECoode42/ai-pr-review@${INPUT_REVIEWER_COMMIT}" \
             ai-pr-review "${TARGET_REPO}" "${PR_NUMBER}" "${args[@]}"
 
       - name: Post summary comment
-        if: always()
+        if: always() && steps.review.outcome == 'success'
         continue-on-error: true
         uses: actions/github-script@v7
         env:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
+          REPORT_DIR: ${{ steps.report_dir.outputs.path }}
         with:
           script: |
             const fs = require("fs");
-            const path = "reports/pr-review.json";
+            const path = `${process.env.REPORT_DIR}/pr-review.json`;
             if (!fs.existsSync(path)) {
               core.warning("No review report was produced; nothing to post.");
               return;
             }
-            const report = JSON.parse(fs.readFileSync(path, "utf8"));
+            const payload = JSON.parse(fs.readFileSync(path, "utf8"));
+            const report = payload.report || payload;
             const prNumber = context.payload.pull_request?.number || Number(process.env.PR_NUMBER);
+            const gate = require(`${process.env.GITHUB_WORKSPACE}/_trusted_reviewer/scripts/publication_gate.js`);
+            let current;
+            try {
+              current = await github.rest.pulls.get({ owner: context.repo.owner,
+                repo: context.repo.repo, pull_number: prNumber });
+            } catch (error) {
+              core.warning(`Cannot verify current PR head; summary not published: ${error.message}`);
+              return;
+            }
+            if (!gate.validateRunReport(report, {
+                repo: `${context.repo.owner}/${context.repo.repo}`, prNumber,
+                headSha: current.data.head?.sha,
+            })
+                || report.pr?.repo?.toLowerCase() !== `${context.repo.owner}/${context.repo.repo}`.toLowerCase()
+                || Number(report.pr?.number) !== Number(prNumber)
+                || report.pr?.head_sha !== current.data.head?.sha) {
+              core.warning("Report identity or run status is not eligible for publication.");
+              return;
+            }
             const suggestions = report.suggestions || [];
             const pending = report.pending_suggestions || [];
             const lines = [
@@ -196,6 +239,12 @@ jobs:
               owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber,
             })).find(c => c.user?.login === authenticatedUser
               && (c.body || "").includes("<!-- ai-pr-review-bot -->"));
+            const beforePost = await github.rest.pulls.get({ owner: context.repo.owner,
+              repo: context.repo.repo, pull_number: prNumber });
+            if (beforePost.data.head?.sha !== report.pr.head_sha) {
+              core.warning("PR head changed before the summary comment; skipping publication.");
+              return;
+            }
             if (existing) {
               await github.rest.issues.updateComment({
                 owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body,
@@ -209,17 +258,27 @@ jobs:
             }
 
       - name: Post inline comments (opt-in)
-        if: ${{ inputs.post_inline }}
+        if: ${{ inputs.post_inline && steps.review.outcome == 'success' }}
         continue-on-error: true
         uses: actions/github-script@v7
         env:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
+          REPORT_DIR: ${{ steps.report_dir.outputs.path }}
         with:
           script: |
             const fs = require("fs");
-            const path = "reports/pr-review.json";
-            if (!fs.existsSync(path)) return;
-            const report = JSON.parse(fs.readFileSync(path, "utf8"));
+            const path = `${process.env.REPORT_DIR}/pr-review.json`;
+            const publicationPath = `${process.env.REPORT_DIR}/publication.json`;
+            const writeTerminal = (status, reason, candidates = []) => fs.writeFileSync(
+              publicationPath, JSON.stringify({ schema_version: 1, status, reason,
+                candidates }, null, 2) + "\n");
+            if (!fs.existsSync(path)) {
+              writeTerminal("unavailable", "review_report_missing");
+              core.warning("No review report was produced; inline publication is unavailable.");
+              return;
+            }
+            const payload = JSON.parse(fs.readFileSync(path, "utf8"));
+            const report = payload.report || payload;
             const minConfidence = typeof report.metrics?.publish_min_confidence === "number"
               ? report.metrics.publish_min_confidence
               : 0.80;
@@ -235,12 +294,25 @@ jobs:
                 || Number(report.pr?.number) !== Number(prNumber)
                 || report.pr?.head_sha !== commitId) {
               core.warning("Missing or mismatched frozen publication identity/fingerprints.");
-              fs.writeFileSync("reports/publication.json", JSON.stringify({
+              fs.writeFileSync(`${process.env.REPORT_DIR}/publication.json`, JSON.stringify({
                 schema_version: 1, status: "unavailable", candidates: [],
                 reason: "missing_or_mismatched_publication_identity",
               }, null, 2) + "\n");
               return;
             }
+            const gate = require(`${process.env.GITHUB_WORKSPACE}/_trusted_reviewer/scripts/publication_gate.js`);
+            if (!gate.validateRunReport(report, {
+              repo: expectedRepo, prNumber, headSha: commitId,
+            })) {
+              core.warning("Report identity, status, or lifecycle is not eligible for inline publication.");
+              writeTerminal("unavailable", "report_not_eligible_for_publication",
+                (report.suggestions || []).map((_, index) => ({ candidate_id: index,
+                  status: "withheld_report_not_eligible" })));
+              return;
+            }
+            const gateEligible = new Map(gate.eligibleSuggestions(report, {
+              repo: expectedRepo, prNumber, headSha: commitId,
+            }).map(item => [item.index, item]));
             const candidates = report.suggestions || [];
             const MAX_INLINE = 10;
             let current;
@@ -249,14 +321,14 @@ jobs:
                 owner: context.repo.owner, repo: context.repo.repo, pull_number: prNumber,
               });
             } catch (error) {
-              fs.writeFileSync("reports/publication.json", JSON.stringify({
-                schema_version: 1, status: "partial", reason: "could_not_read_current_head",
-              }, null, 2) + "\n");
+              writeTerminal("partial", "could_not_read_current_head",
+                candidates.map((_, index) => ({ candidate_id: index,
+                  status: "not_attempted_head_check_error" })));
               core.warning(`Cannot verify current PR head; no inline comments sent: ${error.message}`);
               return;
             }
             if (current.data.head?.sha !== commitId) {
-              fs.writeFileSync("reports/publication.json", JSON.stringify({
+              fs.writeFileSync(`${process.env.REPORT_DIR}/publication.json`, JSON.stringify({
                 schema_version: 1, status: "stale_head", ...{
                   owner: context.repo.owner, repo: context.repo.repo, pr: prNumber,
                   head: commitId, criteria: criteriaVersion,
@@ -269,14 +341,23 @@ jobs:
             }
             const eligible = [];
             const outcomes = candidates.map((s, index) => {
+              const lifecycleCandidate = gateEligible.get(index);
+              if (!lifecycleCandidate
+                  || !s.source || s.source === "rule_unverified") {
+                return { candidate_id: index, source: s.source || "unknown",
+                  status: "withheld_lifecycle_or_source" };
+              }
               if (s.confidence < minConfidence || s.line == null) {
-                return { candidate_id: index, status: "below_publish_threshold" };
+                return { candidate_id: index, source: s.source,
+                  status: "below_publish_threshold" };
               }
               if (!/^[0-9a-f]{24}$/.test(fingerprints[String(index)] || "")) {
-                return { candidate_id: index, status: "unavailable_fingerprint" };
+                return { candidate_id: index, source: s.source,
+                  status: "unavailable_fingerprint" };
               }
               if (eligible.length >= MAX_INLINE) {
-                return { candidate_id: index, status: "not_attempted_limit" };
+                return { candidate_id: index, source: s.source,
+                  status: "not_attempted_limit" };
               }
               eligible.push(index);
               return null;
@@ -297,7 +378,7 @@ jobs:
               });
               authLogin = (await github.rest.users.getAuthenticated()).data.login;
             } catch (error) {
-              fs.writeFileSync("reports/publication.json", JSON.stringify({
+              fs.writeFileSync(`${process.env.REPORT_DIR}/publication.json`, JSON.stringify({
                 schema_version: 1, status: "partial", owner: context.repo.owner,
                 repo: context.repo.repo, pr: prNumber, head: commitId,
                 criteria: criteriaVersion, reason: "could_not_read_publication_state",
@@ -334,39 +415,48 @@ jobs:
               const id = fingerprints[String(index)];
               if (seen.has(id)) {
                 outcomes[index] = { candidate_id: index, fingerprint: id,
-                  status: "duplicate_in_report" };
+                  source: s.source, status: "duplicate_in_report" };
                 continue;
               }
               seen.add(id);
               if (authorDismissals.has(id)) {
                 outcomes[index] = { candidate_id: index, fingerprint: id,
-                  status: "dismissed_by_pr_author" };
+                  source: s.source, status: "dismissed_by_pr_author" };
                 continue;
               }
               if (existingByFingerprint.has(id)) {
                 outcomes[index] = { candidate_id: index, fingerprint: id,
-                  status: "already_published" };
+                  source: s.source, status: "already_published" };
                 continue;
               }
               const body = `**${s.severity}** (${Math.round(s.confidence * 100)}%): ${s.title}\n\n${s.reason}\n\n> ${s.recommendation}`;
               try {
+                const beforePost = await github.rest.pulls.get({
+                  owner: context.repo.owner, repo: context.repo.repo, pull_number: prNumber,
+                });
+                if (beforePost.data.head?.sha !== commitId) {
+                  outcomes[index] = { candidate_id: index, fingerprint: id,
+                    source: s.source, status: "not_attempted_stale_head" };
+                  core.warning("PR head changed before an inline comment; stopping publication.");
+                  break;
+                }
                 await github.rest.pulls.createReviewComment({
                   owner: context.repo.owner, repo: context.repo.repo, pull_number: prNumber,
                   commit_id: commitId, path: s.file_path, line: s.line, side: "RIGHT",
                   body: `${body}\n\n${markerPrefix}${id} -->`,
                 });
                 outcomes[index] = { candidate_id: index, fingerprint: id,
-                  status: "published" };
+                  source: s.source, status: "published" };
               } catch (error) {
                 core.warning(`Inline comment outcome unknown for ${s.file_path}:${s.line}: ${error.message}`);
                 outcomes[index] = { candidate_id: index, fingerprint: id,
-                  status: "unknown_after_api_error" };
+                  source: s.source, status: "unknown_after_api_error" };
               }
             }
-            fs.writeFileSync("reports/publication.json", JSON.stringify({
+            fs.writeFileSync(`${process.env.REPORT_DIR}/publication.json`, JSON.stringify({
               schema_version: 1, owner: context.repo.owner, repo: context.repo.repo,
               pr: prNumber, head: commitId, criteria: criteriaVersion,
-              status: outcomes.some(item => /^(unknown|unavailable)(_|$)/.test(item?.status || ""))
+              status: outcomes.some(item => /^(unknown|unavailable|not_attempted)(_|$)/.test(item?.status || ""))
                 ? "partial" : "complete",
               candidates: outcomes,
             }, null, 2) + "\n");
@@ -378,7 +468,5 @@ jobs:
         with:
           name: pr-review
           path: |
-            reports/pr-review.json
-            reports/publication.json
-            reports/decision-ledger.jsonl
+            ${{ steps.report_dir.outputs.path }}/*
           if-no-files-found: warn

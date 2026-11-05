@@ -51,5 +51,5 @@ Bug 候选需解释变化如何从可达入口影响可观察行为，并绑定 
 下列材料用于设计背景，不能替代本仓实验：
 
 - [历史图规划数据流](graph-planning-dataflow.md) 与 [分组边界研究](grouping-boundaries-and-options.md)。
-- [小批量审查实验](evaluation/flash-small-2026-10-14.md) 与 [数据/知识库审计](evaluation/dataset-audit-2026-10-16.md)。
+- [小批量审查实验](https://github.com/HelicasECoode42/ai-pr-review/blob/df397d5/docs/evaluation/flash-small-2026-10-14.md) 与 [数据/知识库审计](https://github.com/HelicasECoode42/ai-pr-review/blob/df397d5/docs/evaluation/dataset-audit-2026-10-16.md)。
 - [OpenCodeReview 架构](https://github.com/alibaba/open-code-review/blob/main/pages/src/content/docs/en/architecture.md)、[PR-Agent 集成](https://docs.pr-agent.ai/installation/github/)、[Aider repo map](https://aider.chat/docs/repomap.html)。外部项目的架构和结果不等于本项目实现或收益。

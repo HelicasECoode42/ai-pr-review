@@ -50,9 +50,6 @@ def test_auto_strategy_ignores_rule_signal_volume() -> None:
         files_count=4,
         additions=100,
         findings_count=100,
-        high_severity_count=100,
-        signal_files={f"src/file_{index}.py" for index in range(20)},
-        critical_signal_files={"src/auth.py"},
     )
 
     assert strategy == "one_shot_ai"

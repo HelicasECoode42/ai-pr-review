@@ -22,7 +22,7 @@ from src.agent.policy import choose_agent_strategy
 from src.agent.registry import AgentTool, AgentToolRegistry
 from src.agent.state import AgentStep, ReviewAgentState
 from src.agent.trace import redact_secrets, summarize_input, summarize_observation
-from src.models import ReviewReport, Severity
+from src.models import ReviewReport
 from src.utils.config import Settings, get_settings
 from src.application.protocol import AgentContext
 from src.application.review import ReviewApplication
@@ -260,31 +260,12 @@ class ReviewAgentRunner:
         files_count = len(files)
         additions = sum(getattr(f, "additions", 0) for f in files)
         findings_count = len(findings)
-        high_severity_count = sum(
-            1 for f in findings
-            if getattr(f, "severity", None) in (Severity.CRITICAL, Severity.HIGH)
-        )
-
-        signal_files = {
-            str(getattr(finding, "file_path", ""))
-            for finding in findings
-            if getattr(finding, "file_path", "")
-        }
-        critical_signal_files = {
-            str(getattr(finding, "file_path", ""))
-            for finding in findings
-            if getattr(finding, "severity", None) == Severity.CRITICAL
-            and getattr(finding, "file_path", "")
-        }
         strategy, strategy_reason = choose_agent_strategy(
             use_ai=request.use_ai,
             has_api_key=has_api_key,
             files_count=files_count,
             additions=additions,
             findings_count=findings_count,
-            high_severity_count=high_severity_count,
-            signal_files=signal_files,
-            critical_signal_files=critical_signal_files,
             requested_mode=request.agent_mode,
         )
         state.strategy = strategy  # type: ignore[assignment]

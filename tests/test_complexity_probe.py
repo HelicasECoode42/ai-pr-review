@@ -31,12 +31,16 @@ def test_grounded_evidence_budget_and_scripted_legacy_hotspot_routes():
     assert legacy["calls_by_stage"] == {"deep_review": 5, "triage": 1}
 
 
-def test_unsupported_and_failed_routes_are_reported_as_degraded():
+def test_critic_and_failed_routes_are_measured_or_reported_as_degraded():
     f = fixtures()["small"]
     critic = run_arm(f, "grounded_plus_critic")
     timeout = run_arm(f, "one_shot_control", "provider_failure")
-    assert (critic["composition"], critic["configuration_status"], critic["calls"]) == (
-        "unsupported", "unsupported", 0
-    )
+    assert critic["composition"] == "measured"
+    assert critic["configuration_status"] is None
+    assert critic["calls_by_stage"] == {
+        "critic": 1, "discovery": 1, "verification": 1,
+    }
+    assert critic["critic_requested"] is True
+    assert critic["published"] == 1
     assert timeout["execution_status"] == "degraded"
     assert timeout["call_records"][0]["outcome"] == "scripted_timeout"

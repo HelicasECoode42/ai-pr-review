@@ -32,15 +32,9 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.analyzer.context_builder import build_review_context  # noqa: E402
-from src.analyzer.repository_context import EvidenceBundle, GitSnapshot  # noqa: E402
+from src.evaluation.offline_context import prepare_offline_context  # noqa: E402
 from src.evaluation.funnel import funnel_row, overlapping_gold, summarize_funnel  # noqa: E402
 from src.evaluation.gold_visibility import gold_visibility  # noqa: E402
-from src.evaluation.reviewbench import parse_diff  # noqa: E402
-from src.models import PullRequest  # noqa: E402
-
-PATCH_TOKENS = 12000
-EVIDENCE_TOKENS = 6000
 
 
 def _records(prepared: Any) -> list[dict[str, Any]]:
@@ -59,30 +53,9 @@ def _case_gold(gold_dir: Path, case_id: str) -> Any:
 
 def _offline_visibility(record: dict[str, Any], gold_dir: Path, mirrors: Path,
                         max_documentation_tokens: int):
-    metadata = record["metadata"]
-    input_dir = Path(record["input_dir"])
-    files = parse_diff((input_dir / "diff.patch").read_text(encoding="utf-8"))
-    pr = PullRequest(
-        repo=metadata["nwo"], number=int(metadata["pr_number"]),
-        title=metadata.get("title", ""), body=metadata.get("body"),
-        base_ref=metadata.get("base"), base_sha=metadata["base"],
-        head_ref=metadata.get("head"), head_sha=metadata["head"],
+    context, _bundle, refs = prepare_offline_context(
+        record, mirrors, max_documentation_tokens=max_documentation_tokens,
     )
-    context = build_review_context(
-        pr, files, include_context_pack=False, allow_remote_file_fetch=False,
-        max_patch_tokens=PATCH_TOKENS,
-        max_documentation_tokens=max_documentation_tokens,
-    )
-    snapshot = GitSnapshot(
-        mirrors / str(metadata["nwo"]).replace("/", "_"), metadata["base"], metadata["head"]
-    )
-    bundle = EvidenceBundle(snapshot, budget=EVIDENCE_TOKENS)
-    bundle.follow(files)
-    refs = [
-        {"path": item["path"], "side": item["side"],
-         "start_line": item["start_line"], "end_line": item["end_line"]}
-        for item in bundle.excerpts
-    ]
     gold = _case_gold(gold_dir, str(record["case_id"]))
     return gold, gold_visibility(
         gold, rendered_ranges=context.rendered_head_ranges, evidence_refs=refs,

@@ -1,0 +1,888 @@
+{
+  "created_on": "2026-10-26",
+  "repository": {
+    "head": "df397d5",
+    "branch": "codex/evaluation-driven-review",
+    "working_tree": "dirty; measurements include the worktree source bytes hashed below",
+    "runtime_sha256": "17f1cacded80a0aced7392abfc01a26e8d75902cff17e2cfb733dcab0566de1d",
+    "protocol_sha256": "995a7905cf6cf402beb8fcf1938ef9c2feed31532869267a98d27d01df7a0a6b",
+    "helper_sha256": "0b7f689d69436d447cd55b918fdd9bd045b0aa64cf13796364bf29ffeddf35eb"
+  },
+  "environment": {
+    "os": "macOS 27.0.1 arm64",
+    "python": "3.12.7",
+    "pydantic": "2.13.4",
+    "httpx": "0.28.1",
+    "ruff": "0.15.15",
+    "tokenizer": "forced UTF-8 byte upper bound; no tokenizer download; bytes are not tokens",
+    "provider": "scripted fake provider; zero provider HTTP calls",
+    "local_settings_sanitized": {
+      "enable_repository_review": true,
+      "enable_critic": true,
+      "repository_index_enabled": false,
+      "api_key_configured": true,
+      "github_token_configured": true
+    },
+    "benchmark_overrides": "Fake API key; GitHub token unset for benchmark; OPENAI base URL set to localhost:9; fake provider factory; dotenv is not read by synthetic Settings."
+  },
+  "method": {
+    "probe": "scripts/evaluation/complexity_probe.py:run_probe repeated 5x in one Python process",
+    "allan": "scripts/evaluation/index_evidence_p0_replay.py:tracked_reads + GitSnapshot/EvidenceBundle; 5 fresh snapshots per arm, same query/request/budget",
+    "warmth": "new process for every CLI/python launch; same Python process for repeated probe/Allan operations; fresh application snapshots/cache per sample; OS/Git object cache not flushed",
+    "p95": "not reported; n=5 only"
+  },
+  "synthetic_inputs": {
+    "small": {
+      "changed_files": 1,
+      "added_lines": 4,
+      "diff_bytes": 335,
+      "patch_sha256": "6ea2b80c360b1c17b7dfdb7147272352dbfdd06cdc0b6502fa821ec73dfb4730",
+      "snapshot_sha256": "8ee198e9f3e2a0251059999c88c8ea0c0d18ccbde42cbcdb8bbe0645c7278d79",
+      "source_files": 3,
+      "source_bytes": 318
+    },
+    "medium": {
+      "changed_files": 8,
+      "added_lines": 96,
+      "diff_bytes": 4167,
+      "patch_sha256": "834f809b2e4108803cbfc970eeaaf4777a8dcef78480ccd7d240380e6fd938e9",
+      "snapshot_sha256": "b70073d958c8febe3430ce0e7bd9ab031074a533750afe8173c7b208c36e19e2",
+      "source_files": 10,
+      "source_bytes": 2678
+    },
+    "large": {
+      "changed_files": 24,
+      "added_lines": 1560,
+      "diff_bytes": 41759,
+      "patch_sha256": "34aadfe355e6c56703ddb7baa57789dae2e13d3e352e4fea90dadbc3c5ecd273",
+      "snapshot_sha256": "fd94765362b1caa85fc911d7ee99968d548795967632a53f8318a77c4ff4add4",
+      "source_files": 26,
+      "source_bytes": 35654
+    }
+  },
+  "rule_only": {
+    "small": {
+      "scan": {
+        "p50_ms": 38.323,
+        "min_ms": 36.31,
+        "max_ms": 41.622,
+        "n": 5
+      },
+      "report_build": {
+        "p50_ms": 0.113,
+        "min_ms": 0.108,
+        "max_ms": 0.128,
+        "n": 5
+      },
+      "findings": 0,
+      "snapshot_counts": {
+        "read_invocations": 2,
+        "unique_read_keys": 2,
+        "read_cache_hits": 0,
+        "search_invocations": 0
+      }
+    },
+    "medium": {
+      "scan": {
+        "p50_ms": 43.132,
+        "min_ms": 40.382,
+        "max_ms": 46.788,
+        "n": 5
+      },
+      "report_build": {
+        "p50_ms": 0.111,
+        "min_ms": 0.102,
+        "max_ms": 0.12,
+        "n": 5
+      },
+      "findings": 1,
+      "snapshot_counts": {
+        "read_invocations": 16,
+        "unique_read_keys": 16,
+        "read_cache_hits": 0,
+        "search_invocations": 0
+      }
+    },
+    "large": {
+      "scan": {
+        "p50_ms": 87.596,
+        "min_ms": 87.444,
+        "max_ms": 89.712,
+        "n": 5
+      },
+      "report_build": {
+        "p50_ms": 0.116,
+        "min_ms": 0.11,
+        "max_ms": 0.121,
+        "n": 5
+      },
+      "findings": 1,
+      "snapshot_counts": {
+        "read_invocations": 20,
+        "unique_read_keys": 20,
+        "read_cache_hits": 0,
+        "search_invocations": 0
+      }
+    }
+  },
+  "fake_review_arms": {
+    "small": {
+      "one_shot_control": {
+        "end_to_end_fake_chain": {
+          "p50_ms": 46.282,
+          "min_ms": 43.375,
+          "max_ms": 191.16,
+          "n": 5
+        },
+        "application": {
+          "p50_ms": 6.208,
+          "min_ms": 5.821,
+          "max_ms": 14.131,
+          "n": 5
+        },
+        "scan": {
+          "p50_ms": 39.042,
+          "min_ms": 36.411,
+          "max_ms": 175.107,
+          "n": 5
+        },
+        "prompt_utf8_bytes_median": 5782,
+        "output_utf8_bytes_median": 122,
+        "calls": 1,
+        "unsupported": false,
+        "configuration_status": null,
+        "context_truncated_count": 0,
+        "evidence_omissions_median": 0,
+        "large_coverage": null
+      },
+      "current_grounded": {
+        "end_to_end_fake_chain": {
+          "p50_ms": 45.797,
+          "min_ms": 43.756,
+          "max_ms": 52.356,
+          "n": 5
+        },
+        "application": {
+          "p50_ms": 6.658,
+          "min_ms": 6.487,
+          "max_ms": 9.974,
+          "n": 5
+        },
+        "scan": {
+          "p50_ms": 37.831,
+          "min_ms": 36.131,
+          "max_ms": 41.386,
+          "n": 5
+        },
+        "prompt_utf8_bytes_median": 8484,
+        "output_utf8_bytes_median": 122,
+        "calls": 1,
+        "unsupported": false,
+        "configuration_status": null,
+        "context_truncated_count": 0,
+        "evidence_omissions_median": 0,
+        "large_coverage": null
+      },
+      "legacy_two_stage": {
+        "end_to_end_fake_chain": {
+          "p50_ms": 44.149,
+          "min_ms": 42.077,
+          "max_ms": 48.335,
+          "n": 5
+        },
+        "application": {
+          "p50_ms": 5.96,
+          "min_ms": 5.886,
+          "max_ms": 8.326,
+          "n": 5
+        },
+        "scan": {
+          "p50_ms": 37.112,
+          "min_ms": 35.186,
+          "max_ms": 39.011,
+          "n": 5
+        },
+        "prompt_utf8_bytes_median": 8423,
+        "output_utf8_bytes_median": 138,
+        "calls": 2,
+        "unsupported": false,
+        "configuration_status": null,
+        "context_truncated_count": 0,
+        "evidence_omissions_median": 0,
+        "large_coverage": null
+      },
+      "grounded_plus_critic": {
+        "end_to_end_fake_chain": {
+          "p50_ms": 41.8,
+          "min_ms": 40.854,
+          "max_ms": 45.257,
+          "n": 5
+        },
+        "application": {
+          "p50_ms": 4.934,
+          "min_ms": 4.822,
+          "max_ms": 5.108,
+          "n": 5
+        },
+        "scan": {
+          "p50_ms": 35.903,
+          "min_ms": 35.063,
+          "max_ms": 39.439,
+          "n": 5
+        },
+        "prompt_utf8_bytes_median": 0,
+        "output_utf8_bytes_median": 0,
+        "calls": 0,
+        "unsupported": true,
+        "configuration_status": "unsupported",
+        "context_truncated_count": 0,
+        "evidence_omissions_median": 0,
+        "large_coverage": null
+      }
+    },
+    "medium": {
+      "one_shot_control": {
+        "end_to_end_fake_chain": {
+          "p50_ms": 51.906,
+          "min_ms": 49.302,
+          "max_ms": 53.779,
+          "n": 5
+        },
+        "application": {
+          "p50_ms": 6.553,
+          "min_ms": 6.402,
+          "max_ms": 7.198,
+          "n": 5
+        },
+        "scan": {
+          "p50_ms": 43.652,
+          "min_ms": 41.717,
+          "max_ms": 46.181,
+          "n": 5
+        },
+        "prompt_utf8_bytes_median": 8881,
+        "output_utf8_bytes_median": 122,
+        "calls": 1,
+        "unsupported": false,
+        "configuration_status": null,
+        "context_truncated_count": 0,
+        "evidence_omissions_median": 0,
+        "large_coverage": null
+      },
+      "current_grounded": {
+        "end_to_end_fake_chain": {
+          "p50_ms": 55.838,
+          "min_ms": 51.185,
+          "max_ms": 97.257,
+          "n": 5
+        },
+        "application": {
+          "p50_ms": 9.831,
+          "min_ms": 9.741,
+          "max_ms": 13.02,
+          "n": 5
+        },
+        "scan": {
+          "p50_ms": 44.813,
+          "min_ms": 40.405,
+          "max_ms": 81.514,
+          "n": 5
+        },
+        "prompt_utf8_bytes_median": 16192,
+        "output_utf8_bytes_median": 122,
+        "calls": 1,
+        "unsupported": false,
+        "configuration_status": null,
+        "context_truncated_count": 0,
+        "evidence_omissions_median": 9,
+        "large_coverage": null
+      },
+      "legacy_two_stage": {
+        "end_to_end_fake_chain": {
+          "p50_ms": 50.842,
+          "min_ms": 48.468,
+          "max_ms": 51.858,
+          "n": 5
+        },
+        "application": {
+          "p50_ms": 6.691,
+          "min_ms": 6.657,
+          "max_ms": 6.755,
+          "n": 5
+        },
+        "scan": {
+          "p50_ms": 43.056,
+          "min_ms": 40.776,
+          "max_ms": 44.2,
+          "n": 5
+        },
+        "prompt_utf8_bytes_median": 14973,
+        "output_utf8_bytes_median": 138,
+        "calls": 2,
+        "unsupported": false,
+        "configuration_status": null,
+        "context_truncated_count": 0,
+        "evidence_omissions_median": 0,
+        "large_coverage": null
+      },
+      "grounded_plus_critic": {
+        "end_to_end_fake_chain": {
+          "p50_ms": 48.654,
+          "min_ms": 47.181,
+          "max_ms": 51.909,
+          "n": 5
+        },
+        "application": {
+          "p50_ms": 4.99,
+          "min_ms": 4.944,
+          "max_ms": 5.162,
+          "n": 5
+        },
+        "scan": {
+          "p50_ms": 42.506,
+          "min_ms": 41.262,
+          "max_ms": 45.878,
+          "n": 5
+        },
+        "prompt_utf8_bytes_median": 0,
+        "output_utf8_bytes_median": 0,
+        "calls": 0,
+        "unsupported": true,
+        "configuration_status": "unsupported",
+        "context_truncated_count": 0,
+        "evidence_omissions_median": 0,
+        "large_coverage": null
+      }
+    },
+    "large": {
+      "one_shot_control": {
+        "end_to_end_fake_chain": {
+          "p50_ms": 108.27,
+          "min_ms": 105.546,
+          "max_ms": 116.24,
+          "n": 5
+        },
+        "application": {
+          "p50_ms": 18.481,
+          "min_ms": 18.239,
+          "max_ms": 20.521,
+          "n": 5
+        },
+        "scan": {
+          "p50_ms": 88.098,
+          "min_ms": 86.207,
+          "max_ms": 94.588,
+          "n": 5
+        },
+        "prompt_utf8_bytes_median": 14563,
+        "output_utf8_bytes_median": 122,
+        "calls": 1,
+        "unsupported": false,
+        "configuration_status": null,
+        "context_truncated_count": 5,
+        "evidence_omissions_median": 0,
+        "large_coverage": null
+      },
+      "current_grounded": {
+        "end_to_end_fake_chain": {
+          "p50_ms": 163.047,
+          "min_ms": 151.391,
+          "max_ms": 174.643,
+          "n": 5
+        },
+        "application": {
+          "p50_ms": 69.453,
+          "min_ms": 60.539,
+          "max_ms": 72.468,
+          "n": 5
+        },
+        "scan": {
+          "p50_ms": 92.479,
+          "min_ms": 88.322,
+          "max_ms": 101.188,
+          "n": 5
+        },
+        "prompt_utf8_bytes_median": 23836,
+        "output_utf8_bytes_median": 122,
+        "calls": 1,
+        "unsupported": false,
+        "configuration_status": null,
+        "context_truncated_count": 5,
+        "evidence_omissions_median": 33,
+        "large_coverage": {
+          "context_truncated": true,
+          "files_total": 24,
+          "files_skipped": 16,
+          "hunks": {
+            "changed_files": 24,
+            "files_included": 0,
+            "files_partial": 8,
+            "files_excluded": 16,
+            "substituted_files": 0,
+            "hunks_total": 24,
+            "hunks_complete": 0,
+            "hunks_partial": 8,
+            "hunks_omitted": 16,
+            "unaccounted_files": [],
+            "complete": true
+          },
+          "unit": {
+            "units_planned": 24,
+            "units_with_evidence_in_prompt": 8,
+            "units_fully_in_prompt": 0,
+            "units_not_reviewed": 16,
+            "planned_hunks": 24,
+            "hunks_complete_in_prompt": 0,
+            "hunks_total": 24,
+            "unreviewed_paths_sample": [
+              "src/fixture_08.py",
+              "src/fixture_09.py",
+              "src/fixture_10.py",
+              "src/fixture_11.py",
+              "src/fixture_12.py",
+              "src/fixture_13.py",
+              "src/fixture_14.py",
+              "src/fixture_15.py",
+              "src/fixture_16.py",
+              "src/fixture_17.py",
+              "src/fixture_18.py",
+              "src/fixture_19.py",
+              "src/fixture_20.py",
+              "src/fixture_21.py",
+              "src/fixture_22.py",
+              "src/fixture_23.py"
+            ],
+            "plan_token_budget": 6000,
+            "note": "Unit accounting compares the offline ReviewPlan with the prompt that was actually built. A unit counts as reviewed when at least one of its slices is in the prompt; these are structural counts, not a quality claim."
+          },
+          "evidence_budget_used": 4708,
+          "evidence_budget_limit": 6000,
+          "omitted_count": 33,
+          "evicted_count": 0,
+          "rendered_head_ranges": [
+            {
+              "path": "src/fixture_00.py",
+              "ranges": [
+                [
+                  1,
+                  31
+                ]
+              ]
+            },
+            {
+              "path": "src/fixture_01.py",
+              "ranges": [
+                [
+                  1,
+                  31
+                ]
+              ]
+            },
+            {
+              "path": "src/fixture_02.py",
+              "ranges": [
+                [
+                  1,
+                  31
+                ]
+              ]
+            },
+            {
+              "path": "src/fixture_03.py",
+              "ranges": [
+                [
+                  1,
+                  31
+                ]
+              ]
+            },
+            {
+              "path": "src/fixture_04.py",
+              "ranges": [
+                [
+                  1,
+                  31
+                ]
+              ]
+            },
+            {
+              "path": "src/fixture_05.py",
+              "ranges": [
+                [
+                  1,
+                  31
+                ]
+              ]
+            },
+            {
+              "path": "src/fixture_06.py",
+              "ranges": [
+                [
+                  1,
+                  31
+                ]
+              ]
+            },
+            {
+              "path": "src/fixture_07.py",
+              "ranges": [
+                [
+                  1,
+                  31
+                ]
+              ]
+            }
+          ]
+        }
+      },
+      "legacy_two_stage": {
+        "end_to_end_fake_chain": {
+          "p50_ms": 112.29,
+          "min_ms": 110.873,
+          "max_ms": 112.996,
+          "n": 5
+        },
+        "application": {
+          "p50_ms": 20.873,
+          "min_ms": 20.713,
+          "max_ms": 21.209,
+          "n": 5
+        },
+        "scan": {
+          "p50_ms": 90.338,
+          "min_ms": 88.598,
+          "max_ms": 91.222,
+          "n": 5
+        },
+        "prompt_utf8_bytes_median": 27137,
+        "output_utf8_bytes_median": 138,
+        "calls": 2,
+        "unsupported": false,
+        "configuration_status": null,
+        "context_truncated_count": 5,
+        "evidence_omissions_median": 0,
+        "large_coverage": null
+      },
+      "grounded_plus_critic": {
+        "end_to_end_fake_chain": {
+          "p50_ms": 99.387,
+          "min_ms": 96.616,
+          "max_ms": 259.286,
+          "n": 5
+        },
+        "application": {
+          "p50_ms": 5.639,
+          "min_ms": 5.364,
+          "max_ms": 5.761,
+          "n": 5
+        },
+        "scan": {
+          "p50_ms": 92.655,
+          "min_ms": 90.224,
+          "max_ms": 252.405,
+          "n": 5
+        },
+        "prompt_utf8_bytes_median": 0,
+        "output_utf8_bytes_median": 0,
+        "calls": 0,
+        "unsupported": true,
+        "configuration_status": "unsupported",
+        "context_truncated_count": 0,
+        "evidence_omissions_median": 0,
+        "large_coverage": null
+      }
+    }
+  },
+  "report_serialization": {
+    "small": {
+      "time": {
+        "p50_ms": 0.02,
+        "min_ms": 0.017,
+        "max_ms": 0.935,
+        "n": 5
+      },
+      "payload_bytes": 3232,
+      "findings": 0
+    },
+    "medium": {
+      "time": {
+        "p50_ms": 0.035,
+        "min_ms": 0.033,
+        "max_ms": 0.084,
+        "n": 5
+      },
+      "payload_bytes": 9130,
+      "findings": 1
+    },
+    "large": {
+      "time": {
+        "p50_ms": 0.121,
+        "min_ms": 0.106,
+        "max_ms": 0.18,
+        "n": 5
+      },
+      "payload_bytes": 51471,
+      "findings": 1
+    }
+  },
+  "python_startup": {
+    "p50_ms": 21.056,
+    "min_ms": 20.388,
+    "max_ms": 46.993,
+    "n": 5
+  },
+  "cli_help_startup": {
+    "p50_ms": 355.004,
+    "min_ms": 348.879,
+    "max_ms": 454.398,
+    "n": 5
+  },
+  "allan": {
+    "repository": "allan-mobley-jr/gimmes PR 468",
+    "base": "08efd0bbc34fd29de2a4077f07d24f3dc02a63b6",
+    "head": "e1477f8b3f18c1de6ff87dbca9465a7b106dc193",
+    "changed_files": 4,
+    "diff_bytes": 12658,
+    "added_lines": 129,
+    "deleted_lines": 30,
+    "prepared_diff_sha256": "6628d97c750caee1aeb01777c77a9d1608867bdc38fb1420575eef91b9ebde0c",
+    "mirror_diff_sha256": "6628d97c750caee1aeb01777c77a9d1608867bdc38fb1420575eef91b9ebde0c",
+    "query": "search symbol check_staleness, head, limit 4",
+    "budget": 6000,
+    "token_units": "UTF-8 bytes fallback; not tokenizer tokens",
+    "variants": {
+      "off": {
+        "route_total": {
+          "p50_ms": 642.12,
+          "min_ms": 625.183,
+          "max_ms": 690.44,
+          "n": 5
+        },
+        "request_stage": {
+          "p50_ms": 68.477,
+          "min_ms": 67.499,
+          "max_ms": 71.509,
+          "n": 5
+        },
+        "snapshot_search_stage": {
+          "p50_ms": 29.582,
+          "min_ms": 27.816,
+          "max_ms": 31.018,
+          "n": 5
+        },
+        "snapshot_cache_files": 10,
+        "snapshot_cache_bytes": 373950,
+        "seeded_read_invocations": 10,
+        "request_added_read_files": 0,
+        "request_added_read_bytes": 0,
+        "rendered_context_chars": 6085,
+        "budget_accounting_bytes": 4347,
+        "actual_excerpt_ranges": [
+          {
+            "path": "src/gimmes/cli.py",
+            "side": "head",
+            "start_line": 257,
+            "end_line": 338,
+            "evidence_ref": "d3119cfda57c8ea1a0d11ce1570b129f7d47dc8525da2982f801dca835beaf94",
+            "sha256": "bdcd8520bb5f6219c2a0247bad96dee4a050c497e3b3a514d111a6fcaa26fc88",
+            "kind": "requested_symbol_reference"
+          }
+        ],
+        "outcome": [
+          {
+            "status": "executed_with_evidence",
+            "normalized_query": {
+              "tool": "search",
+              "symbol": "check_staleness",
+              "side": "head",
+              "limit": 4
+            },
+            "hits": [
+              {
+                "path": "src/gimmes/cli.py",
+                "line": 305
+              },
+              {
+                "path": "src/gimmes/strategy/staleness.py",
+                "line": 45
+              },
+              {
+                "path": "tests/unit/test_staleness.py",
+                "line": 11
+              }
+            ],
+            "evidence_refs": [
+              "d3119cfda57c8ea1a0d11ce1570b129f7d47dc8525da2982f801dca835beaf94"
+            ],
+            "reused": false,
+            "omission_reason": "evidence_budget_exhausted",
+            "index_extra_omitted": null
+          }
+        ],
+        "host_index": []
+      },
+      "on": {
+        "route_total": {
+          "p50_ms": 647.814,
+          "min_ms": 617.049,
+          "max_ms": 683.641,
+          "n": 5
+        },
+        "request_stage": {
+          "p50_ms": 79.803,
+          "min_ms": 77.579,
+          "max_ms": 99.471,
+          "n": 5
+        },
+        "snapshot_search_stage": {
+          "p50_ms": 27.172,
+          "min_ms": 24.604,
+          "max_ms": 39.332,
+          "n": 5
+        },
+        "snapshot_cache_files": 10,
+        "snapshot_cache_bytes": 373950,
+        "seeded_read_invocations": 10,
+        "request_added_read_files": 0,
+        "request_added_read_bytes": 0,
+        "rendered_context_chars": 6307,
+        "budget_accounting_bytes": 4347,
+        "actual_excerpt_ranges": [
+          {
+            "path": "src/gimmes/cli.py",
+            "side": "head",
+            "start_line": 257,
+            "end_line": 338,
+            "evidence_ref": "d3119cfda57c8ea1a0d11ce1570b129f7d47dc8525da2982f801dca835beaf94",
+            "sha256": "bdcd8520bb5f6219c2a0247bad96dee4a050c497e3b3a514d111a6fcaa26fc88",
+            "kind": "requested_symbol_reference"
+          }
+        ],
+        "outcome": [
+          {
+            "status": "executed_with_evidence",
+            "normalized_query": {
+              "tool": "search",
+              "symbol": "check_staleness",
+              "side": "head",
+              "limit": 4
+            },
+            "hits": [
+              {
+                "path": "src/gimmes/cli.py",
+                "line": 305
+              },
+              {
+                "path": "src/gimmes/strategy/staleness.py",
+                "line": 45
+              },
+              {
+                "path": "tests/unit/test_staleness.py",
+                "line": 11
+              }
+            ],
+            "evidence_refs": [
+              "d3119cfda57c8ea1a0d11ce1570b129f7d47dc8525da2982f801dca835beaf94"
+            ],
+            "reused": false,
+            "omission_reason": "evidence_budget_exhausted",
+            "index_extra_omitted": [
+              {
+                "count": 3,
+                "reason": "no_return_slot"
+              },
+              {
+                "count": 1,
+                "reason": "baseline_evidence_budget_exhausted"
+              }
+            ]
+          }
+        ],
+        "host_index": [
+          {
+            "schema": "python-binding-v1",
+            "status": "partial",
+            "side": "head",
+            "completeness": "partial",
+            "searched_scope": [
+              "src/gimmes/config.py",
+              "src/gimmes/strategy/staleness.py",
+              "tests/unit/test_staleness.py"
+            ],
+            "files_parsed": 3,
+            "source_bytes_parsed": 49765,
+            "source_bytes_run_total": 49765,
+            "scan_ms": 58.757,
+            "omissions": [
+              "scope_limited_to_changed_and_search_hits",
+              "index_byte_limit:src/gimmes/cli.py",
+              "unresolved_or_ambiguous_bindings",
+              "unresolved:dynamic_attribute",
+              "unresolved:unresolved_name",
+              "unresolved:ambiguous_binding",
+              "result_limit"
+            ],
+            "relationships": [
+              {
+                "source": "tests/unit/test_staleness.py",
+                "source_start": 38,
+                "source_end": 38,
+                "target": "src/gimmes/strategy/staleness.py",
+                "target_start": 45,
+                "target_end": 114,
+                "provenance": "lexical_search",
+                "evidence_level": "ambiguous",
+                "strength": "weak"
+              },
+              {
+                "source": "tests/unit/test_staleness.py",
+                "source_start": 51,
+                "source_end": 53,
+                "target": "src/gimmes/strategy/staleness.py",
+                "target_start": 45,
+                "target_end": 114,
+                "provenance": "lexical_search",
+                "evidence_level": "ambiguous",
+                "strength": "weak"
+              },
+              {
+                "source": "tests/unit/test_staleness.py",
+                "source_start": 65,
+                "source_end": 67,
+                "target": "src/gimmes/strategy/staleness.py",
+                "target_start": 45,
+                "target_end": 114,
+                "provenance": "lexical_search",
+                "evidence_level": "ambiguous",
+                "strength": "weak"
+              },
+              {
+                "source": "tests/unit/test_staleness.py",
+                "source_start": 80,
+                "source_end": 82,
+                "target": "src/gimmes/strategy/staleness.py",
+                "target_start": 45,
+                "target_end": 114,
+                "provenance": "lexical_search",
+                "evidence_level": "ambiguous",
+                "strength": "weak"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "rss": {
+    "one_full_probe_process_peak_rss_bytes": 61554688,
+    "child_process_peak_rss_bytes_including_cli_help": 55001088,
+    "unit": "bytes on Darwin; first value is whole benchmark process, not a per-PR measurement"
+  },
+  "limitations": [
+    "No real model/provider/GitHub request; fake provider latency is omitted from the timed chain.",
+    "Synthetic fixture performance is not production latency and does not establish p95, concurrency, or quality.",
+    "One Allan PR and one fixed query do not establish general index speedup.",
+    "Index scan_ms is an internal stage field, not an isolated causal delta; the on/off arms also differ by rendered index metadata.",
+    "One initial unprotected attempt triggered a tokenizer dictionary request that the local sandbox rejected; it was stopped immediately. All reported runs forced byte fallback and did not download it."
+  ]
+}

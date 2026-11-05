@@ -91,13 +91,129 @@ def test_review_by_units_is_bounded_and_records_failures_without_aborting():
     summary = review_by_units(plan, files, run_unit, max_units=2, max_attempts=1)
     assert [o.status for o in summary.outcomes] == ["failed", "reviewed"]
     assert "RuntimeError" in (summary.outcomes[0].error or "")
-    assert summary.reviewed and not summary.failed or summary.failed
     assert summary.counts() == {
         "units_planned": len(plan.units),
         "units_reviewed": 1,
         "units_failed": 1,
         "units_skipped_by_budget": max(0, len(plan.units) - 2),
     }
+
+
+def test_hunk_coverage_separates_static_plan_exposure_completion_and_pending_budget():
+    from src.reviewer.unit_review import _hunk_coverage
+
+    plan, files = plan_with_two_units()
+    summary = review_by_units(
+        plan, files, lambda ctx, _: grounded(), max_units=1, max_attempts=1
+    )
+    coverage = _hunk_coverage(plan, summary, pending_reason="unit_max_units")
+    rows = {row["path"]: row for row in coverage["hunks"]}
+
+    assert coverage["hunks_static_scanned"] == 2
+    assert coverage["hunks_model_exposed"] == 1
+    assert coverage["hunks_model_review_completed"] == 1
+    assert coverage["hunks_pending_budget"] == 1
+    assert rows["src/a.py"]["status"] == "model_review_completed"
+    assert rows["src/a.py"]["fragments"][0]["status"] == "model_review_completed"
+    assert rows["src/b.py"]["status"] == "pending_budget"
+    assert rows["src/b.py"]["reason"] == "unit_max_units"
+
+
+def test_hunk_coverage_does_not_complete_when_any_unit_fails_or_is_cancelled():
+    from threading import Event
+
+    from src.reviewer.unit_review import _hunk_coverage
+
+    plan, files = plan_with_two_units()
+    summary = review_by_units(
+        plan, files, lambda ctx, _: (_ for _ in ()).throw(RuntimeError("fake failure")),
+        max_units=1, max_attempts=1,
+    )
+    coverage = _hunk_coverage(plan, summary, pending_reason="unit_max_units")
+    assert coverage["hunks_model_review_completed"] == 0
+    assert coverage["hunks_unavailable"] == 1
+    assert coverage["hunks_pending_budget"] == 1
+
+    cancelled = Event()
+    cancelled.set()
+    summary = review_by_units(plan, files, lambda *_: grounded(), cancel=cancelled)
+    coverage = _hunk_coverage(plan, summary)
+    assert coverage["hunks_model_exposed"] == 0
+    assert coverage["hunks_model_review_completed"] == 0
+    assert coverage["hunks_pending_budget"] == 2
+    assert all(row["reason"] == "cancelled" for row in coverage["hunks"])
+
+
+def test_hunk_with_fragment_boundary_is_partial_even_when_all_units_succeed():
+    from src.reviewer.unit_review import _hunk_coverage
+
+    patch = "@@ -1,1 +1,1 @@\n-old\n+" + ("long_token" * 150) + "\n"
+    file = ChangedFile(filename="src/long.py", patch=patch)
+    plan = build_review_plan(_Mem({"src/long.py": "x = 1\n"}), [file], [file.filename],
+                             token_budget=128)
+    summary = review_by_units(plan, [file], lambda *_: grounded(), max_attempts=1)
+    coverage = _hunk_coverage(plan, summary)
+
+    assert coverage["hunks_model_exposed"] == 1
+    assert coverage["hunks_model_review_completed"] == 0
+    assert coverage["hunks_partial"] == 1
+    assert coverage["hunks"][0]["reason"] == "fragment_boundary_cuts_diff_line"
+
+
+def test_unit_cost_ceiling_refusal_retains_pending_hunk_coverage():
+    plan, files = plan_with_two_units()
+    result, details = run_units_for_review(
+        lambda *_: pytest.fail("cost refusal must happen before runner dispatch"),
+        _Mem({"src/a.py": "def foo(x):\n    return x\n", "src/b.py": "value=2\n"}),
+        files, token_budget=256, max_units=2, cost_ceiling_tokens=1,
+    )
+    assert result is None
+    assert details["unit_review_skipped_cost"] == 1
+    assert details["units_pending_budget"] == len(plan.units)
+    assert details["hunk_coverage"]["hunks_model_exposed"] == 0
+    assert details["hunk_coverage"]["hunks_pending_budget"] == 2
+
+
+def test_unit_cost_ceiling_dispatches_affordable_prefix_and_leaves_rest_pending():
+    from src.reviewer.unit_review import MEASURED_TOKENS_PER_UNIT
+
+    _, files = plan_with_two_units()
+    calls = []
+    result, details = run_units_for_review(
+        lambda ctx, _: (calls.append(ctx.text), grounded())[1],
+        _Mem({"src/a.py": "def foo(x):\n    return x\n", "src/b.py": "value=2\n"}),
+        files, token_budget=256, max_units=2,
+        cost_ceiling_tokens=MEASURED_TOKENS_PER_UNIT,
+    )
+
+    assert result is not None
+    assert len(calls) == 1
+    assert details["units_reviewed"] == 1
+    assert details["units_skipped_by_budget"] == 1
+    coverage = details["hunk_coverage"]
+    assert coverage["hunks_model_review_completed"] == 1
+    assert coverage["hunks_pending_budget"] == 1
+    pending = next(item for item in coverage["hunks"] if item["status"] == "pending_budget")
+    assert pending["reason"] == "unit_cost_ceiling"
+
+
+def test_file_coverage_preserves_excluded_and_unavailable_reasons():
+    from src.reviewer.unit_review import _hunk_coverage
+
+    files = [
+        ChangedFile(filename=".env", patch="@@ -1 +1 @@\n-old\n+new\n"),
+        ChangedFile(filename="src/missing.py", patch=None),
+    ]
+    plan = build_review_plan(_Mem({}), files, [])
+    coverage = _hunk_coverage(plan, review_by_units(plan, files, lambda *_: grounded()))
+    by_path = {item["path"]: item for item in coverage["files"]}
+
+    assert by_path[".env"]["diff_status"] == "excluded"
+    assert by_path[".env"]["reasons"] == ["source_policy"]
+    assert by_path["src/missing.py"]["diff_status"] == "unavailable"
+    assert by_path["src/missing.py"]["reasons"] == [
+        "head_unavailable", "missing_or_invalid_patch"
+    ]
 
 
 def test_merge_dedupes_findings_and_offsets_candidate_ids():
@@ -148,6 +264,29 @@ def test_unit_checkpoint_round_trip_preserves_intent_plan():
     restored = _decode_result(_encode_result(result))
 
     assert restored.bundle["intent_plan"] == result.bundle["intent_plan"]
+
+
+def test_checkpoint_result_is_not_reused_for_a_different_head_sha(tmp_path):
+    plan, files = plan_with_two_units()
+    checkpoint = tmp_path / "units.jsonl"
+    identity = {"repo": "fixture/repo", "pr": 1}
+    first_calls = []
+    first = review_by_units(
+        plan, files, lambda *_: (first_calls.append(1), grounded())[1],
+        checkpoint_path=checkpoint, checkpoint_identity=identity, max_attempts=1,
+    )
+    assert len(first_calls) == len(plan.units)
+    assert first.counts()["units_reviewed"] == len(plan.units)
+
+    changed_head = plan.model_copy(update={"head": "3" * 40})
+    resumed_calls = []
+    second = review_by_units(
+        changed_head, files, lambda *_: (resumed_calls.append(1), grounded())[1],
+        checkpoint_path=checkpoint, checkpoint_identity=identity, max_attempts=1,
+    )
+    assert len(resumed_calls) == len(plan.units)
+    assert second.counts()["units_reviewed"] == len(plan.units)
+    assert not any(outcome.status == "resumed" for outcome in second.outcomes)
 
 
 def test_merge_with_no_results_is_an_explicit_failure_not_an_empty_success():
@@ -223,7 +362,8 @@ def test_worker_count_is_validated_and_capped():
 def _unit_review_report(
     tmp_path, *, units_enabled: int, checkpoint_path=None, repo_ready=False, call_counter=None,
     strategy_policy_id="baseline", strategy_policy_content_sha256=None,
-    provider_close_fails=False,
+    provider_close_fails=False, unit_cancel=None, raw_discovery=False,
+    prompt_addendum="",
 ):
     """Drive the engine's unit path with a scripted provider over a small repo.
 
@@ -321,8 +461,11 @@ def _unit_review_report(
         pr, files, [], provider, 20, min_confidence=.65, repository_snapshot=snapshot,
         follow_changes=True, review_context=context,
         unit_review_max_units=units_enabled, unit_review_workers=1,
+        unit_cancel=unit_cancel,
         unit_checkpoint_path=str(checkpoint_path) if checkpoint_path is not None else None,
         unit_provider_factory=Scripted,
+        raw_discovery=raw_discovery,
+        prompt_addendum=prompt_addendum,
         strategy_policy_id=strategy_policy_id,
         strategy_policy_content_sha256=strategy_policy_content_sha256,
     )
@@ -343,6 +486,124 @@ def test_unit_review_reviews_every_unit_when_the_prompt_is_truncated(tmp_path):
         + report.metrics["units_skipped_by_budget"]
     )
     assert report.metrics["units_failed"] == 0
+    assert report.metrics["hunks_static_scanned"] == 3
+    assert report.metrics["hunks_model_exposed"] <= report.metrics["hunks_static_scanned"]
+    assert report.metrics["hunks_model_review_completed"] <= report.metrics["hunks_model_exposed"]
+    coverage = report.repository_context["unit_details"]["hunk_coverage"]
+    assert coverage["hunks_static_scanned"] == report.metrics["hunks_static_scanned"]
+
+
+def test_engine_cancellation_leaves_unit_hunks_pending_and_report_partial(tmp_path):
+    from threading import Event
+
+    cancel = Event()
+    cancel.set()
+    calls: list[str] = []
+    report, provider = _unit_review_report(
+        tmp_path, units_enabled=8, unit_cancel=cancel, call_counter=calls
+    )
+
+    assert calls == []
+    assert provider.calls == 0
+    assert report.metrics["units_cancelled"] > 0
+    assert report.metrics["hunks_model_review_completed"] == 0
+    coverage = report.repository_context["unit_details"]["hunk_coverage"]
+    assert coverage["hunks_pending_budget"] == coverage["hunks_static_scanned"] == 3
+    fragment_reasons = {
+        fragment["reason"]
+        for item in coverage["hunks"]
+        for fragment in item["fragments"]
+    }
+    assert "cancelled" in fragment_reasons
+    assert fragment_reasons <= {"cancelled", "unit_max_units"}
+    assert report.report_confidence == "partial"
+
+
+def test_raw_discovery_unit_prompts_stay_in_unit_scope_and_identity_tracks_scope(tmp_path):
+    """Unit raw discovery must not expand selected fragments back to the whole PR diff."""
+    import subprocess
+
+    from src.analyzer.context_builder import build_review_context
+    from src.analyzer.repository_context import GitSnapshot
+    from src.evaluation.reviewbench import parse_diff
+    from src.models import PullRequest
+    from src.reviewer.engine import review_with_ai
+    def run(*args):
+        return subprocess.check_output(["git", "-C", str(tmp_path), *args], text=True).strip()
+
+    run("init")
+    run("config", "user.email", "f@e.invalid")
+    run("config", "user.name", "F")
+    sentinels = [f"PATCH_ONLY_SENTINEL_{index}" for index in range(3)]
+    for index, sentinel in enumerate(sentinels):
+        (tmp_path / f"m{index}.py").write_text(f"value_{index} = 0\n")
+    run("add", ".")
+    run("commit", "-m", "base")
+    for index, sentinel in enumerate(sentinels):
+        (tmp_path / f"m{index}.py").write_text(
+            f"value_{index} = 1  # {sentinel}\n"
+        )
+    run("add", ".")
+    run("commit", "-m", "head")
+    base, head = run("rev-parse", "HEAD^"), run("rev-parse", "HEAD")
+    snapshot = GitSnapshot(tmp_path, base, head)
+    files = parse_diff(run("diff", base, head))
+    pr = PullRequest(repo="fixture/repo", number=20, title="Raw unit scope",
+                     base_sha=base, head_sha=head)
+    context = build_review_context(
+        pr, files, include_context_pack=False, allow_remote_file_fetch=False,
+        max_patch_tokens=1,
+    )
+    assert context.truncated
+    assert len(build_review_plan(snapshot, files, [f.filename for f in files],
+                                 token_budget=128).units) == 3
+
+    class Recorder:
+        _model = "recording-test-model"
+        usage_records = []
+
+        def __init__(self):
+            self.messages = []
+
+        def complete_json(self, system, prompt):
+            self.messages.append((system, prompt))
+            return json.dumps({"findings": []})
+
+        def close(self):
+            pass
+
+    def execute(*, unit_cap):
+        provider = Recorder()
+        report = review_with_ai(
+            pr, files, [], provider, 20, repository_snapshot=snapshot,
+            follow_changes=True, review_context=context,
+            unit_review_max_units=unit_cap, unit_review_workers=1,
+            raw_discovery=True, repository_evidence_tokens=1_000,
+            unit_evidence_tokens=1_000,
+        )
+        return report, provider
+
+    unit_report, unit_provider = execute(unit_cap=3)
+    unit_prompts = [prompt for _, prompt in unit_provider.messages]
+    assert len(unit_prompts) == 9  # three raw discovery lenses for each of three units
+    for prompt in unit_prompts:
+        assert sum(sentinel in prompt for sentinel in sentinels) == 1
+    for sentinel in sentinels:
+        assert any(sentinel in prompt for prompt in unit_prompts)
+
+    full_report, full_provider = execute(unit_cap=0)
+    full_prompts = [prompt for _, prompt in full_provider.messages]
+    assert len(full_prompts) == 3
+    assert all(all(sentinel in prompt for sentinel in sentinels) for prompt in full_prompts)
+
+    unit_policy = unit_report.repository_context["review_trace"]["policy"]
+    full_policy = full_report.repository_context["review_trace"]["policy"]
+    assert unit_policy["raw_discovery_scope"] == "unit_context"
+    assert full_policy["raw_discovery_scope"] == "full_pr_diff"
+    assert (
+        unit_policy["effective_review_strategy_sha256"]
+        != full_policy["effective_review_strategy_sha256"]
+    )
 
 
 def test_unit_checkpoint_write_failure_keeps_report_and_marks_it_partial(tmp_path):
@@ -378,6 +639,9 @@ def test_engine_resume_uses_restored_result_without_fake_provider_calls(tmp_path
     assert second.metrics["units_resumed"] == 8
     assert [s.model_dump(mode="json") for s in second.suggestions] == expected
     assert second.metrics["discovery_request_count"] == 0
+    assert second.repository_context["unit_details"]["hunk_coverage"] == (
+        first.repository_context["unit_details"]["hunk_coverage"]
+    )
     assert second.metrics["behavior_verification_request_count"] == 0
     assert second.metrics["discovery_calls_restored"] == first_discovery_calls > 0
     assert second.metrics["verification_calls_restored"] == first_verification_calls > 0
@@ -402,6 +666,148 @@ def test_engine_policy_change_rejects_previous_unit_checkpoint(tmp_path):
     assert call_counter
     assert second.metrics["units_resumed"] == 0
     assert second.repository_context["unit_details"]["unit_checkpoint_issues"]
+
+
+def test_engine_checkpoint_identity_tracks_raw_mode_and_effective_prompt(tmp_path):
+    checkpoint = tmp_path / "units.jsonl"
+    repo = tmp_path / "repo"
+    calls: list[str] = []
+
+    _unit_review_report(
+        repo, units_enabled=8, checkpoint_path=checkpoint, call_counter=calls,
+    )
+    assert calls
+
+    calls.clear()
+    same = _unit_review_report(
+        repo, units_enabled=8, checkpoint_path=checkpoint, repo_ready=True,
+        call_counter=calls,
+    )
+    assert calls == []
+    assert same[0].metrics["units_resumed"] == 8
+
+    calls.clear()
+    raw = _unit_review_report(
+        repo, units_enabled=8, checkpoint_path=checkpoint, repo_ready=True,
+        call_counter=calls, raw_discovery=True,
+    )
+    assert calls
+    assert raw[0].metrics["units_resumed"] == 0
+
+    calls.clear()
+    raw_same = _unit_review_report(
+        repo, units_enabled=8, checkpoint_path=checkpoint, repo_ready=True,
+        call_counter=calls, raw_discovery=True,
+    )
+    assert calls == []
+    assert raw_same[0].metrics["units_resumed"] == 8
+
+    calls.clear()
+    changed_prompt = _unit_review_report(
+        repo, units_enabled=8, checkpoint_path=checkpoint, repo_ready=True,
+        call_counter=calls, raw_discovery=True, prompt_addendum="Review boundary cases.",
+    )
+    assert calls
+    assert changed_prompt[0].metrics["units_resumed"] == 0
+
+
+@pytest.mark.parametrize("change", ["raw_prompt", "lens_prompt", "runtime"])
+def test_checkpoint_reexecutes_when_effective_prompt_or_runtime_changes(
+    tmp_path, monkeypatch, change,
+):
+    from pathlib import Path
+
+    from src.reviewer import discovery_lenses, grounded_review
+
+    repo = tmp_path / "repo"
+    checkpoint = tmp_path / "units.jsonl"
+    calls: list[str] = []
+    before, _ = _unit_review_report(
+        repo, units_enabled=8, checkpoint_path=checkpoint, call_counter=calls,
+        raw_discovery=True,
+    )
+    assert calls
+    calls.clear()
+    same, _ = _unit_review_report(
+        repo, units_enabled=8, checkpoint_path=checkpoint, repo_ready=True,
+        call_counter=calls, raw_discovery=True,
+    )
+    assert calls == [] and same.metrics["units_resumed"] == 8
+
+    marker = "\nCheckpoint prompt revision."
+    if change == "runtime":
+        read_bytes = Path.read_bytes
+
+        def changed_runtime(path):
+            data = read_bytes(path)
+            if path == Path(discovery_lenses.__file__):
+                return data + b"\n# Runtime revision.\n"
+            return data
+
+        monkeypatch.setattr(Path, "read_bytes", changed_runtime)
+    else:
+        module, name = (
+            (grounded_review, "RAW_DISCOVERY_SYSTEM") if change == "raw_prompt"
+            else (discovery_lenses, "LENS_DISCOVERY_SYSTEM")
+        )
+        monkeypatch.setattr(module, name, getattr(module, name) + marker)
+
+    changed, _ = _unit_review_report(
+        repo, units_enabled=8, checkpoint_path=checkpoint, repo_ready=True,
+        call_counter=calls, raw_discovery=True,
+    )
+    assert calls and changed.metrics["units_resumed"] == 0
+    old_trace = before.repository_context["review_trace"]
+    new_trace = changed.repository_context["review_trace"]
+    fingerprint = "runtime_sha256" if change == "runtime" else "prompt_sha256"
+    assert old_trace[fingerprint] != new_trace[fingerprint]
+    if change != "runtime":
+        assert any(marker in system for system in calls)
+
+    calls.clear()
+    restored, _ = _unit_review_report(
+        repo, units_enabled=8, checkpoint_path=checkpoint, repo_ready=True,
+        call_counter=calls, raw_discovery=True,
+    )
+    assert calls == [] and restored.metrics["units_resumed"] == 8
+
+
+def test_fallback_trace_identifies_raw_index_prompts_without_claiming_full_identity(monkeypatch):
+    from pathlib import Path
+
+    from src.models import PullRequest
+    from src.reviewer import discovery_lenses, grounded_review
+
+    plan, files = plan_with_two_units()
+    result = grounded()
+    result.bundle.update(
+        discovery_mode="raw", raw_discovery_scope="unit_context",
+        repository_index_enabled=True,
+    )
+    pr = PullRequest(repo="fixture/repo", number=1, title="t",
+                     base_sha=plan.base, head_sha=plan.head)
+    context = build_unit_context(plan.units[0])
+    trace = grounded_review._review_trace(pr, files, result, context, "test")
+    expected = (
+        grounded_review.RAW_DISCOVERY_SYSTEM + discovery_lenses.LENS_DISCOVERY_SYSTEM
+        + grounded_review.VERIFY_SYSTEM + grounded_review.INDEX_ATTRIBUTION_CONTRACT
+    )
+    assert trace["prompt_sha256"] == hashlib.sha256(expected.encode("utf-8")).hexdigest()
+    assert trace["policy"]["raw_discovery_scope"] == "unit_context"
+    assert trace["policy"]["repository_index_enabled"] is True
+    assert trace["prompt_identity_status"] == "partial"
+
+    read_bytes = Path.read_bytes
+
+    def changed_index(path):
+        data = read_bytes(path)
+        if path.name == "symbol_index.py":
+            return data + b"\n# Index revision.\n"
+        return data
+
+    monkeypatch.setattr(Path, "read_bytes", changed_index)
+    changed = grounded_review._review_trace(pr, files, result, context, "test")
+    assert trace["runtime_sha256"] != changed["runtime_sha256"]
 
 
 def test_unit_review_is_off_by_default(tmp_path):

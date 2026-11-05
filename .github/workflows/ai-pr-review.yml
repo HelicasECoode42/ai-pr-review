@@ -65,14 +65,20 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           path: _pr_head
 
+      - name: Create isolated report directory
+        id: report_dir
+        run: |
+          report_dir="$(mktemp -d "$RUNNER_TEMP/ai-pr-review.XXXXXX")"
+          echo "path=${report_dir}" >> "$GITHUB_OUTPUT"
+
       - name: Probe PR head Python syntax
         if: github.event_name == 'pull_request'
         id: pr_syntax
         continue-on-error: true
         run: |
-          mkdir -p reports
+          REPORT_DIR="${{ steps.report_dir.outputs.path }}"
           set +e
-          python -m compileall _pr_head/src _pr_head/tests > reports/pr-syntax-check.txt 2>&1
+          python -m compileall _pr_head/src _pr_head/tests > "${REPORT_DIR}/pr-syntax-check.txt" 2>&1
           status=$?
           set -e
           echo "exit_code=${status}" >> "$GITHUB_OUTPUT"
@@ -83,19 +89,25 @@ jobs:
               echo "The submitted PR head does not compile. The reviewer will still run from the base branch and analyze the PR diff."
               echo
               echo '```text'
-              tail -n 80 reports/pr-syntax-check.txt
+              tail -n 80 "${REPORT_DIR}/pr-syntax-check.txt"
               echo '```'
               echo
-            } > reports/pr-syntax-check.md
+            } > "${REPORT_DIR}/pr-syntax-check.md"
             exit "${status}"
           fi
 
       - name: Run AI PR Review
+        id: review
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
           REVIEW_MODEL: ${{ secrets.REVIEW_MODEL }}
+          AI_PR_REVIEW_TRUSTED_CI: "1"
+          TRUSTED_PLAYBOOK_PATH: ${{ github.workspace }}/knowledge/playbook.md
+          REPORT_DIR: ${{ steps.report_dir.outputs.path }}
+          DECISION_LEDGER_ENABLED: "true"
+          DECISION_LEDGER_PATH: ${{ steps.report_dir.outputs.path }}/decision-ledger.jsonl
         run: |
           PR_NUMBER="${{ github.event.pull_request.number || inputs.pr_number || '' }}"
           REPO="${{ github.repository }}"
@@ -134,16 +146,17 @@ jobs:
             "${REVIEWER_ARGS[@]}" \
             "${REVIEW_META_ARGS[@]}" \
             ${AI_FLAG} \
-            --output reports/pr-review.md
+            --output "${REPORT_DIR}/pr-review.md"
 
       - name: Append PR syntax diagnostics
         if: always() && github.event_name == 'pull_request' && steps.pr_syntax.outputs.exit_code != '0'
         run: |
-          if [ -f reports/pr-review.md ] && [ -f reports/pr-syntax-check.md ]; then
+          REPORT_DIR="${{ steps.report_dir.outputs.path }}"
+          if [ -f "${REPORT_DIR}/pr-review.md" ] && [ -f "${REPORT_DIR}/pr-syntax-check.md" ]; then
             {
               echo
-              cat reports/pr-syntax-check.md
-            } >> reports/pr-review.md
+              cat "${REPORT_DIR}/pr-syntax-check.md"
+            } >> "${REPORT_DIR}/pr-review.md"
           fi
 
       - name: Upload report
@@ -152,35 +165,58 @@ jobs:
         with:
           name: ai-pr-review-report
           path: |
-            reports/pr-review.md
-            reports/pr-review.json
-            reports/pr-syntax-check.md
-            reports/pr-syntax-check.txt
+            ${{ steps.report_dir.outputs.path }}/*
           if-no-files-found: warn
           retention-days: 30
 
       - name: Post inline review comments (high-confidence only — manual trigger only)
+        id: inline_publication
         if: >-
-          always() &&
+          always() && steps.review.outcome == 'success' &&
           github.event_name == 'workflow_dispatch' &&
           inputs.post_inline == 'true'
         continue-on-error: true
         uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+          REPORT_DIR: ${{ steps.report_dir.outputs.path }}
         with:
           script: |
             const fs = require("fs");
-            const path = "reports/pr-review.json";
-            if (!fs.existsSync(path)) return;
+            const path = `${process.env.REPORT_DIR}/pr-review.json`;
+            const gate = require(`${process.env.GITHUB_WORKSPACE}/scripts/publication_gate.js`);
+            const publicationPath = `${process.env.REPORT_DIR}/publication.json`;
+            const writeTerminal = (status, reason, candidates = []) => fs.writeFileSync(
+              publicationPath, JSON.stringify({ schema_version: 1, status, reason,
+                candidates }, null, 2) + "\n");
+            if (!fs.existsSync(path)) {
+              writeTerminal("unavailable", "review_report_missing");
+              core.warning("No JSON report from this run; inline publication is unavailable.");
+              return;
+            }
 
-            const report = JSON.parse(fs.readFileSync(path, "utf8"));
+            const payload = JSON.parse(fs.readFileSync(path, "utf8"));
+            const report = payload.report || payload;
+            const prNumber = context.payload.pull_request?.number || Number(process.env.PR_NUMBER);
+            const expectedHead = context.payload.pull_request?.head?.sha || report.pr?.head_sha;
+            const identity = { repo: `${context.repo.owner}/${context.repo.repo}`,
+              prNumber, headSha: expectedHead };
+            if (!gate.validateRunReport(report, identity)) {
+              core.warning("Report identity, status, or lifecycle is not eligible for inline publication.");
+              writeTerminal("unavailable", "report_not_eligible_for_publication",
+                (report.suggestions || []).map((_, index) => ({ candidate_id: index,
+                  status: "withheld_report_not_eligible" })));
+              return;
+            }
             // One source for the publishing threshold: the reviewer stamps it into
             // the report so this file cannot drift from the Python settings.
             const minConfidence = typeof report.metrics?.publish_min_confidence === "number"
               ? report.metrics.publish_min_confidence
               : 0.80;
+            const eligible = new Set(gate.eligibleSuggestions(report, identity).map(item => item.index));
             const aiSuggestions = (report.suggestions || [])
-              .filter(s => s.confidence >= minConfidence && s.line != null)
-              .map(s => ({
+              .flatMap((s, index) => eligible.has(index)
+                && s.confidence >= minConfidence && s.line != null ? [{
                 file_path: s.file_path,
                 line: s.line,
                 severity: s.severity,
@@ -188,8 +224,9 @@ jobs:
                 title: s.title,
                 reason: s.reason,
                 recommendation: s.recommendation,
-                source: "AI",
-              }));
+                source: s.source,
+                candidate_id: index,
+              }] : []);
             // Raw rule hits have no established failure scenario or verified evidence.
             const MAX_INLINE = 10;
             const inlineComments = aiSuggestions.slice(0, MAX_INLINE);
@@ -205,19 +242,45 @@ jobs:
               );
             }
 
-            const prNumber = context.payload.pull_request.number;
             const commitId = report.pr?.head_sha;
             if (!commitId) {
               core.warning("No head_sha in report; cannot post inline comments.");
+              return;
+            }
+            let current;
+            try {
+              current = await github.rest.pulls.get({ owner: context.repo.owner,
+                repo: context.repo.repo, pull_number: prNumber });
+            } catch (error) {
+              core.warning(`Cannot verify current PR head; no inline comments sent: ${error.message}`);
+              writeTerminal("partial", "could_not_read_current_head",
+                inlineComments.map(s => ({ candidate_id: s.candidate_id,
+                  status: "not_attempted_head_check_error" })));
+              return;
+            }
+            if (current.data.head?.sha !== commitId) {
+              core.warning("PR head changed after review; no inline comments sent.");
+              writeTerminal("stale_head", "pr_head_changed_before_publication",
+                inlineComments.map(s => ({ candidate_id: s.candidate_id,
+                  status: "not_attempted_stale_head" })));
               return;
             }
 
             core.info(`Posting ${inlineComments.length} inline review comment(s)...`);
             let posted = 0;
             let failed = 0;
+            const publicationOutcomes = [];
             for (const s of inlineComments) {
+              let commentAttempted = false;
               try {
-                const body = `**${s.severity}** (${Math.round(s.confidence * 100)}%): ${s.title}\n\n${s.reason}\n\n> ${s.recommendation}`;
+                const beforePost = await github.rest.pulls.get({ owner: context.repo.owner,
+                  repo: context.repo.repo, pull_number: prNumber });
+                if (beforePost.data.head?.sha !== commitId) {
+                  core.warning("PR head changed before an inline comment; stopping publication.");
+                  break;
+                }
+                const body = `**${s.severity}** (${Math.round(s.confidence * 100)}%; source: ${s.source}): ${s.title}\n\n${s.reason}\n\n> ${s.recommendation}`;
+                commentAttempted = true;
                 await github.rest.pulls.createReviewComment({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
@@ -230,27 +293,79 @@ jobs:
                 });
                 core.info(`  ✓ ${s.file_path}:${s.line} — ${s.title}`);
                 posted++;
+                publicationOutcomes.push({ candidate_id: s.candidate_id,
+                  file_path: s.file_path, line: s.line, status: "published" });
               } catch (error) {
                 core.warning(`  ✗ ${s.file_path}:${s.line} — ${error.message}`);
-                failed++;
+                publicationOutcomes.push({ candidate_id: s.candidate_id,
+                  file_path: s.file_path, line: s.line,
+                  status: commentAttempted ? "unknown_after_api_error" : "not_attempted_head_check_error" });
+                if (commentAttempted) failed++;
+                else break;
               }
             }
+            fs.writeFileSync(`${process.env.REPORT_DIR}/publication.json`, JSON.stringify({
+              schema_version: 1, owner: context.repo.owner, repo: context.repo.repo,
+              pr: prNumber, head: commitId,
+              status: failed || publicationOutcomes.some(item =>
+                item.status === "not_attempted_head_check_error" ||
+                item.status === "not_attempted_stale_head") ? "partial" : "complete",
+              candidates: publicationOutcomes,
+            }, null, 2) + "\n");
             // A posting failure must be accountable, not just a warning in the log.
             core.info(`Inline review published: ${posted} posted, ${failed} failed, ${inlineComments.length} attempted.`);
 
+      - name: Upload inline publication status
+        if: always() && steps.inline_publication.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-pr-review-publication-status
+          path: ${{ steps.report_dir.outputs.path }}/publication.json
+          if-no-files-found: ignore
+          retention-days: 30
+
       - name: Post summary comment
         if: >-
-          always() &&
+          always() && steps.review.outcome == 'success' &&
           (github.event_name != 'pull_request' ||
            github.event.pull_request.head.repo.full_name == github.repository)
         continue-on-error: true
         uses: actions/github-script@v7
         env:
           PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+          REPORT_DIR: ${{ steps.report_dir.outputs.path }}
         with:
           script: |
             const fs = require("fs");
-            const path = "reports/pr-review.md";
+            const path = `${process.env.REPORT_DIR}/pr-review.md`;
+            const jsonPath = `${process.env.REPORT_DIR}/pr-review.json`;
+            const gate = require(`${process.env.GITHUB_WORKSPACE}/scripts/publication_gate.js`);
+            if (!fs.existsSync(jsonPath)) {
+              core.warning("No JSON report from this run; skipping summary comment.");
+              return;
+            }
+            const payload = JSON.parse(fs.readFileSync(jsonPath, "utf8"));
+            const structured = payload.report || payload;
+            const prNumber = context.payload.pull_request?.number || Number(process.env.PR_NUMBER);
+            const expectedHead = context.payload.pull_request?.head?.sha || structured.pr?.head_sha;
+            if (!gate.validateRunReport(structured, {
+              repo: `${context.repo.owner}/${context.repo.repo}`, prNumber, headSha: expectedHead,
+            })) {
+              core.warning("Report identity, status, or lifecycle is not eligible for summary publication.");
+              return;
+            }
+            let current;
+            try {
+              current = await github.rest.pulls.get({ owner: context.repo.owner,
+                repo: context.repo.repo, pull_number: prNumber });
+            } catch (error) {
+              core.warning(`Cannot verify current PR head; summary not published: ${error.message}`);
+              return;
+            }
+            if (current.data.head?.sha !== structured.pr.head_sha) {
+              core.warning("PR head changed after review; summary not published.");
+              return;
+            }
             if (!fs.existsSync(path)) {
               core.warning("No pr-review.md found; skipping summary comment.");
               return;
@@ -265,10 +380,6 @@ jobs:
               body += "\n\n...\n\n";
               body += `> 完整报告请查看 [GitHub Actions Artifact](${artifactUrl}) 或下载 \`ai-pr-review-report\` artifact。\n`;
             }
-
-            const prNumber =
-              context.payload.pull_request?.number ||
-              parseInt(process.env.PR_NUMBER || "0", 10);
 
             if (!prNumber) return;
 
@@ -285,6 +396,12 @@ jobs:
             );
 
             try {
+              const beforePost = await github.rest.pulls.get({ owner: context.repo.owner,
+                repo: context.repo.repo, pull_number: prNumber });
+              if (beforePost.data.head?.sha !== structured.pr.head_sha) {
+                core.warning("PR head changed before the summary comment; skipping publication.");
+                return;
+              }
               if (existing) {
                 await github.rest.issues.updateComment({
                   owner: context.repo.owner,

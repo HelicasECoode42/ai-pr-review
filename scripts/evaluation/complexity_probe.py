@@ -66,9 +66,11 @@ def fixtures() -> dict[str, Fixture]:
             path = f"src/fixture_{i:02d}.py"
             fn = f"process_fixture_{i:02d}"
             old = f"def {fn}(value):\n    return value\n"
+            stage_count = max(0, added - 1) if i == 0 else added
+            return_expr = "missing_value" if i == 0 else "value"
             new = (f"def {fn}(value):\n" + "\n".join(
-                f"    stage_{j:03d} = value" for j in range(added)
-            ) + "\n    return value\n")
+                f"    stage_{j:03d} = value" for j in range(stage_count)
+            ) + f"\n    return {return_expr}\n")
             body = list(unified_diff(old.splitlines(), new.splitlines(),
                                      fromfile=f"a/{path}", tofile=f"b/{path}",
                                      n=3, lineterm=""))
@@ -142,6 +144,8 @@ class Snapshot:
                 "head": self.head, "search_limited": False, "read_files": files, "errors": []}
 def call_kind(system: str) -> str:
     text = system.lower()
+    if "adversarial reviewer of already host-verified" in text:
+        return "critic"
     if "rapid first-pass review" in text:
         return "triage"
     if "specific risk hotspot" in text:
@@ -178,7 +182,21 @@ class FakeProvider:
             record["elapsed_ms"] = round((time.perf_counter() - started) * 1000, 3)
             self.calls.append(record)
             raise ProviderError("Scripted offline provider timeout.", kind="timeout")
-        response = self.answer(kind)
+        if kind == "critic":
+            critic_input = json.loads(prompt.split("\n\n", 1)[1])
+            response = json.dumps({"items": [{
+                "candidate_id": item["candidate_id"],
+                "decision": "confirm",
+                "semantic_assessment": "supported",
+                "goal_coverage": "unknown",
+                "confidence": 0.9,
+                "reason": "The cited changed return raises NameError.",
+                "evidence_ref_ids": [
+                    ref["evidence_ref_id"] for ref in item["evidence_refs"]
+                ],
+            } for item in critic_input]})
+        else:
+            response = self.answer(kind)
         record.update(outcome="scripted_response", output_bytes=len(response.encode()),
                       output_char_div_4=math.ceil(len(response) / 4),
                       elapsed_ms=round((time.perf_counter() - started) * 1000, 3))
@@ -187,6 +205,25 @@ class FakeProvider:
 
     def answer(self, kind: str) -> str:
         f = self.fixture
+        if self.scenario == "critic_measurement" and kind == "discovery":
+            line = f.additions + 1
+            return json.dumps({
+                "intent_hypotheses": [{
+                    "id": "h", "goal": "Return a usable value from the changed function.",
+                    "constraints": [], "risk_hypotheses": ["Changed return may fail at runtime."],
+                    "unknowns": [], "source_refs": [f"diff:{f.anchor}"],
+                }],
+                "summary": "Measurement candidate.",
+                "risk_level": "high",
+                "suggestions": [{
+                    "file_path": f.anchor, "line": line, "severity": "high",
+                    "confidence": 0.9, "title": "Changed return uses an undefined name",
+                    "reason": "Calling the function raises NameError.",
+                    "recommendation": "Return the defined input value.",
+                    "evidence": ["return missing_value"],
+                    "failure_scenario": "Calling process_fixture_00 raises NameError.",
+                }],
+            })
         if kind == "triage":
             hotspots = []
             if self.scenario == "legacy_hotspots":
@@ -216,6 +253,25 @@ class FakeProvider:
                     "reason": "Routing exercise only.", "recommendation": "None.",
                     "evidence": ["fixture"], "failure_scenario": "none"}]})
         if kind == "verification":
+            if self.scenario == "critic_measurement":
+                line = f.additions + 1
+                return json.dumps({"items": [{
+                    "candidate_id": 0, "decision": "confirmed", "confidence": 0.9,
+                    "trigger": "Call process_fixture_00 with any value.",
+                    "call_path": [f"{f.anchor}:{line}"],
+                    "expected_behavior": "The function returns its input.",
+                    "actual_behavior": "The undefined return name raises NameError.",
+                    "introduced_by": "The PR changes the return expression to missing_value.",
+                    "reason": "The changed HEAD expression references no defined name.",
+                    "evidence": [{
+                        "path": f.anchor, "side": "head", "line": line,
+                        "quote": "return missing_value",
+                    }, {
+                        "path": f.anchor, "side": "base", "line": 2,
+                        "quote": "return value",
+                    }],
+                    "counter_evidence": [],
+                }]})
             return json.dumps({"items": [{"candidate_id": 0, "decision": "needs_context",
                 "confidence": 0.1, "trigger": "Probe only.", "call_path": "n/a",
                 "expected_behavior": "n/a", "actual_behavior": "n/a",
@@ -278,6 +334,7 @@ def run_arm(f: Fixture, arm: str, scenario: str = "empty",
             evidence: int = 6000) -> dict:
     grounded = arm in {"current_grounded", "grounded_plus_critic"}
     critic = arm == "grounded_plus_critic"
+    scenario = "critic_measurement" if critic and scenario == "empty" else scenario
     snapshot, calls, providers = Snapshot(f), [], []
     started = time.perf_counter()
     findings, scan_record = scan(f, snapshot)
