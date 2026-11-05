@@ -245,6 +245,12 @@ class ReviewSuggestion(BaseModel):
     symbol: str | None = None
     symbol_status: str = "unavailable"  # resolved | unavailable | not_applicable
     symbol_reason: str | None = None
+    # Raw discovery provenance: the run-local id of the pool item this candidate
+    # came from, its discovery sample, and the pool items folded into it by dedupe
+    # (each {"raw_candidate_id", "origin"}). Empty for every other producer.
+    raw_candidate_id: str | None = None
+    candidate_origin: str | None = None
+    merged_candidates: list[dict] = Field(default_factory=list)
 
 
 REPORT_SCHEMA_VERSION = "1"

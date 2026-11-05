@@ -89,6 +89,26 @@ def _safe_line(value: object) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
 
 
+_RAW_ORIGINS = frozenset({"diff", "diff+evidence", "lenses", "test_quality_rules"})
+
+
+def _raw_id(value: object) -> str | None:
+    return value[:80] if isinstance(value, str) and re.fullmatch(r"[\w.+:-]{1,80}", value) else None
+
+
+def _raw_origin(value: object) -> str | None:
+    return value if value in _RAW_ORIGINS else None
+
+
+def _merged_ids(value: object) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        return ()
+    return tuple(
+        identity for member in value[:100]
+        if isinstance(member, dict) and (identity := _raw_id(member.get("raw_candidate_id")))
+    )
+
+
 def _reason(*values: object) -> str | None:
     for value in values:
         if isinstance(value, str):
@@ -124,6 +144,11 @@ class DecisionRecord:
     failed_filters: tuple[str, ...]
     candidate_key_sha256: str = ""
     candidate_status: str | None = None
+    # Raw discovery provenance: the pool id this candidate was built from, its
+    # origin, and the pool ids folded into it. Empty for non-raw runs.
+    raw_candidate_id: str | None = None
+    candidate_origin: str | None = None
+    merged_candidate_ids: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
         """Keep the original helper API while persisting only safe reason codes."""
@@ -150,6 +175,12 @@ class DecisionRecord:
             else "unknown",
             "reason_code": _reason(self.reason),
             "failed_filters": [name for name in self.failed_filters if name in _FILTERS],
+            "raw_candidate_id": _raw_id(self.raw_candidate_id),
+            "candidate_origin": _raw_origin(self.candidate_origin),
+            "merged_candidate_ids": [
+                identity for identity in (_raw_id(item) for item in self.merged_candidate_ids)
+                if identity
+            ],
         }
 
 
@@ -238,6 +269,9 @@ def decision_records(
                 failed_filters=_failed_filters(verification),
                 candidate_key_sha256=_candidate_key(path, line, title),
                 candidate_status=status,
+                raw_candidate_id=_raw_id(suggestion.get("raw_candidate_id")),
+                candidate_origin=_raw_origin(suggestion.get("candidate_origin")),
+                merged_candidate_ids=_merged_ids(suggestion.get("merged_candidates")),
             )
         )
     return records
@@ -339,6 +373,9 @@ def build_candidate_lifecycle(
                 "failed_filters": list(record.failed_filters),
                 "suggestion_mapping": "exact" if exact else "unknown",
                 "publish_fingerprint": None,
+                "raw_candidate_id": _raw_id(record.raw_candidate_id),
+                "candidate_origin": _raw_origin(record.candidate_origin),
+                "merged_candidate_ids": list(record.merged_candidate_ids),
             }
             rows.append(row)
     elif used_ai and not failed:
@@ -463,6 +500,12 @@ def _candidate_row(item: dict[str, Any], lifecycle: dict[str, Any]) -> dict[str,
         if isinstance(item.get("publish_fingerprint"), str)
         and re.fullmatch(r"[0-9a-f]{24}", item["publish_fingerprint"])
         else None,
+        "raw_candidate_id": _raw_id(item.get("raw_candidate_id")),
+        "candidate_origin": _raw_origin(item.get("candidate_origin")),
+        "merged_candidate_ids": [
+            identity for identity in (_raw_id(value) for value in item.get("merged_candidate_ids") or [])
+            if identity
+        ],
     }
 
 

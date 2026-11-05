@@ -106,8 +106,16 @@ def same_issue(left: dict, right: dict) -> bool:
     )
 
 
+def _member(item: dict) -> dict:
+    return {"raw_candidate_id": item.get("raw_candidate_id"), "origin": item.get("origin")}
+
+
 def dedupe_candidates(findings: list[dict]) -> tuple[list[dict], list[dict]]:
-    """Return (kept, merges); each merge names the kept index it folded into."""
+    """Return (kept, merges); each merge names the kept index it folded into.
+
+    The kept item lists every pool item folded into it under `merged_candidates`,
+    so each raw candidate can still be traced to the candidate that represents it.
+    """
     kept: list[dict] = []
     merges: list[dict] = []
     for item in findings:
@@ -120,12 +128,24 @@ def dedupe_candidates(findings: list[dict]) -> tuple[list[dict], list[dict]]:
         if item.get("rule_id") and not kept[match].get("rule_id"):
             # A rule finding is a proven fact and is accepted as such downstream;
             # it represents the group, and the model wording is the merged one.
-            kept[match], item = item, kept[match]
+            winner, loser = item, kept[match]
+        else:
+            winner, loser = kept[match], item
+        kept[match] = {
+            **winner,
+            "merged_candidates": [
+                *winner.get("merged_candidates", []),
+                *loser.get("merged_candidates", []),
+                _member(loser),
+            ],
+        }
         merges.append({
             "kept_index": match,
             "kept_title": kept[match].get("title"),
+            "kept_raw_candidate_id": kept[match].get("raw_candidate_id"),
             "merged": {
-                key: item.get(key) for key in ("file", "line", "title", "origin", "rule_id")
+                key: loser.get(key)
+                for key in ("file", "line", "title", "origin", "rule_id", "raw_candidate_id")
             },
         })
     return kept, merges

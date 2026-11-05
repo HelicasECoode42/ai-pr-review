@@ -460,6 +460,48 @@ def _raw_discovery_prompt(pr, files):
     return "\n".join(parts)
 
 
+def _excerpt(value) -> str:
+    return json.dumps(value, ensure_ascii=False, default=str)[:200]
+
+
+def _collect_raw_findings(response, origin, parse_errors) -> list[dict]:
+    """Keep the usable findings of one discovery sample; record each other one.
+
+    Only what the pool and verifier read is required: a file path (the anchor
+    the verifier starts from) and an integer line. A missing title or reason is
+    defaulted downstream, so it is not a reason to drop a finding. The id is the
+    sample name plus the item's position in the model's own list, so the same
+    response always yields the same ids.
+    """
+    findings = response.get("findings", []) if isinstance(response, dict) else []
+    if findings is None:
+        findings = []
+    if not isinstance(findings, list):
+        parse_errors.append({"origin": origin, "index": None,
+                             "reason": "findings_not_a_list", "excerpt": _excerpt(findings)})
+        return []
+    items = []
+    for index, item in enumerate(findings):
+        line = item.get("line") if isinstance(item, dict) else None
+        if not isinstance(item, dict):
+            reason = "not_an_object"
+        elif not isinstance(item.get("file") or item.get("file_path"), str):
+            reason = "missing_file"
+        elif isinstance(line, bool) or not (
+                isinstance(line, int) or (isinstance(line, str) and line.strip().isdigit())):
+            reason = "line_not_integer"
+        else:
+            reason = None
+        if reason:
+            parse_errors.append({"origin": origin, "index": index,
+                                 "reason": reason, "excerpt": _excerpt(item)})
+            continue
+        line = item["line"]
+        items.append({**item, "line": int(line) if isinstance(line, str) else line,
+                      "origin": origin, "raw_candidate_id": f"{origin}:{index}"})
+    return items
+
+
 def _raw_findings_payload(response, max_suggestions):
     """Normalise the single-call discovery response into the review payload shape."""
     findings = response.get("findings") if isinstance(response, dict) else None
@@ -480,6 +522,9 @@ def _raw_findings_payload(response, max_suggestions):
             "recommendation": str(item.get("recommendation") or ""),
             "evidence": [str(entry) for entry in (item.get("evidence") or [])],
             "failure_scenario": str(item.get("failure_scenario") or reason),
+            "raw_candidate_id": item.get("raw_candidate_id"),
+            "candidate_origin": item.get("origin"),
+            "merged_candidates": list(item.get("merged_candidates") or []),
         })
     return {
         "summary": str(response.get("summary") or "Raw single-call discovery"),
@@ -488,8 +533,27 @@ def _raw_findings_payload(response, max_suggestions):
     }
 
 
+_EXCERPT_CHARS = 300
+
+
+class ModelResponseError(ValueError):
+    """An unparseable model answer, carrying a short excerpt for the trace."""
+
+    def __init__(self, cause: Exception, raw: str):
+        super().__init__(f"{type(cause).__name__}: {cause}")
+        self.error_type = type(cause).__name__
+        self.raw_excerpt = str(raw)[:_EXCERPT_CHARS]
+
+
 def _json(provider, system, prompt):
     raw = provider.complete_json(system, prompt)
+    try:
+        return _parse_model_json(raw)
+    except ValueError as exc:
+        raise ModelResponseError(exc, raw) from exc
+
+
+def _parse_model_json(raw):
     notice = None
     try:
         value = json.loads(raw)
@@ -1491,17 +1555,34 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
                    ("lenses", LENS_DISCOVERY_SYSTEM,
                     prefix + "\n" + lens_facts(snapshot, files) + evidence_text))
         pool = []
+        sample_failures = []
         for origin, system, sample_prompt in samples:
-            response = _json(provider, system, sample_prompt)
+            # One unparseable sample must not discard the others already collected.
+            try:
+                response, failure = _json(provider, system, sample_prompt), None
+            except ValueError as exc:
+                response, failure = None, exc
             discovery_calls += 1
-            returned = response.get("findings") if isinstance(response, dict) else None
-            returned = [item for item in returned or [] if isinstance(item, dict)]
-            pool.extend({**item, "origin": origin} for item in returned)
+            if failure is not None:
+                sample_failures.append(failure)
+                discovery_trace.append({
+                    "round": discovery_calls - 1, "mode": "raw", "input": origin,
+                    "status": "failed", "error_type": getattr(failure, "error_type", "ValueError"),
+                    "error": str(failure)[:300],
+                    "raw_excerpt": getattr(failure, "raw_excerpt", ""),
+                })
+                continue
+            parse_errors = []
+            returned = _collect_raw_findings(response, origin, parse_errors)
+            pool.extend(returned)
             discovery_trace.append({
-                "round": discovery_calls - 1, "mode": "raw", "input": origin,
+                "round": discovery_calls - 1, "mode": "raw", "input": origin, "status": "ok",
                 "response_format_notice": response.get("response_format_notice"),
-                "suggestions": len(returned),
+                "suggestions": len(returned), "parse_errors": parse_errors,
             })
+        if len(sample_failures) == len(samples):
+            # Nothing was collected: surface the failure as the lane always did.
+            raise sample_failures[-1]
         from src.analyzer.test_quality_lane import collect_test_quality_candidates
         from src.reviewer.candidate_dedupe import dedupe_candidates
         rule_candidates = collect_test_quality_candidates(snapshot, files)
@@ -1519,7 +1600,9 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
                 # Show what the real (un-mocked) function does, so the
                 # consequence of a missed patch or a wrong mock shape is visible.
                 bundle.add(target[0], target[1], kind="candidate_rule_target", max_lines=40)
-        pool.extend({**item, "origin": "test_quality_rules"} for item in rule_candidates)
+        pool.extend({**item, "origin": "test_quality_rules",
+                     "raw_candidate_id": f"test_quality_rules:{index}"}
+                    for index, item in enumerate(rule_candidates))
         union, merges = dedupe_candidates(pool)
         discovery_trace.append({
             "round": discovery_calls, "mode": "test_quality_rules",
@@ -1527,6 +1610,11 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
         })
         discovery_trace.append({
             "mode": "dedupe", "pool": len(pool), "kept": len(union), "merges": merges,
+            # Pool size per origin, so model and rule candidates are counted separately.
+            "pool_by_origin": {origin: sum(item.get("origin") == origin for item in pool)
+                               for origin, _, _ in samples + (("test_quality_rules", "", ""),)},
+            "parse_error_count": sum(len(entry.get("parse_errors", [])) for entry in discovery_trace
+                                if entry.get("mode") == "raw"),
             "doubts": [{"file": item.get("file"), "line": item.get("line"),
                         "doubts": str(item.get("doubts"))[:300]}
                        for item in union if str(item.get("doubts") or "").strip()],
@@ -2176,10 +2264,35 @@ def review_grounded(pr, files, provider, snapshot: Snapshot, context: ReviewCont
         audit["impact_closure_error"] = f"{type(exc).__name__}: {exc}"
     audit["discovery_trace"] = discovery_trace
     audit["discovery_mode"] = "raw" if raw_discovery else "intent"
+    if raw_discovery:
+        audit["raw_discovery_candidates"] = _raw_candidate_inventory(candidates)
     return GroundedResult(payload.summary, kept, pending, candidates, decisions, audit,
                           discovery_calls, verification_calls, failed,
                           evidence_budget=bundle.budget_report,
                           unit_coverage=_unit_coverage(snapshot, files, context, audit))
+
+
+def _raw_candidate_inventory(candidates) -> list[dict]:
+    """Every raw pool item with where it ended up, for counting raw discoveries.
+
+    A kept candidate gets its own row; each pool item merged into it gets a row
+    pointing at the kept one (`merged_into`) and sharing its final status.
+    """
+    rows = []
+    for item in candidates:
+        suggestion = item.get("suggestion") or {}
+        kept_id = suggestion.get("raw_candidate_id")
+        if not isinstance(kept_id, str):
+            continue
+        final = {"candidate_id": item.get("candidate_id"), "status": item.get("status"),
+                 "reason": item.get("reason")}
+        rows.append({"raw_candidate_id": kept_id, "origin": suggestion.get("candidate_origin"),
+                     "merged_into": None, **final})
+        for member in suggestion.get("merged_candidates") or []:
+            if isinstance(member, dict) and isinstance(member.get("raw_candidate_id"), str):
+                rows.append({"raw_candidate_id": member["raw_candidate_id"],
+                             "origin": member.get("origin"), "merged_into": kept_id, **final})
+    return rows
 
 
 def _trace_hash(value):
@@ -2535,6 +2648,24 @@ def build_grounded_report(pr, files, findings, result, context, *, reviewer_vers
         warnings.append("Behavior verification provider failed; candidates retained as pending.")
     elif incomplete:
         report_confidence = "partial"
+    # A failed discovery sample means fewer candidates were looked for; the
+    # surviving samples still count, but the report must not read as complete.
+    raw_trace = [entry for entry in result.bundle.get("discovery_trace", [])
+                 if isinstance(entry, dict) and entry.get("mode") == "raw"]
+    failed_samples = [str(entry.get("input")) for entry in raw_trace
+                      if entry.get("status") == "failed"]
+    if failed_samples:
+        report_confidence = "partial"
+        warnings.append(
+            f"Discovery sample(s) failed to parse: {', '.join(failed_samples)}; "
+            "candidates from the remaining samples were reviewed."
+        )
+    parse_error_count = sum(len(entry.get("parse_errors") or []) for entry in raw_trace)
+    if parse_error_count:
+        warnings.append(
+            f"{parse_error_count} discovery item(s) were malformed and not reviewed; "
+            "see discovery_trace parse_errors."
+        )
     if result.pending:
         warnings.append(f"{len(result.pending)} candidate(s) need additional context; excluded from confirmed findings.")
     from src.analyzer.context_builder import partial_inclusion_warning
