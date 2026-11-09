@@ -1,0 +1,156 @@
+{
+ "anchor_outside_diff": {
+  "outcome_sha": "2694613e4c92c8d6",
+  "prompts": [
+   "acd0b637cb5968ab"
+  ],
+  "unused_responses": 0
+ },
+ "followup_missing_evidence": {
+  "outcome_sha": "e8d15a0b97a988af",
+  "prompts": [
+   "acd0b637cb5968ab",
+   "82f68f4fe024bcc7",
+   "5375284d943d7dfc"
+  ],
+  "unused_responses": 0
+ },
+ "index_enabled": {
+  "outcome_sha": "726509e2d9779c73",
+  "prompts": [
+   "acd0b637cb5968ab",
+   "16533e5b2706125b"
+  ],
+  "unused_responses": 0
+ },
+ "intent_confirmed": {
+  "outcome_sha": "0b2ef67f28886b1a",
+  "prompts": [
+   "acd0b637cb5968ab",
+   "9a63836a4c64d8b8"
+  ],
+  "unused_responses": 0
+ },
+ "intent_garbled_then_valid": {
+  "outcome_sha": "c647cdeba5000c2a",
+  "prompts": [
+   "acd0b637cb5968ab",
+   "f34dc9073ea9f5e2",
+   "9a63836a4c64d8b8"
+  ],
+  "unused_responses": 0
+ },
+ "intent_no_new_evidence": {
+  "outcome_sha": "7d9ab2dae84f4abb",
+  "prompts": [
+   "acd0b637cb5968ab",
+   "14b59fb7dd072b68",
+   "69c5a2aeb2b484e1",
+   "e7e1ad443001276d"
+  ],
+  "unused_responses": 0
+ },
+ "intent_not_reported_dismissed": {
+  "outcome_sha": "ec336cd8137fd35b",
+  "prompts": [
+   "acd0b637cb5968ab",
+   "9a63836a4c64d8b8"
+  ],
+  "unused_responses": 0
+ },
+ "intent_tool_round": {
+  "outcome_sha": "3a5f912f316dbb9a",
+  "prompts": [
+   "acd0b637cb5968ab",
+   "14b59fb7dd072b68",
+   "8f3115ae0024c84c"
+  ],
+  "unused_responses": 0
+ },
+ "per_file_cap": {
+  "outcome_sha": "42a16cd096d1b4af",
+  "prompts": [
+   "acd0b637cb5968ab",
+   "9a63836a4c64d8b8"
+  ],
+  "unused_responses": 0
+ },
+ "raw_confirmed": {
+  "outcome_sha": "25e5d78dba3f1f4c",
+  "prompts": [
+   "3c8d20b7377e83ae",
+   "41fa9ac822676618",
+   "8ad5f6a995df9a87",
+   "fa903da18242b3f5"
+  ],
+  "unused_responses": 0
+ },
+ "raw_hedged": {
+  "outcome_sha": "593794f83eaecb63",
+  "prompts": [
+   "3c8d20b7377e83ae",
+   "41fa9ac822676618",
+   "8ad5f6a995df9a87",
+   "a6cce6f65cdc0909"
+  ],
+  "unused_responses": 0
+ },
+ "raw_partial_failure": {
+  "outcome_sha": "a14a652263a0b8d1",
+  "prompts": [
+   "3c8d20b7377e83ae",
+   "41fa9ac822676618",
+   "8ad5f6a995df9a87",
+   "2783953ea2949c3f"
+  ],
+  "unused_responses": 0
+ },
+ "verify_context_then_decide": {
+  "outcome_sha": "6e81bb2ba87a2bd2",
+  "prompts": [
+   "acd0b637cb5968ab",
+   "9a63836a4c64d8b8",
+   "5859012976d565b3"
+  ],
+  "unused_responses": 0
+ },
+ "verify_disabled": {
+  "outcome_sha": "337689e8d2b92a2b",
+  "prompts": [
+   "acd0b637cb5968ab"
+  ],
+  "unused_responses": 0
+ },
+ "verify_insufficient_chain": {
+  "outcome_sha": "bdbf6a1434e22aba",
+  "prompts": [
+   "acd0b637cb5968ab",
+   "9a63836a4c64d8b8"
+  ],
+  "unused_responses": 0
+ },
+ "verify_invalid_decision": {
+  "outcome_sha": "307daeb11258abe4",
+  "prompts": [
+   "acd0b637cb5968ab",
+   "9a63836a4c64d8b8"
+  ],
+  "unused_responses": 0
+ },
+ "verify_provider_failure": {
+  "outcome_sha": "033d5a735391a9ea",
+  "prompts": [
+   "acd0b637cb5968ab",
+   "9a63836a4c64d8b8"
+  ],
+  "unused_responses": 0
+ },
+ "verify_unknown_candidate": {
+  "outcome_sha": "2fad4ceacb57819b",
+  "prompts": [
+   "acd0b637cb5968ab",
+   "9a63836a4c64d8b8"
+  ],
+  "unused_responses": 0
+ }
+}
