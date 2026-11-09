@@ -81,12 +81,13 @@ def _grounded_trace_identity(pr, files, snapshot, *, reviewer_version, prompt_ad
                              grounded_critic_enabled=False, critic_batch_cap=8,
                              critic_output_token_limit=1024, critic_model=""):
     """Fingerprint only review inputs and executable policy, never retain their text."""
-    from pathlib import Path
-
     from src.reviewer.criteria import CRITERIA_VERSION
     from src.reviewer.discovery_lenses import LENS_DISCOVERY_SYSTEM
-    from src.reviewer.grounded_review import (
-        DISCOVERY_SYSTEM, INDEX_ATTRIBUTION_CONTRACT, RAW_DISCOVERY_SYSTEM,
+    from src.reviewer.grounded.fingerprint import runtime_sha256
+    from src.reviewer.grounded.prompts import (
+        DISCOVERY_SYSTEM,
+        INDEX_ATTRIBUTION_CONTRACT,
+        RAW_DISCOVERY_SYSTEM,
         VERIFY_SYSTEM,
     )
 
@@ -107,24 +108,6 @@ def _grounded_trace_identity(pr, files, snapshot, *, reviewer_version, prompt_ad
     effective_policy_sha = policy_content_sha256 or _canonical_sha256({
         "prompt_addendum": prompt_addendum, "playbook_recall_k": 5,
     })
-    runtime_hash = hashlib.sha256()
-    source_root = Path(__file__).parents[1]
-    runtime_paths = (
-        Path(__file__),
-        Path(__file__).with_name("grounded_review.py"),
-        Path(__file__).with_name("discovery_lenses.py"),
-        Path(__file__).with_name("criteria.py"),
-        Path(__file__).with_name("critic.py"),
-        Path(__file__).with_name("unit_review.py"),
-        source_root / "analyzer" / "repository_context.py",
-        source_root / "analyzer" / "symbol_index.py",
-        source_root / "application" / "review.py",
-        source_root / "application" / "strategy_policy.py",
-        source_root / "reviewer" / "provider.py",
-    )
-    for path in runtime_paths:
-        runtime_hash.update(path.name.encode("utf-8"))
-        runtime_hash.update(path.read_bytes())
     identity = {
             "case_id": f"{pr.repo}#{pr.number}@{snapshot.head or 'unknown'}",
             "repository": pr.repo,
@@ -205,7 +188,7 @@ def _grounded_trace_identity(pr, files, snapshot, *, reviewer_version, prompt_ad
             }),
         },
         "criteria_sha256": hashlib.sha256(CRITERIA_VERSION.encode("utf-8")).hexdigest(),
-        "runtime_sha256": runtime_hash.hexdigest(),
+        "runtime_sha256": runtime_sha256(),
         "prompt_sha256": hashlib.sha256((
             (RAW_DISCOVERY_SYSTEM + LENS_DISCOVERY_SYSTEM if raw_discovery
              else DISCOVERY_SYSTEM)
@@ -625,14 +608,13 @@ def review_with_ai(
         if grounded_route:
             from src.reviewer.critic import GroundedCriticBudget
             from src.reviewer.discovery_lenses import LENS_DISCOVERY_SYSTEM
-            from src.reviewer.grounded_review import (
+            from src.reviewer.grounded.prompts import (
                 DISCOVERY_SYSTEM,
                 INDEX_ATTRIBUTION_CONTRACT,
                 RAW_DISCOVERY_SYSTEM,
                 VERIFY_SYSTEM,
-                build_grounded_report,
-                review_grounded,
             )
+            from src.reviewer.grounded_review import build_grounded_report, review_grounded
             shared_critic_budget = GroundedCriticBudget() if enable_critic else None
             critic_identity_provider = (critic_provider or provider) if enable_critic else None
 

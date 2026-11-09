@@ -717,7 +717,8 @@ def test_checkpoint_reexecutes_when_effective_prompt_or_runtime_changes(
 ):
     from pathlib import Path
 
-    from src.reviewer import discovery_lenses, grounded_review
+    from src.reviewer import discovery_lenses
+    from src.reviewer.grounded import prompts
 
     repo = tmp_path / "repo"
     checkpoint = tmp_path / "units.jsonl"
@@ -747,7 +748,7 @@ def test_checkpoint_reexecutes_when_effective_prompt_or_runtime_changes(
         monkeypatch.setattr(Path, "read_bytes", changed_runtime)
     else:
         module, name = (
-            (grounded_review, "RAW_DISCOVERY_SYSTEM") if change == "raw_prompt"
+            (prompts, "RAW_DISCOVERY_SYSTEM") if change == "raw_prompt"
             else (discovery_lenses, "LENS_DISCOVERY_SYSTEM")
         )
         monkeypatch.setattr(module, name, getattr(module, name) + marker)

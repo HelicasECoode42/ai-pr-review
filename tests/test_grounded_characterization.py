@@ -192,3 +192,15 @@ def test_review_grounded_matches_golden(repo, name):
         return
     expected = load_golden()[name]
     assert {key: observed[key] for key in expected} == expected
+
+
+def test_runtime_fingerprint_covers_every_stage_module(monkeypatch):
+    from src.reviewer import grounded
+    from src.reviewer.grounded.fingerprint import runtime_sha256
+
+    stage = Path(grounded.__file__).with_name("gates.py")
+    before = runtime_sha256()
+    read_bytes = Path.read_bytes
+    monkeypatch.setattr(Path, "read_bytes",
+                        lambda path: read_bytes(path) + (b"#" if path == stage else b""))
+    assert runtime_sha256() != before

@@ -8,16 +8,12 @@ from src.analyzer.context_builder import ReviewContext
 from src.reviewer.criteria import (
     CRITERIA_VERSION,
 )
+from src.reviewer.grounded import prompts
+from src.reviewer.grounded.fingerprint import runtime_sha256
 from src.reviewer.grounded.intent import (
     INTENT_HYPOTHESIS_SCHEMA_VERSION,
     INTENT_PLAN_SCHEMA_VERSION,
     _missing_evidence_accounting,
-)
-from src.reviewer.grounded.prompts import (
-    DISCOVERY_SYSTEM,
-    INDEX_ATTRIBUTION_CONTRACT,
-    RAW_DISCOVERY_SYSTEM,
-    VERIFY_SYSTEM,
 )
 
 
@@ -97,30 +93,8 @@ def _trace_identity(pr, files, reviewer_version, supplied, *, audit=None):
     metadata_sha = _trace_hash(metadata)
     diff_sha = _trace_hash(file_manifest)
     effective_policy = {"prompt_addendum": "", "playbook_recall_k": 5}
-    from pathlib import Path
-
     from src.reviewer.discovery_lenses import LENS_DISCOVERY_SYSTEM
 
-    source_root = Path(__file__).parents[2]
-    reviewer_root = source_root / "reviewer"
-    runtime_files = (
-        reviewer_root / "grounded_review.py",
-        *sorted(Path(__file__).parent.glob("*.py")),
-        reviewer_root / "engine.py",
-        reviewer_root / "discovery_lenses.py",
-        reviewer_root / "criteria.py",
-        reviewer_root / "critic.py",
-        reviewer_root / "unit_review.py",
-        source_root / "analyzer" / "repository_context.py",
-        source_root / "analyzer" / "symbol_index.py",
-        source_root / "application" / "review.py",
-        source_root / "application" / "strategy_policy.py",
-        reviewer_root / "provider.py",
-    )
-    runtime_hash = hashlib.sha256()
-    for path in runtime_files:
-        runtime_hash.update(path.relative_to(source_root).as_posix().encode("utf-8"))
-        runtime_hash.update(path.read_bytes())
     return {
         "identity": {
             "case_id": f"{pr.repo}#{pr.number}@{pr.head_sha or 'unknown'}",
@@ -149,11 +123,11 @@ def _trace_identity(pr, files, reviewer_version, supplied, *, audit=None):
             "repository_index_enabled": repository_index_enabled,
         },
         "criteria_sha256": hashlib.sha256(CRITERIA_VERSION.encode("utf-8")).hexdigest(),
-        "runtime_sha256": runtime_hash.hexdigest(),
+        "runtime_sha256": runtime_sha256(),
         "prompt_sha256": hashlib.sha256(
-            ((RAW_DISCOVERY_SYSTEM + LENS_DISCOVERY_SYSTEM if raw_discovery
-              else DISCOVERY_SYSTEM) + VERIFY_SYSTEM
-             + (INDEX_ATTRIBUTION_CONTRACT if repository_index_enabled else "")).encode("utf-8")
+            ((prompts.RAW_DISCOVERY_SYSTEM + LENS_DISCOVERY_SYSTEM if raw_discovery
+              else prompts.DISCOVERY_SYSTEM) + prompts.VERIFY_SYSTEM
+             + (prompts.INDEX_ATTRIBUTION_CONTRACT if repository_index_enabled else "")).encode("utf-8")
         ).hexdigest(),
         # Direct callers do not supply the effective addendum. This fingerprint
         # identifies the known system prompts, not the complete sent prompt.
